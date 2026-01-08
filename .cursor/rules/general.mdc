@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+# Overview
+
+Building a mac app and want to license it and put it on a website. The app identifies bright areas on the screen and applies a dimming effect similar to Monitor Control and other apps that can dim the entire screen. This will dim specific sections of the screen and can set a different dimming for sections of the screen that belong to active and inactive windows. For example mail will respect dark mode but an email in there might be bright because it's on a white background. Same for various extensions and so on.
+
+We need to figure out how to potentially handle licensing
+
+
+We probably need a threshold that can be set by the user of how bright something is before it triggers. We will probably also have to add the f.lux and similar app features.
+
+We need to make sure that the overlays do not interfere with the other windows when they are on top but still dim the window beneath.
+
+Probaly need to be a menu bar app
+
+We also want the same features as umbra with light/dark wallpaper switching and wallpaper dimming.
+
+You should be able to grab a screenshot of the screen to see if it works.
+
+
+There is a build checklist and prd and so on. We are building it now.
+
+
+Update the checklist as you ago and keep the log of critical points
