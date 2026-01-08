@@ -142,56 +142,259 @@ final class BrightRegionDetector {
        - minRegionSize: Minimum cells required to form a region (filters noise)
      - Returns: Array of detected bright regions
      */
+    // ================================================================
+    // MARK: - Configuration
+    // ================================================================
+    
+    /**
+     Minimum pixel dimensions for a region overlay.
+     Regions smaller than this are filtered out (noise, small UI elements).
+     */
+    private let minimumRegionPixelSize: CGFloat = 100.0
+    
+    /**
+     Maximum pixel dimensions for a single region.
+     Regions larger than this suggest the whole window is bright - 
+     in that case, use per-window mode instead of per-region.
+     */
+    private let maximumRegionPixelSize: CGFloat = 2000.0
+    
+    /**
+     Resolution for pixel-level analysis.
+     Image is downsampled to this size for fast connected-component analysis.
+     Higher = more precise but slower. 64-128 is a good balance.
+     */
+    private let analysisResolution: Int = 80
+    
+    // ================================================================
+    // MARK: - Main Detection (Pixel-Level Precision)
+    // ================================================================
+    
+    /**
+     Detects bright regions with **exact pixel-level boundaries**.
+     
+     NEW APPROACH (Jan 8, 2026):
+     Instead of a coarse grid, this uses pixel-level thresholding:
+     1. Downsample image to analysisResolution (e.g., 80x80)
+     2. Convert to grayscale and threshold each pixel
+     3. Find connected components (flood fill at pixel level)
+     4. Get exact bounding rectangles of each component
+     5. Filter by min/max size
+     
+     This gives MUCH more accurate region boundaries compared to the
+     old grid-based approach.
+     
+     - Parameters:
+       - image: The CGImage to analyze
+       - threshold: Brightness threshold (0.0-1.0)
+       - gridSize: DEPRECATED - kept for API compatibility but ignored
+       - minRegionSize: DEPRECATED - use minimumRegionPixelSize instead
+     - Returns: Array of detected bright regions with precise boundaries
+     */
     func detectBrightRegions(
         in image: CGImage,
         threshold: Float,
-        gridSize: Int = 8,
-        minRegionSize: Int = 2
+        gridSize: Int = 6,  // Ignored - using analysisResolution instead
+        minRegionSize: Int = 4  // Ignored - using pixel-based filtering
     ) -> [BrightRegion] {
         
-        // 1. Create brightness grid
-        let brightnessGrid = createBrightnessGrid(image: image, gridSize: gridSize)
+        // 1. Downsample and get pixel brightness data
+        guard let brightnessData = getPixelBrightnessData(
+            from: image,
+            targetSize: analysisResolution
+        ) else {
+            return []
+        }
         
-        // 2. Create binary grid (above/below threshold)
-        var binaryGrid = [[Bool]](repeating: [Bool](repeating: false, count: gridSize), count: gridSize)
-        for row in 0..<gridSize {
-            for col in 0..<gridSize {
-                binaryGrid[row][col] = brightnessGrid[row][col] > threshold
+        let width = brightnessData.width
+        let height = brightnessData.height
+        let pixels = brightnessData.pixels
+        
+        // 2. Create binary mask (above threshold = true)
+        var binaryMask = [[Bool]](repeating: [Bool](repeating: false, count: width), count: height)
+        for y in 0..<height {
+            for x in 0..<width {
+                binaryMask[y][x] = pixels[y * width + x] > threshold
             }
         }
         
-        // 3. Find connected components (groups of adjacent bright cells)
-        let components = findConnectedComponents(grid: binaryGrid)
+        // 3. Find connected components using flood fill
+        let components = findPixelConnectedComponents(mask: binaryMask, width: width, height: height)
         
-        // 4. Convert components to regions
+        // 4. Convert to regions with normalized coordinates
         var regions: [BrightRegion] = []
         
         for component in components {
-            // Skip small components (noise)
-            guard component.count >= minRegionSize else { continue }
-            
-            // Find bounding box of this component
-            let boundingBox = calculateBoundingBox(cells: component, gridSize: gridSize)
-            
-            // Calculate average brightness of this region
+            // Get bounding box of this component
+            var minX = width, maxX = 0, minY = height, maxY = 0
             var totalBrightness: Float = 0
-            for (row, col) in component {
-                totalBrightness += brightnessGrid[row][col]
+            
+            for (y, x) in component {
+                minX = min(minX, x)
+                maxX = max(maxX, x)
+                minY = min(minY, y)
+                maxY = max(maxY, y)
+                totalBrightness += pixels[y * width + x]
             }
-            let avgBrightness = totalBrightness / Float(component.count)
+            
+            // Convert to normalized coordinates (0.0-1.0)
+            let normalizedRect = CGRect(
+                x: CGFloat(minX) / CGFloat(width),
+                y: CGFloat(minY) / CGFloat(height),
+                width: CGFloat(maxX - minX + 1) / CGFloat(width),
+                height: CGFloat(maxY - minY + 1) / CGFloat(height)
+            )
             
             let region = BrightRegion(
-                normalizedRect: boundingBox,
-                brightness: avgBrightness,
+                normalizedRect: normalizedRect,
+                brightness: totalBrightness / Float(component.count),
                 cellCount: component.count
             )
             regions.append(region)
         }
         
-        // 5. Optionally merge overlapping regions
-        let mergedRegions = mergeOverlappingRegions(regions)
+        // 5. Merge nearby regions
+        return mergeOverlappingRegions(regions)
+    }
+    
+    /**
+     Filters regions by minimum and maximum pixel size.
+     
+     - Minimum: Filters out tiny bright spots (buttons, icons)
+     - Maximum: Filters out regions that cover most of the window
+               (those should use per-window dimming instead)
+     */
+    func filterByMinimumSize(_ regions: [BrightRegion], windowBounds: CGRect) -> [BrightRegion] {
+        return regions.filter { region in
+            let screenRect = region.rect(in: windowBounds)
+            let meetsMin = screenRect.width >= minimumRegionPixelSize && 
+                          screenRect.height >= minimumRegionPixelSize
+            let meetsMax = screenRect.width <= maximumRegionPixelSize ||
+                          screenRect.height <= maximumRegionPixelSize
+            return meetsMin && meetsMax
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Pixel-Level Analysis Helpers
+    // ================================================================
+    
+    /**
+     Brightness data from a downsampled image.
+     */
+    private struct PixelBrightnessData {
+        let pixels: [Float]  // Row-major brightness values (0.0-1.0)
+        let width: Int
+        let height: Int
+    }
+    
+    /**
+     Downsamples image and extracts per-pixel brightness values.
+     
+     - Parameters:
+       - image: Source CGImage
+       - targetSize: Target dimension (image will be scaled to targetSize x targetSize)
+     - Returns: Array of brightness values in row-major order, or nil on failure
+     */
+    private func getPixelBrightnessData(from image: CGImage, targetSize: Int) -> PixelBrightnessData? {
+        // Create a small bitmap context
+        let width = targetSize
+        let height = targetSize
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
         
-        return mergedRegions
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+        
+        // Draw the image scaled down
+        context.interpolationQuality = .low  // Fast scaling
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Get pixel data
+        guard let data = context.data else { return nil }
+        let buffer = data.bindMemory(to: UInt8.self, capacity: width * height * bytesPerPixel)
+        
+        // Calculate brightness for each pixel using luminance formula
+        var pixels = [Float](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * width + x) * bytesPerPixel
+                let r = Float(buffer[offset]) / 255.0
+                let g = Float(buffer[offset + 1]) / 255.0
+                let b = Float(buffer[offset + 2]) / 255.0
+                
+                // Standard luminance formula (perceived brightness)
+                let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+                pixels[y * width + x] = luminance
+            }
+        }
+        
+        return PixelBrightnessData(pixels: pixels, width: width, height: height)
+    }
+    
+    /**
+     Finds connected components in a binary pixel mask using flood fill.
+     
+     - Parameters:
+       - mask: 2D boolean array (true = bright pixel)
+       - width: Mask width
+       - height: Mask height
+     - Returns: Array of components, each component is array of (y, x) coordinates
+     */
+    private func findPixelConnectedComponents(
+        mask: [[Bool]],
+        width: Int,
+        height: Int
+    ) -> [[(Int, Int)]] {
+        var visited = [[Bool]](repeating: [Bool](repeating: false, count: width), count: height)
+        var components: [[(Int, Int)]] = []
+        
+        // Minimum component size in pixels (at analysis resolution)
+        // This filters out noise at the pixel level
+        let minComponentPixels = 10  // ~1.5% of 80x80 image
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                if mask[y][x] && !visited[y][x] {
+                    // Start flood fill
+                    var component: [(Int, Int)] = []
+                    var stack: [(Int, Int)] = [(y, x)]
+                    
+                    while !stack.isEmpty {
+                        let (cy, cx) = stack.removeLast()
+                        
+                        // Bounds and visited check
+                        guard cy >= 0, cy < height, cx >= 0, cx < width else { continue }
+                        guard !visited[cy][cx], mask[cy][cx] else { continue }
+                        
+                        visited[cy][cx] = true
+                        component.append((cy, cx))
+                        
+                        // Add 4-connected neighbors
+                        stack.append((cy - 1, cx))
+                        stack.append((cy + 1, cx))
+                        stack.append((cy, cx - 1))
+                        stack.append((cy, cx + 1))
+                    }
+                    
+                    // Only keep components above minimum size
+                    if component.count >= minComponentPixels {
+                        components.append(component)
+                    }
+                }
+            }
+        }
+        
+        return components
     }
     
     /**
@@ -371,11 +574,13 @@ final class BrightRegionDetector {
             var combinedCells = region.cellCount
             
             // Check for overlapping/adjacent regions
+            // FIX (Jan 8, 2026): Increased expansion from 0.05 to 0.15 (15% of window)
+            // This merges regions that are close to each other, reducing patchwork effect
             for other in regions {
                 guard other.id != region.id, !used.contains(other.id) else { continue }
                 
-                // Check if regions overlap or are very close
-                let expanded = combinedRect.insetBy(dx: -0.05, dy: -0.05)
+                // Check if regions overlap or are close (within 15% of window size)
+                let expanded = combinedRect.insetBy(dx: -0.15, dy: -0.15)
                 if expanded.intersects(other.normalizedRect) {
                     used.insert(other.id)
                     combinedRect = combinedRect.union(other.normalizedRect)
@@ -392,6 +597,12 @@ final class BrightRegionDetector {
                 cellCount: combinedCells
             )
             merged.append(mergedRegion)
+        }
+        
+        // If we merged any regions, do ONE more pass to catch regions that became adjacent
+        // But only if we actually reduced the count (to prevent infinite recursion)
+        if merged.count > 1 && merged.count < regions.count {
+            return mergeOverlappingRegions(merged)
         }
         
         return merged

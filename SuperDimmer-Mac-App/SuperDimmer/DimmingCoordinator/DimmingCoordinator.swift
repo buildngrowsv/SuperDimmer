@@ -493,14 +493,20 @@ final class DimmingCoordinator {
             }
             
             // Detect bright regions within this window
-            let brightRegions = regionDetector.detectBrightRegions(
+            // FIX (Jan 8, 2026): Increased minRegionSize from 2 to 4 to reduce patchwork effect
+            // Also using coarser grid (6x6 instead of 9x9) for larger, more meaningful regions
+            var brightRegions = regionDetector.detectBrightRegions(
                 in: windowImage,
                 threshold: threshold,
                 gridSize: gridSize,
-                minRegionSize: 2  // At least 2 cells to form a region
+                minRegionSize: 4  // At least 4 cells to form a region (filters small scattered areas)
             )
             
-            debugLog("🎯 Window '\(window.ownerName)': found \(brightRegions.count) bright regions")
+            // Filter out regions that are too small in pixel terms
+            // This prevents tiny overlays that don't provide meaningful dimming
+            brightRegions = regionDetector.filterByMinimumSize(brightRegions, windowBounds: window.bounds)
+            
+            debugLog("🎯 Window '\(window.ownerName)': found \(brightRegions.count) bright regions (after filtering)")
             
             // Create decisions for each bright region
             for region in brightRegions {

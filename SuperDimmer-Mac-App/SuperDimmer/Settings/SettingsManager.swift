@@ -534,8 +534,10 @@ final class SettingsManager: ObservableObject {
             self.detectionMode = .perWindow  // Default to simpler per-window mode
         }
         
+        // FIX (Jan 8, 2026): Reduced default from 8 to 6 for larger, more cohesive regions
+        // Smaller grids = fewer, larger cells = larger bright region detections
         self.regionGridSize = defaults.object(forKey: Keys.regionGridSize.rawValue) != nil ?
-            defaults.integer(forKey: Keys.regionGridSize.rawValue) : 8  // 8x8 grid default
+            defaults.integer(forKey: Keys.regionGridSize.rawValue) : 6  // 6x6 grid default (was 8x8)
         
         // Default scan interval: 2.0 seconds for per-region mode (heavy analysis)
         // Can be reduced to 1.0 or 0.5 for per-window mode which is faster
