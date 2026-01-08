@@ -188,12 +188,14 @@ final class DimOverlayWindow: NSWindow {
         // Without this, the overlay would block all mouse interaction!
         self.ignoresMouseEvents = true
         
-        // Z-order: Just above normal windows
-        // NOTE: Using .floating (level 3) instead of .screenSaver (level 1000)
-        // This prevents overlays from covering windows that are in front of the target
-        // For full-screen dimming, .screenSaver is fine, but for per-region mode
-        // we need to be more careful about z-order
-        self.level = .floating
+        // Z-order: Same level as normal windows
+        // FIX (Jan 8, 2026): Changed from .floating to .normal
+        // This allows us to position the overlay DIRECTLY above the target window
+        // using orderWindow(.above, relativeTo:) without being above ALL windows.
+        // 
+        // For full-screen dimming, we'll set .screenSaver separately.
+        // For per-region mode, we use .normal and position relatively.
+        self.level = .normal
         
         // Collection behavior for Spaces and fullscreen
         self.collectionBehavior = [
@@ -237,6 +239,30 @@ final class DimOverlayWindow: NSWindow {
         self.dimLevel = clampedLevel
         
         print("📦 DimView setup with level: \(clampedLevel)")
+    }
+    
+    // ================================================================
+    // MARK: - Z-Ordering
+    // ================================================================
+    
+    /**
+     Positions this overlay directly above a target window.
+     
+     This is the key to proper Z-ordering! Instead of being above ALL windows
+     (like .floating or .screenSaver level), this positions the overlay just
+     above the specific window it's dimming.
+     
+     If another window is in front of the target, it won't be covered by
+     this overlay - the overlay stays at the same Z-order as its target.
+     
+     - Parameter windowID: The CGWindowID of the target window to appear above
+     
+     FIX (Jan 8, 2026): Added to solve the "overlay covers windows above target" bug
+     */
+    func orderAboveWindow(_ windowID: CGWindowID) {
+        // Position this window directly above the target window
+        // The Int(windowID) is the window number that macOS uses
+        self.order(.above, relativeTo: Int(windowID))
     }
     
     // ================================================================

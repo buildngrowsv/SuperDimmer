@@ -309,6 +309,9 @@ final class OverlayManager {
     /// Dictionary of region overlays, keyed by unique region ID
     private var regionOverlays: [String: DimOverlayWindow] = [:]
     
+    /// Maps region overlay ID to target window ID (for proper Z-ordering)
+    private var regionToWindowID: [String: CGWindowID] = [:]
+    
     /// Counter for generating unique region IDs
     private var regionCounter: Int = 0
     
@@ -353,7 +356,11 @@ final class OverlayManager {
                     overlay.setDimLevel(decision.dimLevel, animated: false)
                     // Update edge blur setting (in case user toggled it)
                     overlay.setEdgeBlur(enabled: edgeBlurEnabled, radius: edgeBlurRadius)
-                    overlay.orderFront(nil)
+                    
+                    // FIX (Jan 8, 2026): Position overlay DIRECTLY above target window
+                    // This prevents overlays from covering windows that are in front
+                    overlay.orderAboveWindow(decision.windowID)
+                    regionToWindowID[overlayID] = decision.windowID
                 }
             } else {
                 // Need to create a new overlay
@@ -421,11 +428,14 @@ final class OverlayManager {
             overlay.setEdgeBlur(enabled: true, radius: edgeBlurRadius)
         }
         
-        // Show the overlay
-        overlay.orderFrontRegardless()
+        // FIX (Jan 8, 2026): Position overlay DIRECTLY above target window
+        // This is the key to proper Z-ordering - the overlay appears just
+        // above the window it's dimming, not above ALL windows
+        overlay.orderAboveWindow(decision.windowID)
         
-        // Store reference
+        // Store references
         regionOverlays[regionID] = overlay
+        regionToWindowID[regionID] = decision.windowID
     }
     
     /**
