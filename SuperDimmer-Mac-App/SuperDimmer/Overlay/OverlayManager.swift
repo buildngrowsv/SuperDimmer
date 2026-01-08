@@ -339,10 +339,6 @@ final class OverlayManager {
         let existingCount = regionOverlays.count
         let neededCount = decisions.count
         
-        // Get edge blur settings (check every time for live updates)
-        let edgeBlurEnabled = SettingsManager.shared.edgeBlurEnabled
-        let edgeBlurRadius = CGFloat(SettingsManager.shared.edgeBlurRadius)
-        
         // Get sorted list of existing overlay IDs for consistent ordering
         let existingIDs = Array(regionOverlays.keys).sorted()
         
@@ -354,8 +350,6 @@ final class OverlayManager {
                 if let overlay = regionOverlays[overlayID] {
                     overlay.setFrame(decision.regionRect, display: true)
                     overlay.setDimLevel(decision.dimLevel, animated: false)
-                    // Update edge blur setting (in case user toggled it)
-                    overlay.setEdgeBlur(enabled: edgeBlurEnabled, radius: edgeBlurRadius)
                     
                     // FIX (Jan 8, 2026): Position overlay DIRECTLY above target window
                     // This prevents overlays from covering windows that are in front
@@ -420,13 +414,6 @@ final class OverlayManager {
             dimLevel: decision.dimLevel,
             id: regionID
         )
-        
-        // Apply edge blur if enabled
-        let edgeBlurEnabled = SettingsManager.shared.edgeBlurEnabled
-        let edgeBlurRadius = CGFloat(SettingsManager.shared.edgeBlurRadius)
-        if edgeBlurEnabled {
-            overlay.setEdgeBlur(enabled: true, radius: edgeBlurRadius)
-        }
         
         // FIX (Jan 8, 2026): Position overlay DIRECTLY above target window
         // This is the key to proper Z-ordering - the overlay appears just

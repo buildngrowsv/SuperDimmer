@@ -348,11 +348,11 @@ struct MenuBarView: View {
                                     .foregroundColor(.secondary)
                             }
                             
-                            // Edge blur toggle and slider
+                            // Debug toggle
                             Divider()
                                 .padding(.vertical, 4)
                             
-                            edgeBlurSection
+                            debugSection
                         }
                         
                         // Show permission status with clickable button
@@ -414,54 +414,11 @@ struct MenuBarView: View {
     // ================================================================
     
     /**
-     Controls for feathered/blurred edges on dim overlays.
-     Makes the dimming effect less jarring with soft edge transitions.
+     Debug controls section.
      */
-    private var edgeBlurSection: some View {
+    private var debugSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "circle.hexagongrid")
-                    .foregroundColor(.blue)
-                    .font(.caption)
-                
-                Text("Soft Edges")
-                    .font(.caption)
-                
-                Spacer()
-                
-                Toggle("", isOn: $settings.edgeBlurEnabled)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-            }
-            
-            if settings.edgeBlurEnabled {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Blur Radius")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        
-                        Spacer()
-                        
-                        Text("\(Int(settings.edgeBlurRadius))pt")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .monospacedDigit()
-                    }
-                    
-                    Slider(value: $settings.edgeBlurRadius, in: 5...50)
-                        .tint(.blue)
-                    
-                    Text("Softens overlay edges for smoother transitions")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
             // Debug Mode Toggle
-            Divider()
-                .padding(.vertical, 4)
             
             HStack {
                 Image(systemName: "ladybug")

@@ -23,3 +23,6 @@ There is a build checklist and prd and so on. We are building it now.
 
 
 Update the checklist as you ago and keep the log of critical points
+
+
+When you finish making a change or building something and confirm it with the user, commit with comments on current state and outstanding issues and next steps and push

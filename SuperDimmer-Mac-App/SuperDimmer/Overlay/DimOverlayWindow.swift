@@ -77,23 +77,6 @@ final class DimOverlayWindow: NSWindow {
      */
     private(set) var overlayID: String = UUID().uuidString
     
-    /**
-     Whether blurred/feathered edges are currently enabled.
-     When enabled, the overlay has a soft gradient around the edges.
-     */
-    private var edgeBlurEnabled: Bool = false
-    
-    /**
-     The radius of the edge blur effect in points.
-     */
-    private var edgeBlurRadius: CGFloat = 15.0
-    
-    /**
-     The gradient mask layer for feathered edges.
-     Stored so we can update it when settings change.
-     */
-    private var gradientMaskLayer: CAGradientLayer?
-    
     // ================================================================
     // MARK: - Factory Methods
     // ================================================================
@@ -341,14 +324,9 @@ final class DimOverlayWindow: NSWindow {
                 context.duration = 0.15
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 self.animator().setFrame(rect, display: true)
-            } completionHandler: { [weak self] in
-                // Update feathered edge mask after animation completes
-                self?.updateFeatheredEdgeMaskIfNeeded()
             }
         } else {
             self.setFrame(rect, display: true)
-            // Update feathered edge mask for new size
-            updateFeatheredEdgeMaskIfNeeded()
         }
     }
     
@@ -367,197 +345,14 @@ final class DimOverlayWindow: NSWindow {
         }
     }
     
-    // ================================================================
-    // MARK: - Edge Blur (Feathered Edges)
-    // ================================================================
+    // NOTE: Feathered edges feature removed (Jan 8, 2026)
+    // The mask-based approach was unreliable. Sharp edges work fine for dimming.
+    // If soft edges are needed in future, consider using NSVisualEffectView
+    // with .behindWindow material instead.
     
-    /**
-     Enables or disables the blurred/feathered edge effect.
-     
-     When enabled, the overlay has a soft gradient around the edges that
-     fades from the dim color to transparent. This creates a less jarring
-     visual transition compared to hard rectangular cutoffs.
-     
-     IMPLEMENTATION:
-     We use a radial gradient mask on the dim view's layer. The mask is
-     fully opaque in the center and fades to transparent at the edges.
-     This is more performant than blur filters and doesn't require
-     expensive GPU operations.
-     
-     - Parameters:
-       - enabled: Whether to enable the edge blur effect
-       - radius: The blur radius in points (how far the fade extends)
-     */
+    /// Stub for API compatibility - does nothing
     func setEdgeBlur(enabled: Bool, radius: CGFloat = 15.0) {
-        self.edgeBlurEnabled = enabled
-        self.edgeBlurRadius = radius
-        
-        guard let layer = dimView?.layer else { return }
-        
-        if enabled {
-            applyFeatheredEdgeMask(to: layer, radius: radius)
-        } else {
-            // Remove the mask for sharp edges
-            layer.mask = nil
-            gradientMaskLayer = nil
-        }
-    }
-    
-    /**
-     Applies a feathered edge mask to the given layer.
-     
-     The mask creates a soft fade around all edges of the overlay.
-     We use a special technique: draw a rectangle with rounded corners
-     and apply a blur to the alpha channel.
-     
-     - Parameters:
-       - layer: The layer to mask
-       - radius: The feather radius in points
-     */
-    private func applyFeatheredEdgeMask(to layer: CALayer, radius: CGFloat) {
-        let bounds = layer.bounds
-        guard bounds.width > 0, bounds.height > 0 else { return }
-        
-        // Create a mask layer that's opaque in center, fades at edges
-        // Using a shape with gradient fill to simulate feathered edges
-        let maskLayer = CALayer()
-        maskLayer.frame = bounds
-        
-        // Create an inner rect that's fully opaque
-        // The area between inner rect and outer bounds will fade
-        let inset = radius
-        let innerRect = bounds.insetBy(dx: inset, dy: inset)
-        
-        // Use a gradient layer approach: 
-        // We'll create a rectangular shape and add a shadow to simulate blur
-        let shapeLayer = CAShapeLayer()
-        shapeLayer.frame = bounds
-        
-        // Create a path for the inner opaque area
-        let path = CGMutablePath()
-        // Outer rect (full bounds) - we'll use this for the "shadow" area
-        path.addRect(bounds)
-        // Inner rect - this will be the opaque center
-        path.addRoundedRect(in: innerRect, cornerWidth: radius * 0.5, cornerHeight: radius * 0.5)
-        
-        // Use the path as a mask but with a soft edge
-        // We achieve this by drawing a white fill with a shadow
-        shapeLayer.fillColor = NSColor.clear.cgColor
-        
-        // Actually, a simpler approach: use a CAGradientLayer as mask
-        // with radial gradient to create soft edges
-        // But CAGradientLayer doesn't support true radial fading on edges
-        
-        // Best approach for performant feathered edges:
-        // Draw the mask image programmatically with CoreGraphics
-        let maskImage = createFeatheredMaskImage(size: bounds.size, radius: radius)
-        maskLayer.contents = maskImage
-        
-        layer.mask = maskLayer
-        gradientMaskLayer = CAGradientLayer() // Keep reference for updates
-    }
-    
-    /**
-     Creates a mask image with feathered (soft) edges.
-     
-     This creates a grayscale mask where:
-     - White (1.0) = fully visible (center area)
-     - Black (0.0) = fully transparent (outer edge)
-     - Gradient in between = fade
-     
-     The mask fades from the outer edge inward over the specified radius,
-     creating a soft/blurred edge effect without expensive filters.
-     
-     FIX (Jan 8, 2026): Previous implementation was inverted and drew
-     strokes instead of proper gradient fills. This version uses
-     concentric filled rectangles with decreasing opacity from center
-     to edge.
-     
-     - Parameters:
-       - size: The size of the mask image
-       - radius: The feather radius (how far the fade extends inward)
-     - Returns: A CGImage suitable for use as a layer mask
-     */
-    private func createFeatheredMaskImage(size: CGSize, radius: CGFloat) -> CGImage? {
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-        let width = Int(size.width * scale)
-        let height = Int(size.height * scale)
-        let scaledRadius = radius * scale
-        
-        guard width > 0, height > 0 else { return nil }
-        
-        // Create grayscale bitmap context
-        // In a mask: white = visible, black = invisible
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue
-        ) else {
-            print("⚠️ Failed to create mask context")
-            return nil
-        }
-        
-        // Start with black (fully transparent/invisible)
-        context.setFillColor(gray: 0.0, alpha: 1.0)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        
-        // Draw concentric rectangles from outside (black) to inside (white)
-        // Each layer is slightly more opaque
-        let steps = max(1, Int(scaledRadius))
-        
-        for i in 0...steps {
-            // Progress from 0 (outer edge) to 1 (inner area)
-            let progress = CGFloat(i) / CGFloat(steps)
-            let inset = scaledRadius - (progress * scaledRadius)
-            
-            // Use smooth easing (ease-in) for more natural falloff
-            let gray = progress * progress * progress // Cubic ease-in
-            
-            context.setFillColor(gray: gray, alpha: 1.0)
-            
-            let rect = CGRect(
-                x: inset,
-                y: inset,
-                width: CGFloat(width) - inset * 2,
-                height: CGFloat(height) - inset * 2
-            )
-            
-            if rect.width > 0 && rect.height > 0 {
-                // Fill with rounded corners for smoother appearance
-                let cornerRadius = min(inset * 0.5, 10 * scale)
-                let path = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-                context.addPath(path)
-                context.fillPath()
-            }
-        }
-        
-        // Fill center with white (fully visible)
-        let centerInset = scaledRadius
-        let centerRect = CGRect(
-            x: centerInset,
-            y: centerInset,
-            width: CGFloat(width) - centerInset * 2,
-            height: CGFloat(height) - centerInset * 2
-        )
-        if centerRect.width > 0 && centerRect.height > 0 {
-            context.setFillColor(gray: 1.0, alpha: 1.0)
-            context.fill(centerRect)
-        }
-        
-        return context.makeImage()
-    }
-    
-    /**
-     Updates the feathered edge mask when the window is resized.
-     Called internally when frame changes if edge blur is enabled.
-     */
-    private func updateFeatheredEdgeMaskIfNeeded() {
-        guard edgeBlurEnabled, let layer = dimView?.layer else { return }
-        applyFeatheredEdgeMask(to: layer, radius: edgeBlurRadius)
+        // Feature removed - sharp edges only
     }
     
     // ================================================================

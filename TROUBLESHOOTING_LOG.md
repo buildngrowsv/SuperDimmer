@@ -209,3 +209,139 @@ Color Temperature feature added:
 - Kelvin to RGB conversion using Tanner Helland algorithm
 - Observes settings changes automatically
 - Restores gamma on disable or app quit
+
+---
+
+## Feature: Multiple Windows Not Dimmed (Jan 8, 2026)
+
+**User Report:**
+"One of the mail windows is getting dimmed but the other is not."
+
+**Root Cause:**
+The `performPerRegionAnalysis()` function was only analyzing the **active/frontmost** window:
+```swift
+let windowsToAnalyze = windows.filter { $0.isActive }  // WRONG
+```
+
+This was originally done to avoid z-order issues, but it prevented dimming other bright windows.
+
+**Fix:**
+Changed to analyze ALL visible windows:
+```swift
+let windowsToAnalyze = windows  // CORRECT - analyze all
+```
+
+The z-ordering is now handled by:
+1. Overlay window level set to `.floating` (above normal windows, below system UI)
+2. WindowTrackerService filtering already excludes system UI and our own overlays
+
+---
+
+## Feature: Soft/Feathered Edges (Jan 8, 2026)
+
+**User Request:**
+"Can we make the dimming blurred at the edges without too much load on rendering."
+
+**Implementation:**
+Added feathered edge effect that creates a soft gradient around overlay edges:
+
+1. New settings in `SettingsManager`:
+   - `edgeBlurEnabled: Bool` (default: false)
+   - `edgeBlurRadius: Double` (5-50pt, default: 15pt)
+
+2. New method in `DimOverlayWindow`:
+   - `setEdgeBlur(enabled:radius:)` - applies or removes edge mask
+   - `createFeatheredMaskImage()` - creates grayscale gradient mask image
+   - Uses CALayer mask for GPU-accelerated rendering (no expensive blur filters)
+
+3. UI in `MenuBarView`:
+   - "Soft Edges" toggle
+   - Blur radius slider (when enabled)
+
+**Performance:**
+- Uses CoreGraphics bitmap mask, not blur filter
+- Mask is created once per overlay creation/resize
+- GPU handles alpha blending efficiently
+
+---
+
+## Feature: Excluded Apps (Jan 8, 2026)
+
+**User Request:**
+"Add a way to exclude apps from dimming."
+
+**Implementation:**
+1. New setting: `excludedAppBundleIDs: [String]` in SettingsManager
+
+2. Modified `WindowTrackerService.shouldTrackWindow()`:
+   - Combined system exclusions with user exclusions
+   - Computed property rechecks settings on each call
+
+3. New UI:
+   - `ExcludedAppsPreferencesTab` in Preferences window
+   - Shows list of excluded apps with icons/names
+   - Add from running apps dropdown
+   - Manual bundle ID entry field
+   - Remove button per app
+
+---
+
+## Issue: AttributeGraph Cycle Warnings
+
+**Problem:**
+SwiftUI console spam with warnings like:
+```
+=== AttributeGraph: cycle detected through attribute 113324 ===
+```
+
+**Cause:**
+State changes triggered during view body evaluation, common when:
+- `@Published` property modified inside a Toggle's `isOn` binding
+- Combine sink fires while view is updating
+
+**Fix:**
+Wrapped state changes in `DispatchQueue.main.async` to defer to next run loop:
+```swift
+Toggle("", isOn: Binding(
+    get: { settings.intelligentDimmingEnabled },
+    set: { newValue in
+        DispatchQueue.main.async {  // <-- Defer state change
+            if newValue {
+                requestScreenRecordingAndEnable()
+            } else {
+                settings.intelligentDimmingEnabled = false
+            }
+        }
+    }
+))
+```
+
+This breaks the cycle by allowing the current view update to complete before modifying state.
+
+---
+
+## [Jan 8, 2026] Website & GitHub Setup
+
+### Progress Made
+
+**Mac App Repository:**
+- Committed all Mac app code to GitHub
+- Fixed embedded git repository issue (SuperDimmer-Mac-App had nested `.git`)
+- Repository: https://github.com/ak/SuperDimmer
+
+**Marketing Website Created:**
+- Created new repository: https://github.com/ak/SuperDimmer-Website
+- Built modern, polished landing page with:
+  - Hero section with app mockup
+  - 6 feature cards
+  - How-it-works 4-step flow
+  - Pricing (Free $0 / Pro $12)
+  - CTA and footer
+- Design: Dark theme, warm amber accents, Cormorant Garamond + Sora fonts
+- Tech: Pure HTML/CSS, responsive, CSS animations
+
+### Next Steps
+- [ ] Deploy to Cloudflare Pages
+- [ ] Purchase and configure superdimmer.app domain
+- [ ] Integrate Paddle checkout
+- [ ] Add download links once app is signed/notarized

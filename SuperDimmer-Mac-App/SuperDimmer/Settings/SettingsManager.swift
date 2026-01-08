@@ -94,10 +94,6 @@ final class SettingsManager: ObservableObject {
         case regionGridSize = "superdimmer.regionGridSize"
         case scanInterval = "superdimmer.scanInterval"
         
-        // Edge Blur (feathered edges)
-        case edgeBlurEnabled = "superdimmer.edgeBlurEnabled"
-        case edgeBlurRadius = "superdimmer.edgeBlurRadius"
-        
         // Debug mode (shows colored borders on overlays)
         case debugOverlayBorders = "superdimmer.debugOverlayBorders"
         
@@ -321,37 +317,8 @@ final class SettingsManager: ObservableObject {
     }
     
     // ================================================================
-    // MARK: - Edge Blur Settings (Feathered Edges)
+    // MARK: - Debug Settings
     // ================================================================
-    
-    /**
-     Whether to apply a blurred/feathered edge to dim overlays.
-     
-     When enabled, overlays have a gradient edge that fades to transparent,
-     creating a softer visual transition instead of hard cutoffs.
-     
-     This is a user-requested feature that makes the dimming less jarring.
-     */
-    @Published var edgeBlurEnabled: Bool {
-        didSet {
-            defaults.set(edgeBlurEnabled, forKey: Keys.edgeBlurEnabled.rawValue)
-        }
-    }
-    
-    /**
-     The radius of the edge blur in points.
-     
-     Range: 5 to 50 points
-     Default: 15 points
-     
-     Higher values = softer, more gradual edge transition
-     Lower values = sharper transition but still not hard cutoff
-     */
-    @Published var edgeBlurRadius: Double {
-        didSet {
-            defaults.set(edgeBlurRadius, forKey: Keys.edgeBlurRadius.rawValue)
-        }
-    }
     
     /**
      Debug mode: Shows colored borders around dim overlays.
@@ -544,15 +511,6 @@ final class SettingsManager: ObservableObject {
         self.scanInterval = defaults.object(forKey: Keys.scanInterval.rawValue) != nil ?
             defaults.double(forKey: Keys.scanInterval.rawValue) : 2.0
         
-        // ============================================================
-        // Load Edge Blur Settings
-        // ============================================================
-        self.edgeBlurEnabled = defaults.object(forKey: Keys.edgeBlurEnabled.rawValue) != nil ?
-            defaults.bool(forKey: Keys.edgeBlurEnabled.rawValue) : false
-        
-        self.edgeBlurRadius = defaults.object(forKey: Keys.edgeBlurRadius.rawValue) != nil ?
-            defaults.double(forKey: Keys.edgeBlurRadius.rawValue) : 15.0
-        
         // Debug mode - shows red borders on overlays for positioning verification
         self.debugOverlayBorders = defaults.bool(forKey: Keys.debugOverlayBorders.rawValue)
         
@@ -621,8 +579,6 @@ final class SettingsManager: ObservableObject {
         detectionMode = .perWindow
         regionGridSize = 8
         scanInterval = 1.0
-        edgeBlurEnabled = false
-        edgeBlurRadius = 15.0
         excludedAppBundleIDs = []
         
         // Color Temperature

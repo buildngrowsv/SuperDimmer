@@ -24,6 +24,7 @@ Each phase contains:
 - [x] macOS 14.0+ (Sonoma) on development machine
 - [ ] Apple Developer account active (for signing)
 - [x] Git repository initialized with .gitignore
+- [x] Mac app pushed to GitHub: https://github.com/ak/SuperDimmer ✅ (Jan 8, 2026)
 
 ### 0.2 Create Xcode Project
 - [x] Create new macOS App project in Xcode
@@ -462,15 +463,62 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 - [x] Build succeeds
 
 #### 🧪 TEST CHECK 2.7
-- [ ] Mode picker switches correctly
-- [ ] Per-region mode detects bright areas in dark windows
-- [ ] Mail app test: bright email content detected separately
-- [ ] Grid precision slider affects detection granularity
-- [ ] Region overlays appear only on bright areas
+- [x] Mode picker switches correctly
+- [x] Per-region mode detects bright areas in dark windows
+- [x] Mail app test: bright email content detected separately
+- [x] Grid precision slider affects detection granularity
+- [x] Region overlays appear only on bright areas
 
 ---
 
-#### 2.7 UI Updates for Intelligent Mode
+### 2.8 Multiple Windows & Enhancements (Jan 8, 2026)
+
+> **USER FEEDBACK**: Only one Mail window was being dimmed when multiple windows were visible.
+> Fixed by analyzing ALL visible windows, not just the active one.
+
+#### 2.8.1 Multiple Windows Dimming
+- [x] Modified `performPerRegionAnalysis()` to analyze ALL visible windows
+- [x] Removed `isActive` filter that limited analysis to frontmost window only
+- [x] Region overlays now created for bright regions across ALL windows
+- [x] Debug logging shows "Analyzing ALL N visible windows"
+
+#### 2.8.2 Feathered/Blurred Edges
+- [x] Added `edgeBlurEnabled` setting to SettingsManager
+- [x] Added `edgeBlurRadius` setting (5-50pt, default 15pt)
+- [x] Implemented `setEdgeBlur(enabled:radius:)` in DimOverlayWindow
+- [x] Created `createFeatheredMaskImage()` for soft edge gradient
+- [x] Updated OverlayManager to apply edge blur to region overlays
+- [x] Added "Soft Edges" toggle and slider to MenuBarView
+
+#### 2.8.3 Excluded Apps Feature
+- [x] Added `excludedAppBundleIDs` setting to SettingsManager
+- [x] Modified WindowTrackerService to filter out excluded apps
+- [x] Created `ExcludedAppsPreferencesTab` in PreferencesView
+- [x] Implemented running apps picker for quick exclusion
+- [x] Added manual bundle ID entry field
+- [x] Shows excluded apps in MenuBarView with "Manage" link
+
+#### 2.8.4 SwiftUI AttributeGraph Warnings Fix
+- [x] Fixed "AttributeGraph: cycle detected" warnings in MenuBarView
+- [x] Used `DispatchQueue.main.async` to defer state changes from view updates
+- [x] Applied fix to intelligent mode toggle handler
+
+#### 🔨 BUILD CHECK 2.8
+```bash
+xcodebuild -scheme SuperDimmer -configuration Debug build
+```
+- [x] Build succeeds
+
+#### 🧪 TEST CHECK 2.8
+- [x] Multiple windows are all analyzed in per-region mode
+- [ ] Soft edges toggle enables/disables feathered edges
+- [ ] Blur radius slider adjusts edge softness
+- [ ] Excluded apps no longer get dimmed
+- [ ] No AttributeGraph cycle warnings in console
+
+---
+
+#### 2.9 UI Updates for Intelligent Mode
 - [ ] Add threshold slider to MenuBarView
 - [ ] Add active window dim slider
 - [ ] Add inactive window dim slider
@@ -1015,14 +1063,31 @@ xcodebuild -scheme SuperDimmer -configuration Release archive
 ---
 
 #### 6.3 Website & Purchase Flow
-- [ ] Create landing page for superdimmer.app
+- [x] Create landing page for superdimmer.app ✅ (Jan 8, 2026 - marketing website created)
+- [ ] Deploy website to hosting (Cloudflare Pages recommended)
 - [ ] Integrate Paddle checkout
 - [ ] Set up license key delivery
-- [ ] Create download page
+- [ ] Create download page with DMG/ZIP links
 - [ ] Test full purchase → download → activate flow
 
+**Website Status (Jan 8, 2026):**
+- Repository: https://github.com/ak/SuperDimmer-Website
+- Features: Hero section, features grid, how-it-works flow, pricing tiers (Free/Pro), CTA, footer
+- Design: Dark theme with warm amber accents, Cormorant Garamond + Sora typography
+- Tech: Pure HTML/CSS, responsive, CSS animations
+
+**Recommended Hosting Options:**
+| Option | Pros | Cons | Best For |
+|--------|------|------|----------|
+| **Cloudflare Pages** ⭐ | Free, fast global CDN, auto-deploys from GitHub, free SSL, DDoS protection | Limited build minutes (500/mo free) | Static sites, best overall |
+| **GitHub Pages** | Free, simple, already on GitHub | No server functions, slower CDN | Very simple static sites |
+| **Vercel** | Fast, excellent DX, serverless functions | Limited bandwidth on free tier | If you need serverless |
+| **Netlify** | Easy forms/functions, good DX | Limited bandwidth (100GB/mo) | If you need forms |
+
+**Recommendation: Cloudflare Pages** - Best for a marketing site with potential for future growth.
+
 #### 🧪 TEST CHECK 6.3
-- [ ] Website loads correctly
+- [ ] Website loads correctly on production domain
 - [ ] Paddle checkout works (sandbox)
 - [ ] License delivered after purchase
 - [ ] Download link works
