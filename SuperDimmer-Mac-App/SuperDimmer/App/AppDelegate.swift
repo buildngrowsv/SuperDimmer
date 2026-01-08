@@ -130,6 +130,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      */
     func applicationDidFinishLaunching(_ notification: Notification) {
         // ============================================================
+        // Store shared instance for global access
+        // ============================================================
+        // This MUST be first - other code may need AppDelegate.shared
+        storeSharedInstance()
+        
+        // ============================================================
         // Log startup for debugging
         // ============================================================
         print("🌟 SuperDimmer launching...")
@@ -399,15 +405,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 /**
  Extension to provide convenient access to the app delegate from anywhere.
  
- Usage: AppDelegate.shared.menuBarController
+ Usage: AppDelegate.shared?.menuBarController
  
  WHY THIS PATTERN:
  - Avoids passing references through many layers
  - Standard pattern for accessing app-wide services
- - Safe force-cast because we know our delegate type
+ 
+ FIX (Jan 8, 2026): Changed from force cast (as!) to safe cast (as?)
+ because SwiftUI's lifecycle wraps our AppDelegate in SwiftUI.AppDelegate.
+ The NSApplication.shared.delegate might not be directly castable.
+ We now use a static instance reference instead.
  */
 extension AppDelegate {
-    static var shared: AppDelegate {
-        NSApplication.shared.delegate as! AppDelegate
+    /// Singleton instance reference, set in applicationDidFinishLaunching
+    /// This avoids the unsafe cast that crashes with SwiftUI lifecycle
+    static private(set) var shared: AppDelegate?
+    
+    /// Store the instance reference on launch
+    func storeSharedInstance() {
+        AppDelegate.shared = self
     }
 }

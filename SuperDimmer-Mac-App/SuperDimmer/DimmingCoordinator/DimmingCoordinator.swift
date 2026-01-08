@@ -273,6 +273,16 @@ final class DimmingCoordinator {
         print("🧹 DimmingCoordinator cleanup complete")
     }
     
+    /**
+     Updates debug borders on all existing overlays.
+     
+     Call this when the debugOverlayBorders setting changes to update
+     all visible overlays without recreating them.
+     */
+    func updateDebugBorders() {
+        overlayManager.updateAllDebugBorders()
+    }
+    
     // ================================================================
     // MARK: - Analysis Loop
     // ================================================================
@@ -496,6 +506,15 @@ final class DimmingCoordinator {
             for region in brightRegions {
                 // Convert normalized rect to screen coordinates
                 let regionRect = region.rect(in: window.bounds)
+                
+                // DEBUG: Log coordinate conversion details
+                debugLog("""
+                🔍 Region coordinate conversion:
+                   Window: \(window.ownerName) (\(window.id))
+                   Window bounds: \(window.bounds)
+                   Normalized region: \(region.normalizedRect)
+                   Calculated screen rect: \(regionRect)
+                """)
                 
                 // Calculate dim level based on how bright the region is
                 let dimLevel = calculateRegionDimLevel(

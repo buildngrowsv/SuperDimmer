@@ -98,6 +98,9 @@ final class SettingsManager: ObservableObject {
         case edgeBlurEnabled = "superdimmer.edgeBlurEnabled"
         case edgeBlurRadius = "superdimmer.edgeBlurRadius"
         
+        // Debug mode (shows colored borders on overlays)
+        case debugOverlayBorders = "superdimmer.debugOverlayBorders"
+        
         // Excluded Apps
         case excludedAppBundleIDs = "superdimmer.excludedAppBundleIDs"
         
@@ -350,6 +353,20 @@ final class SettingsManager: ObservableObject {
         }
     }
     
+    /**
+     Debug mode: Shows colored borders around dim overlays.
+     
+     When enabled, overlays will have a red border so you can see exactly
+     where they are positioned. Useful for diagnosing coordinate issues.
+     
+     Default: false (disabled)
+     */
+    @Published var debugOverlayBorders: Bool {
+        didSet {
+            defaults.set(debugOverlayBorders, forKey: Keys.debugOverlayBorders.rawValue)
+        }
+    }
+    
     // ================================================================
     // MARK: - Excluded Apps
     // ================================================================
@@ -533,6 +550,9 @@ final class SettingsManager: ObservableObject {
         
         self.edgeBlurRadius = defaults.object(forKey: Keys.edgeBlurRadius.rawValue) != nil ?
             defaults.double(forKey: Keys.edgeBlurRadius.rawValue) : 15.0
+        
+        // Debug mode - shows red borders on overlays for positioning verification
+        self.debugOverlayBorders = defaults.bool(forKey: Keys.debugOverlayBorders.rawValue)
         
         // ============================================================
         // Load Excluded Apps

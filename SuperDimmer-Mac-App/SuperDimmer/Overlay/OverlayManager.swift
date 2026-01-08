@@ -414,6 +414,13 @@ final class OverlayManager {
             id: regionID
         )
         
+        // Apply edge blur if enabled
+        let edgeBlurEnabled = SettingsManager.shared.edgeBlurEnabled
+        let edgeBlurRadius = CGFloat(SettingsManager.shared.edgeBlurRadius)
+        if edgeBlurEnabled {
+            overlay.setEdgeBlur(enabled: true, radius: edgeBlurRadius)
+        }
+        
         // Show the overlay
         overlay.orderFrontRegardless()
         
@@ -520,6 +527,25 @@ final class OverlayManager {
             overlay.orderOut(nil)
         }
         isActive = false
+    }
+    
+    /**
+     Updates debug borders on all existing overlays.
+     
+     Call this when the debugOverlayBorders setting changes to update
+     all visible overlays without recreating them.
+     */
+    func updateAllDebugBorders() {
+        for (_, overlay) in windowOverlays {
+            overlay.updateDebugBorders()
+        }
+        for (_, overlay) in displayOverlays {
+            overlay.updateDebugBorders()
+        }
+        for (_, overlay) in regionOverlays {
+            overlay.updateDebugBorders()
+        }
+        print("🔴 Updated debug borders on all \(windowOverlays.count + displayOverlays.count + regionOverlays.count) overlays")
     }
     
     /**

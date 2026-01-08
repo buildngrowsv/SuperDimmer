@@ -362,12 +362,45 @@ final class WindowTrackerService {
         // Cocoa Y = primaryScreenHeight - quartzY - rectHeight
         let cocoaY = primaryHeight - quartzRect.origin.y - quartzRect.height
         
+        // DEBUG: Log first conversion to verify
+        if !Self.hasLoggedScreenInfo {
+            Self.hasLoggedScreenInfo = true
+            let screenList = NSScreen.screens.map { "\($0.localizedName): \($0.frame)" }.joined(separator: ", ")
+            let logMessage = """
+            📐 Screen Configuration:
+               Primary screen frame: \(primaryScreen.frame)
+               All screens: [\(screenList)]
+            📐 First Quartz→Cocoa conversion:
+               Quartz: \(quartzRect)
+               Cocoa: (\(quartzRect.origin.x), \(cocoaY), \(quartzRect.width), \(quartzRect.height))
+            """
+            // Write to debug log file
+            Self.writeDebugLog(logMessage)
+        }
+        
         return CGRect(
             x: quartzRect.origin.x,
             y: cocoaY,
             width: quartzRect.width,
             height: quartzRect.height
         )
+    }
+    
+    /// Flag to only log screen info once
+    private static var hasLoggedScreenInfo = false
+    
+    /// Writes a debug log message to file for debugging coordinate issues
+    private static func writeDebugLog(_ message: String) {
+        let logFile = "/tmp/superdimmer_debug.log"
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
+        if let handle = FileHandle(forWritingAtPath: logFile) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: logFile, contents: line.data(using: .utf8))
+        }
     }
     
     /**

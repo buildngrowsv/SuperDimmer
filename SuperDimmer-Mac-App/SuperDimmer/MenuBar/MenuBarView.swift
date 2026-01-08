@@ -271,14 +271,20 @@ struct MenuBarView: View {
                         
                         Spacer()
                         
+                        // FIX: Use DispatchQueue.main.async to defer state changes
+                        // This prevents "AttributeGraph: cycle detected" warnings
+                        // which occur when @Published properties are modified during view updates
                         Toggle("", isOn: Binding(
                             get: { settings.intelligentDimmingEnabled },
                             set: { newValue in
-                                if newValue {
-                                    // Request permission when enabling intelligent mode
-                                    requestScreenRecordingAndEnable()
-                                } else {
-                                    settings.intelligentDimmingEnabled = false
+                                // Defer to next run loop to avoid cycle warnings
+                                DispatchQueue.main.async {
+                                    if newValue {
+                                        // Request permission when enabling intelligent mode
+                                        requestScreenRecordingAndEnable()
+                                    } else {
+                                        settings.intelligentDimmingEnabled = false
+                                    }
                                 }
                             }
                         ))
@@ -341,6 +347,12 @@ struct MenuBarView: View {
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
+                            
+                            // Edge blur toggle and slider
+                            Divider()
+                                .padding(.vertical, 4)
+                            
+                            edgeBlurSection
                         }
                         
                         // Show permission status with clickable button
@@ -383,12 +395,149 @@ struct MenuBarView: View {
                             .foregroundColor(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    
+                    // Excluded apps section - always visible when dimming enabled
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    excludedAppsSection
                 }
                 .padding(.leading, 28) // Align with toggle text
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+    
+    // ================================================================
+    // MARK: - Edge Blur Section
+    // ================================================================
+    
+    /**
+     Controls for feathered/blurred edges on dim overlays.
+     Makes the dimming effect less jarring with soft edge transitions.
+     */
+    private var edgeBlurSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "circle.hexagongrid")
+                    .foregroundColor(.blue)
+                    .font(.caption)
+                
+                Text("Soft Edges")
+                    .font(.caption)
+                
+                Spacer()
+                
+                Toggle("", isOn: $settings.edgeBlurEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+            }
+            
+            if settings.edgeBlurEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Blur Radius")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Text("\(Int(settings.edgeBlurRadius))pt")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    
+                    Slider(value: $settings.edgeBlurRadius, in: 5...50)
+                        .tint(.blue)
+                    
+                    Text("Softens overlay edges for smoother transitions")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            // Debug Mode Toggle
+            Divider()
+                .padding(.vertical, 4)
+            
+            HStack {
+                Image(systemName: "ladybug")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+                
+                Text("Debug Borders")
+                    .font(.caption)
+                
+                Spacer()
+                
+                Toggle("", isOn: Binding(
+                    get: { settings.debugOverlayBorders },
+                    set: { newValue in
+                        settings.debugOverlayBorders = newValue
+                        // Update existing overlays immediately
+                        AppDelegate.shared?.dimmingCoordinator?.updateDebugBorders()
+                    }
+                ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+            }
+            
+            if settings.debugOverlayBorders {
+                Text("Shows red borders on overlays for positioning debug")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Excluded Apps Section
+    // ================================================================
+    
+    /**
+     Shows excluded apps count and button to manage them.
+     Full management is in Preferences for space reasons.
+     */
+    private var excludedAppsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "minus.circle")
+                    .foregroundColor(.red)
+                    .font(.caption)
+                
+                Text("Excluded Apps")
+                    .font(.caption)
+                
+                Spacer()
+                
+                let count = settings.excludedAppBundleIDs.count
+                if count > 0 {
+                    Text("\(count) app\(count == 1 ? "" : "s")")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                
+                Button("Manage") {
+                    openPreferences()
+                }
+                .buttonStyle(.plain)
+                .font(.caption2)
+                .foregroundColor(.blue)
+            }
+            
+            if !settings.excludedAppBundleIDs.isEmpty {
+                // Show first few excluded apps
+                let displayApps = Array(settings.excludedAppBundleIDs.prefix(2))
+                Text(displayApps.joined(separator: ", ") + (settings.excludedAppBundleIDs.count > 2 ? "..." : ""))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
     }
     
     // ================================================================
@@ -596,10 +745,13 @@ struct MenuBarView: View {
     
     /**
      Opens the Preferences window.
+     
+     FIX (Jan 8, 2026): Changed AppDelegate.shared to optional access
+     to prevent crash when SwiftUI wraps the delegate.
      */
     private func openPreferences() {
-        // Close the popover first
-        AppDelegate.shared.menuBarController?.closePopover()
+        // Close the popover first (safe optional access)
+        AppDelegate.shared?.menuBarController?.closePopover()
         
         // Open settings scene (defined in SuperDimmerApp)
         if #available(macOS 13.0, *) {

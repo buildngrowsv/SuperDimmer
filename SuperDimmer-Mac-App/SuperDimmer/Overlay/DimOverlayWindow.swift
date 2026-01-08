@@ -227,12 +227,39 @@ final class DimOverlayWindow: NSWindow {
         let clampedLevel = max(0.0, min(1.0, initialDimLevel))
         view.layer?.backgroundColor = NSColor.black.withAlphaComponent(clampedLevel).cgColor
         
+        // DEBUG MODE: Add visible borders when enabled
+        // This helps diagnose positioning issues - shows exactly where overlays are
+        updateDebugBorders()
+        
         // Store reference and add to window
         self.dimView = view
         self.contentView?.addSubview(view)
         self.dimLevel = clampedLevel
         
         print("📦 DimView setup with level: \(clampedLevel)")
+    }
+    
+    // ================================================================
+    // MARK: - Debug Mode
+    // ================================================================
+    
+    /**
+     Updates debug borders on the overlay.
+     
+     Call this when the debugOverlayBorders setting changes to update
+     the visual appearance of existing overlays without recreating them.
+     */
+    func updateDebugBorders() {
+        guard let layer = dimView?.layer else { return }
+        
+        if SettingsManager.shared.debugOverlayBorders {
+            layer.borderWidth = 4.0
+            layer.borderColor = NSColor.red.cgColor
+            print("🔴 Debug borders ENABLED for \(overlayID)")
+        } else {
+            layer.borderWidth = 0.0
+            layer.borderColor = nil
+        }
     }
     
     // ================================================================
@@ -407,9 +434,18 @@ final class DimOverlayWindow: NSWindow {
     /**
      Creates a mask image with feathered (soft) edges.
      
-     This is the most performant way to create a feathered edge effect
-     without using expensive blur filters. We draw a white rectangle
-     that's opaque in the center and fades to transparent at the edges.
+     This creates a grayscale mask where:
+     - White (1.0) = fully visible (center area)
+     - Black (0.0) = fully transparent (outer edge)
+     - Gradient in between = fade
+     
+     The mask fades from the outer edge inward over the specified radius,
+     creating a soft/blurred edge effect without expensive filters.
+     
+     FIX (Jan 8, 2026): Previous implementation was inverted and drew
+     strokes instead of proper gradient fills. This version uses
+     concentric filled rectangles with decreasing opacity from center
+     to edge.
      
      - Parameters:
        - size: The size of the mask image
@@ -422,7 +458,10 @@ final class DimOverlayWindow: NSWindow {
         let height = Int(size.height * scale)
         let scaledRadius = radius * scale
         
-        // Create bitmap context
+        guard width > 0, height > 0 else { return nil }
+        
+        // Create grayscale bitmap context
+        // In a mask: white = visible, black = invisible
         guard let context = CGContext(
             data: nil,
             width: width,
@@ -432,34 +471,56 @@ final class DimOverlayWindow: NSWindow {
             space: CGColorSpaceCreateDeviceGray(),
             bitmapInfo: CGImageAlphaInfo.none.rawValue
         ) else {
+            print("⚠️ Failed to create mask context")
             return nil
         }
         
-        // Fill with white (opaque) in the center
-        context.setFillColor(gray: 1.0, alpha: 1.0)
+        // Start with black (fully transparent/invisible)
+        context.setFillColor(gray: 0.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         
-        // Draw the feathered edges using multiple passes of decreasing opacity
-        // This simulates a gradient fade at the edges
-        let steps = Int(scaledRadius)
-        guard steps > 0 else { return context.makeImage() }
+        // Draw concentric rectangles from outside (black) to inside (white)
+        // Each layer is slightly more opaque
+        let steps = max(1, Int(scaledRadius))
         
-        for i in 0..<steps {
-            let progress = CGFloat(i) / CGFloat(steps) // 0 to 1
-            let inset = CGFloat(i)
-            let gray = 1.0 - (progress * progress) // Quadratic falloff for smoother edge
+        for i in 0...steps {
+            // Progress from 0 (outer edge) to 1 (inner area)
+            let progress = CGFloat(i) / CGFloat(steps)
+            let inset = scaledRadius - (progress * scaledRadius)
             
-            context.setStrokeColor(gray: gray, alpha: 1.0)
-            context.setLineWidth(2.0)
+            // Use smooth easing (ease-in) for more natural falloff
+            let gray = progress * progress * progress // Cubic ease-in
             
-            let rect = CGRect(x: inset, y: inset, width: CGFloat(width) - inset * 2, height: CGFloat(height) - inset * 2)
+            context.setFillColor(gray: gray, alpha: 1.0)
+            
+            let rect = CGRect(
+                x: inset,
+                y: inset,
+                width: CGFloat(width) - inset * 2,
+                height: CGFloat(height) - inset * 2
+            )
+            
             if rect.width > 0 && rect.height > 0 {
-                context.stroke(rect)
+                // Fill with rounded corners for smoother appearance
+                let cornerRadius = min(inset * 0.5, 10 * scale)
+                let path = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+                context.addPath(path)
+                context.fillPath()
             }
         }
         
-        // Alternative: create a smooth gradient using radial gradients at corners
-        // and linear gradients at edges - more complex but smoother result
+        // Fill center with white (fully visible)
+        let centerInset = scaledRadius
+        let centerRect = CGRect(
+            x: centerInset,
+            y: centerInset,
+            width: CGFloat(width) - centerInset * 2,
+            height: CGFloat(height) - centerInset * 2
+        )
+        if centerRect.width > 0 && centerRect.height > 0 {
+            context.setFillColor(gray: 1.0, alpha: 1.0)
+            context.fill(centerRect)
+        }
         
         return context.makeImage()
     }
