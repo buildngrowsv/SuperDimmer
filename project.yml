@@ -1,0 +1,123 @@
+# =====================================================================
+# SuperDimmer Xcode Project Configuration
+# =====================================================================
+#
+# This file is used by XcodeGen (https://github.com/yonaskolb/XcodeGen)
+# to generate the Xcode project file.
+#
+# USAGE:
+#   1. Install XcodeGen: brew install xcodegen
+#   2. Run from this directory: xcodegen generate
+#   3. Open SuperDimmer.xcodeproj in Xcode
+#
+# WHY XCODEGEN:
+#   - Project files are generated, not manually edited
+#   - Easier to maintain and understand
+#   - Less merge conflicts in team settings
+#   - Reproducible project structure
+#
+# =====================================================================
+
+name: SuperDimmer
+options:
+  bundleIdPrefix: com.superdimmer
+  deploymentTarget:
+    macOS: "13.0"
+  developmentLanguage: en
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+  groupSortPosition: top
+
+# =====================================================================
+# Settings
+# =====================================================================
+
+settings:
+  base:
+    PRODUCT_NAME: SuperDimmer
+    PRODUCT_BUNDLE_IDENTIFIER: com.superdimmer.app
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""  # Fill in your team ID
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"  # Ad-hoc signing for development
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    INFOPLIST_FILE: SuperDimmer/Supporting Files/Info.plist
+    CODE_SIGN_ENTITLEMENTS: SuperDimmer/Supporting Files/SuperDimmer.entitlements
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    COMBINE_HIDPI_IMAGES: YES
+
+# =====================================================================
+# Targets
+# =====================================================================
+
+targets:
+  SuperDimmer:
+    type: application
+    platform: macOS
+    sources:
+      - path: SuperDimmer
+        excludes:
+          - "**/*.md"
+    settings:
+      base:
+        PRODUCT_NAME: SuperDimmer
+        PRODUCT_BUNDLE_IDENTIFIER: com.superdimmer.app
+        INFOPLIST_FILE: SuperDimmer/Supporting Files/Info.plist
+        CODE_SIGN_ENTITLEMENTS: SuperDimmer/Supporting Files/SuperDimmer.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/../Frameworks"
+    
+    # Dependencies (SDK frameworks)
+    dependencies:
+      - sdk: CoreGraphics.framework
+      - sdk: CoreLocation.framework
+      - sdk: ServiceManagement.framework
+      - sdk: Accelerate.framework
+      # Future: Add Paddle and Sparkle frameworks
+    
+    # Post-build scripts
+    postBuildScripts:
+      - name: "Print Build Complete"
+        script: |
+          echo "✅ SuperDimmer build complete!"
+        basedOnDependencyAnalysis: false
+
+  # Unit Tests Target
+  SuperDimmerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - SuperDimmerTests
+    dependencies:
+      - target: SuperDimmer
+    settings:
+      base:
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/SuperDimmer.app/Contents/MacOS/SuperDimmer"
+
+# =====================================================================
+# Schemes
+# =====================================================================
+
+schemes:
+  SuperDimmer:
+    build:
+      targets:
+        SuperDimmer: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SuperDimmerTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
