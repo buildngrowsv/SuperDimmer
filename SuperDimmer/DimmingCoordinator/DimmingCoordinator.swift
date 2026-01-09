@@ -640,8 +640,7 @@ final class DimmingCoordinator: ObservableObject {
                     let dimLevel = calculateRegionDimLevel(
                         brightness: region.brightness,
                         threshold: threshold,
-                        isActiveWindow: window.isActive,
-                        windowID: window.id
+                        isActiveWindow: window.isActive
                     )
                     
                     let decision = RegionDimmingDecision(
@@ -696,8 +695,7 @@ final class DimmingCoordinator: ObservableObject {
                 let dimLevel = calculateRegionDimLevel(
                     brightness: region.brightness,
                     threshold: threshold,
-                    isActiveWindow: window.isActive,
-                    windowID: window.id
+                    isActiveWindow: window.isActive
                 )
                 
                 let decision = RegionDimmingDecision(
@@ -729,6 +727,9 @@ final class DimmingCoordinator: ObservableObject {
         let regionCount = allRegionDecisions.count
         let windowsAnalyzed = windows.count
         
+        // 7. Apply decay dimming to all inactive windows (full-window overlays)
+        applyDecayDimmingToWindows(windows)
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.isRunning else {
                 debugLog("⚠️ Not running, skipping overlay application")
@@ -749,14 +750,13 @@ final class DimmingCoordinator: ObservableObject {
     /**
      Calculates dim level for a specific bright region.
      
-     Includes inactivity decay if enabled - windows that haven't been
-     active for a while will progressively dim more.
+     NOTE: Decay dimming is handled separately via full-window overlays,
+     not applied here to region overlays.
      */
     private func calculateRegionDimLevel(
         brightness: Float,
         threshold: Float,
-        isActiveWindow: Bool,
-        windowID: CGWindowID = 0
+        isActiveWindow: Bool
     ) -> CGFloat {
         // How much above threshold
         let overage = brightness - threshold
@@ -772,11 +772,6 @@ final class DimmingCoordinator: ObservableObject {
             dimLevel = min(dimLevel, configuration.activeDimLevel)
         }
         
-        // Apply inactivity decay for inactive windows
-        if !isActiveWindow && SettingsManager.shared.inactivityDecayEnabled && windowID != 0 {
-            dimLevel = applyInactivityDecay(baseDimLevel: dimLevel, windowID: windowID)
-        }
-        
         // Ensure minimum visibility - if user set dim level > 10%, 
         // use at least 15% so overlays are visible
         let minimumDimLevel: CGFloat = max(0.15, baseDimLevel * 0.5)
@@ -785,32 +780,57 @@ final class DimmingCoordinator: ObservableObject {
         return dimLevel
     }
     
+    // ================================================================
+    // MARK: - Decay Dimming
+    // ================================================================
+    
     /**
-     Applies inactivity decay to a dim level.
+     Generates and applies decay dimming for all inactive windows.
      
-     Formula: baseDim + (decayRate × max(0, inactivityTime - decayStartDelay))
-     Clamped to maxDecayDimLevel.
+     This creates FULL-WINDOW overlays for inactive windows based on
+     how long they've been inactive. Separate from region-based dimming.
      
-     - Parameters:
-       - baseDimLevel: The starting dim level before decay
-       - windowID: The window to check inactivity for
-     - Returns: Adjusted dim level with decay applied
+     - Parameter windows: All visible windows to consider
      */
-    private func applyInactivityDecay(baseDimLevel: CGFloat, windowID: CGWindowID) -> CGFloat {
+    private func applyDecayDimmingToWindows(_ windows: [TrackedWindow]) {
+        guard SettingsManager.shared.inactivityDecayEnabled else {
+            // If decay is disabled, clear any existing decay overlays
+            overlayManager.applyDecayDimming([])
+            return
+        }
+        
         let settings = SettingsManager.shared
         let inactivityTracker = WindowInactivityTracker.shared
         
-        let inactivityDuration = inactivityTracker.getInactivityDuration(for: windowID)
-        let delayedInactivity = max(0, inactivityDuration - settings.decayStartDelay)
+        var decayDecisions: [OverlayManager.DecayDimmingDecision] = []
         
-        // Calculate decay amount
-        let decayAmount = CGFloat(settings.decayRate * delayedInactivity)
+        for window in windows {
+            // Calculate decay dim level for this window
+            let inactivityDuration = inactivityTracker.getInactivityDuration(for: window.id)
+            let delayedInactivity = max(0, inactivityDuration - settings.decayStartDelay)
+            
+            // Decay formula: rate × time since delay ended
+            let decayDimLevel = CGFloat(settings.decayRate * delayedInactivity)
+            
+            // Clamp to max decay level
+            let clampedDecayLevel = min(decayDimLevel, CGFloat(settings.maxDecayDimLevel))
+            
+            let decision = OverlayManager.DecayDimmingDecision(
+                windowID: window.id,
+                windowName: window.ownerName,
+                ownerPID: window.ownerPID,
+                windowBounds: window.bounds,
+                decayDimLevel: clampedDecayLevel,
+                isActive: window.isActive
+            )
+            
+            decayDecisions.append(decision)
+        }
         
-        // Apply decay and clamp to max
-        let decayedLevel = baseDimLevel + decayAmount
-        let maxLevel = CGFloat(settings.maxDecayDimLevel)
+        // Apply decay overlays
+        overlayManager.applyDecayDimming(decayDecisions)
         
-        return min(decayedLevel, maxLevel)
+        debugLog("⏰ Applied decay dimming to \(decayDecisions.filter { !$0.isActive && $0.decayDimLevel > 0 }.count) inactive windows")
     }
     
     /**

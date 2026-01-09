@@ -84,6 +84,15 @@ final class OverlayManager {
     private var displayOverlays: [CGDirectDisplayID: DimOverlayWindow] = [:]
     
     /**
+     Overlays for inactivity decay dimming (full-window overlays).
+     
+     Maps CGWindowID → DimOverlayWindow for decay-based dimming.
+     These cover the entire window and progressively dim based on inactivity.
+     Separate from regionOverlays to avoid conflicts.
+     */
+    private var decayOverlays: [CGWindowID: DimOverlayWindow] = [:]
+    
+    /**
      Whether the overlay system is currently active.
      
      When false, all overlays are hidden but not destroyed.
@@ -541,6 +550,109 @@ final class OverlayManager {
     }
     
     // ================================================================
+    // MARK: - Decay Overlay Management
+    // ================================================================
+    
+    /**
+     Decision for decay-based window dimming.
+     
+     Contains all info needed to create/update a decay overlay
+     for an inactive window.
+     */
+    struct DecayDimmingDecision {
+        let windowID: CGWindowID
+        let windowName: String
+        let ownerPID: pid_t
+        let windowBounds: CGRect
+        let decayDimLevel: CGFloat
+        let isActive: Bool  // If true, no decay overlay needed
+    }
+    
+    /**
+     Applies decay dimming to inactive windows.
+     
+     Creates full-window overlays for inactive windows based on their
+     inactivity duration. Active windows get no decay overlay.
+     
+     - Parameter decisions: Array of decay dimming decisions for all windows
+     */
+    func applyDecayDimming(_ decisions: [DecayDimmingDecision]) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Track which windows have decisions
+            var decisionWindowIDs = Set<CGWindowID>()
+            
+            for decision in decisions {
+                decisionWindowIDs.insert(decision.windowID)
+                
+                // Skip active windows - they don't get decay overlays
+                if decision.isActive || decision.decayDimLevel <= 0 {
+                    // Remove existing decay overlay if any
+                    if let overlay = self.decayOverlays.removeValue(forKey: decision.windowID) {
+                        overlay.orderOut(nil)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            overlay.close()
+                        }
+                    }
+                    continue
+                }
+                
+                // Update existing or create new decay overlay
+                if let existing = self.decayOverlays[decision.windowID] {
+                    // Update position and dim level
+                    existing.updatePosition(to: decision.windowBounds, animated: false)
+                    existing.setDimLevel(decision.decayDimLevel, animated: true)
+                    existing.orderAboveWindow(decision.windowID)
+                } else {
+                    // Create new decay overlay using factory method
+                    let overlayID = "decay-\(decision.windowID)"
+                    let overlay = DimOverlayWindow.create(
+                        frame: decision.windowBounds,
+                        dimLevel: decision.decayDimLevel,
+                        id: overlayID
+                    )
+                    overlay.level = .normal
+                    overlay.orderFront(nil)
+                    overlay.orderAboveWindow(decision.windowID)
+                    
+                    self.decayOverlays[decision.windowID] = overlay
+                }
+            }
+            
+            // Remove decay overlays for windows that no longer exist
+            let staleIDs = Set(self.decayOverlays.keys).subtracting(decisionWindowIDs)
+            for staleID in staleIDs {
+                if let overlay = self.decayOverlays.removeValue(forKey: staleID) {
+                    overlay.orderOut(nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        overlay.close()
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     Removes all decay overlays.
+     */
+    private func removeAllDecayOverlays() {
+        let overlaysToClose = Array(decayOverlays.values)
+        decayOverlays.removeAll()
+        
+        DispatchQueue.main.async {
+            for overlay in overlaysToClose {
+                overlay.orderOut(nil)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                for overlay in overlaysToClose {
+                    overlay.close()
+                }
+            }
+        }
+    }
+    
+    // ================================================================
     // MARK: - Control Methods
     // ================================================================
     
@@ -567,6 +679,9 @@ final class OverlayManager {
         
         // Remove region overlays (per-region mode)
         removeAllRegionOverlays()
+        
+        // Remove decay overlays
+        removeAllDecayOverlays()
         
         isActive = false
         print("🗑️ All overlays removed")
@@ -604,6 +719,9 @@ final class OverlayManager {
         for (_, overlay) in regionOverlays {
             overlay.orderOut(nil)
         }
+        for (_, overlay) in decayOverlays {
+            overlay.orderOut(nil)
+        }
         isActive = false
     }
     
@@ -623,7 +741,11 @@ final class OverlayManager {
         for (_, overlay) in regionOverlays {
             overlay.updateDebugBorders()
         }
-        print("🔴 Updated debug borders on all \(windowOverlays.count + displayOverlays.count + regionOverlays.count) overlays")
+        for (_, overlay) in decayOverlays {
+            overlay.updateDebugBorders()
+        }
+        let total = windowOverlays.count + displayOverlays.count + regionOverlays.count + decayOverlays.count
+        print("🔴 Updated debug borders on all \(total) overlays")
     }
     
     /**
