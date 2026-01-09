@@ -463,116 +463,156 @@ final class OverlayManager {
      - The window itself isn't entirely bright
      - We detect just the email content area and dim only that region
      
-     OPTIMIZATION: We now REUSE overlays instead of destroy/recreate every cycle.
-     This prevents Core Animation crashes ("Ignoring request to entangle context").
+     FIX (Jan 9, 2026): COMPLETELY REWRITTEN to fix overlay "jumping" bug.
+     
+     PREVIOUS BUG: Overlays were matched by sequential INDEX, not by window.
+     This caused overlays to "jump" between windows when analysis order changed.
+     
+     For example:
+     - Window A has 2 regions, Window B has 2 regions
+     - Analysis returns B first, then A (order changed due to z-order)
+     - Old code would assign A's overlays to B's regions!
+     
+     NEW APPROACH: Match overlays BY WINDOW ID
+     1. Group existing overlays by their target window ID
+     2. Group incoming decisions by window ID
+     3. For each window: update/create/remove only ITS overlays
+     4. Overlays NEVER jump between windows
      
      - Parameter decisions: Array of region dimming decisions
      */
     func applyRegionDimmingDecisions(_ decisions: [RegionDimmingDecision]) {
-        // Strategy: Reuse existing overlays where possible, MINIMIZE updates
-        // to avoid jarring visual refreshes when user clicks windows.
+        // FIX (Jan 9, 2026): Match overlays BY WINDOW, not by global index
         //
-        // FIX (Jan 8, 2026): Only update frame/z-order if actually changed.
-        // Previously, every analysis cycle called setFrame(display: true) and
-        // orderAboveWindow() even when nothing changed, causing visible flashing.
-        //
-        // 1. If we have more overlays than decisions, hide extras
-        // 2. If we have fewer overlays than decisions, create more
-        // 3. Update existing overlays ONLY if position/level actually changed
+        // Step 1: Group existing overlays by their target window
+        var existingByWindow: [CGWindowID: [(id: String, overlay: DimOverlayWindow)]] = [:]
+        for (overlayID, overlay) in regionOverlays {
+            if let windowID = regionToWindowID[overlayID] {
+                if existingByWindow[windowID] == nil {
+                    existingByWindow[windowID] = []
+                }
+                existingByWindow[windowID]?.append((id: overlayID, overlay: overlay))
+            }
+        }
         
-        let existingCount = regionOverlays.count
-        let neededCount = decisions.count
+        // Step 2: Group incoming decisions by window ID
+        var decisionsByWindow: [CGWindowID: [RegionDimmingDecision]] = [:]
+        for decision in decisions {
+            if decisionsByWindow[decision.windowID] == nil {
+                decisionsByWindow[decision.windowID] = []
+            }
+            decisionsByWindow[decision.windowID]?.append(decision)
+        }
         
-        // Get sorted list of existing overlay IDs for consistent ordering
-        let existingIDs = Array(regionOverlays.keys).sorted()
-        
-        // Tolerance for frame comparison (pixels) - if frame moved less than this,
-        // don't update to avoid micro-jitter
+        // Tolerance for frame comparison (pixels)
         let frameTolerance: CGFloat = 2.0
         
-        // Update or create overlays for each decision
-        var updatedCount = 0
-        for (index, decision) in decisions.enumerated() {
-            if index < existingIDs.count {
-                // Reuse existing overlay - check if update is actually needed
-                let overlayID = existingIDs[index]
-                if let overlay = regionOverlays[overlayID] {
-                    let currentFrame = overlay.frame
-                    let newFrame = decision.regionRect
-                    let currentWindowID = regionToWindowID[overlayID]
-                    
-                    // Check if frame has meaningfully changed
-                    let frameChanged = abs(currentFrame.origin.x - newFrame.origin.x) > frameTolerance ||
-                                       abs(currentFrame.origin.y - newFrame.origin.y) > frameTolerance ||
-                                       abs(currentFrame.width - newFrame.width) > frameTolerance ||
-                                       abs(currentFrame.height - newFrame.height) > frameTolerance
-                    
-                    // Check if window ID changed (overlay needs to be re-ordered)
-                    let windowChanged = currentWindowID != decision.windowID
-                    
-                    // Only update frame if it actually changed
-                    if frameChanged {
-                        // FIX (Jan 8, 2026): Use updatePosition for smooth animated transitions
-                        // when bright regions resize or change aspect ratio
-                        overlay.updatePosition(to: newFrame, animated: true, duration: 0.3)
-                        updatedCount += 1
+        // Step 3: For each window with existing overlays, update or remove
+        for (windowID, existingOverlays) in existingByWindow {
+            if let windowDecisions = decisionsByWindow[windowID] {
+                // This window has both existing overlays AND new decisions
+                // Match them up: reuse overlays, create new ones if needed, remove extras
+                
+                for (index, decision) in windowDecisions.enumerated() {
+                    if index < existingOverlays.count {
+                        // Reuse existing overlay for this window
+                        let (overlayID, overlay) = existingOverlays[index]
+                        updateExistingOverlay(overlay, overlayID: overlayID, decision: decision, frameTolerance: frameTolerance)
+                    } else {
+                        // Need more overlays for this window - create new one
+                        createRegionOverlay(for: decision)
                     }
-                    
-                    // HYBRID Z-ORDERING: Use .floating ONLY for the actual frontmost window
-                    // FIX (Jan 8, 2026): Previously used ownerPID which made ALL windows
-                    // from the frontmost app have .floating overlays. Now we use
-                    // isFrontmostWindow which is set per-window, not per-app.
-                    let targetLevel: NSWindow.Level = decision.isFrontmostWindow ? .floating : .normal
-                    
-                    if overlay.level != targetLevel || windowChanged {
-                        overlay.level = targetLevel
-                        if decision.isFrontmostWindow {
-                            // Frontmost window: just bring to front (stays above all normal windows)
-                            overlay.orderFront(nil)
-                        } else {
-                            // Background window: position relative to target window
-                            overlay.orderAboveWindow(decision.windowID)
-                        }
-                    }
-                    
-                    // Update mappings
-                    regionToWindowID[overlayID] = decision.windowID
-                    regionToOwnerPID[overlayID] = decision.ownerPID
-                    
-                    // Always update dim level with smooth animation
-                    // FIX (Jan 8, 2026): Use 0.35s duration for smooth active/inactive
-                    // transitions when user switches between windows
-                    overlay.setDimLevel(decision.dimLevel, animated: true, duration: 0.35)
-                    
-                    // Make sure it's visible (in case it was hidden previously)
-                    if !overlay.isVisible {
-                        if decision.isFrontmostWindow {
-                            overlay.orderFront(nil)
-                        } else {
-                            overlay.orderAboveWindow(decision.windowID)
-                        }
+                }
+                
+                // Remove extra overlays for this window (if we have more than needed)
+                if existingOverlays.count > windowDecisions.count {
+                    for i in windowDecisions.count..<existingOverlays.count {
+                        let (overlayID, overlay) = existingOverlays[i]
+                        regionOverlays.removeValue(forKey: overlayID)
+                        regionToWindowID.removeValue(forKey: overlayID)
+                        regionToOwnerPID.removeValue(forKey: overlayID)
+                        safeCloseOverlay(overlay)
                     }
                 }
             } else {
-                // Need to create a new overlay
-                createRegionOverlay(for: decision)
-                updatedCount += 1
+                // This window had overlays but no longer has any decisions - remove all
+                for (overlayID, overlay) in existingOverlays {
+                    regionOverlays.removeValue(forKey: overlayID)
+                    regionToWindowID.removeValue(forKey: overlayID)
+                    regionToOwnerPID.removeValue(forKey: overlayID)
+                    safeCloseOverlay(overlay)
+                }
             }
         }
         
-        // Hide (don't destroy!) extra overlays we don't need right now
-        if existingCount > neededCount {
-            for i in neededCount..<existingCount {
-                let overlayID = existingIDs[i]
-                regionOverlays[overlayID]?.orderOut(nil)
+        // Step 4: Create overlays for windows that are NEW (had no existing overlays)
+        for (windowID, windowDecisions) in decisionsByWindow {
+            if existingByWindow[windowID] == nil {
+                // Brand new window - create all overlays
+                for decision in windowDecisions {
+                    createRegionOverlay(for: decision)
+                }
+            }
+        }
+    }
+    
+    /**
+     Updates an existing overlay with new decision data.
+     
+     FIX (Jan 9, 2026): Extracted from applyRegionDimmingDecisions for clarity.
+     Only updates position/z-order if actually changed to prevent flashing.
+     
+     - Parameters:
+       - overlay: The existing overlay to update
+       - overlayID: The overlay's ID in our dictionary
+       - decision: The new dimming decision
+       - frameTolerance: Minimum change in pixels to trigger frame update
+     */
+    private func updateExistingOverlay(
+        _ overlay: DimOverlayWindow,
+        overlayID: String,
+        decision: RegionDimmingDecision,
+        frameTolerance: CGFloat
+    ) {
+        let currentFrame = overlay.frame
+        let newFrame = decision.regionRect
+        
+        // Check if frame has meaningfully changed
+        let frameChanged = abs(currentFrame.origin.x - newFrame.origin.x) > frameTolerance ||
+                           abs(currentFrame.origin.y - newFrame.origin.y) > frameTolerance ||
+                           abs(currentFrame.width - newFrame.width) > frameTolerance ||
+                           abs(currentFrame.height - newFrame.height) > frameTolerance
+        
+        // Only update frame if it actually changed
+        if frameChanged {
+            overlay.updatePosition(to: newFrame, animated: true, duration: 0.3)
+        }
+        
+        // HYBRID Z-ORDERING: Use .floating ONLY for the actual frontmost window
+        let targetLevel: NSWindow.Level = decision.isFrontmostWindow ? .floating : .normal
+        
+        if overlay.level != targetLevel {
+            overlay.level = targetLevel
+            if decision.isFrontmostWindow {
+                overlay.orderFront(nil)
+            } else {
+                overlay.orderAboveWindow(decision.windowID)
             }
         }
         
-        if decisions.count > 0 {
-            isActive = true
-            // Only log if something actually changed, to reduce console spam
-            if updatedCount > 0 {
-                print("🎯 Applied \(decisions.count) region overlays (updated: \(updatedCount))")
+        // Update mappings (in case they changed, though they shouldn't for same window)
+        regionToWindowID[overlayID] = decision.windowID
+        regionToOwnerPID[overlayID] = decision.ownerPID
+        
+        // Always update dim level with smooth animation
+        overlay.setDimLevel(decision.dimLevel, animated: true, duration: 0.35)
+        
+        // Make sure it's visible
+        if !overlay.isVisible {
+            if decision.isFrontmostWindow {
+                overlay.orderFront(nil)
+            } else {
+                overlay.orderAboveWindow(decision.windowID)
             }
         }
     }
