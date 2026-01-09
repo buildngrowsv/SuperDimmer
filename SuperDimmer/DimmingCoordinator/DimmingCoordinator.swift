@@ -123,6 +123,70 @@ final class DimmingCoordinator {
      */
     private var mouseClickMonitor: Any?
     
+    // ================================================================
+    // MARK: - Analysis Cache (Performance Optimization)
+    // ================================================================
+    
+    /**
+     Cached analysis result for a window.
+     
+     OPTIMIZATION (Jan 8, 2026): We cache analysis results to avoid re-analyzing
+     windows that haven't changed. This significantly reduces CPU usage because
+     screen capture is expensive.
+     
+     Re-analysis is triggered when:
+     - Window bounds change (moved or resized)
+     - Window becomes frontmost (user clicked it)
+     - Cache expires (every 10 seconds, in case content changed)
+     */
+    private struct CachedAnalysis {
+        /// The detected bright regions for this window
+        let regions: [BrightRegionDetector.BrightRegion]
+        
+        /// Hash of window bounds when analyzed (for change detection)
+        let boundsHash: Int
+        
+        /// Whether window was frontmost when analyzed
+        let wasFrontmost: Bool
+        
+        /// When this cache entry was created
+        let timestamp: Date
+        
+        /// Owner PID (for hybrid z-ordering)
+        let ownerPID: pid_t
+        
+        /// Window name (for debugging)
+        let windowName: String
+        
+        /// Check if cache is still valid for the given window state
+        func isValid(for window: TrackedWindow, isFrontmost: Bool, maxAge: TimeInterval = 10.0) -> Bool {
+            // Expired?
+            if Date().timeIntervalSince(timestamp) > maxAge {
+                return false
+            }
+            
+            // Bounds changed? (window moved or resized)
+            let currentBoundsHash = window.bounds.hashValue
+            if currentBoundsHash != boundsHash {
+                return false
+            }
+            
+            // Frontmost status changed? (user clicked this window)
+            // We re-analyze when window becomes frontmost in case content scrolled
+            if isFrontmost && !wasFrontmost {
+                return false
+            }
+            
+            return true
+        }
+    }
+    
+    /// Cache of analysis results, keyed by window ID
+    private var analysisCache: [CGWindowID: CachedAnalysis] = [:]
+    
+    /// How long to keep cache entries before forcing re-analysis (seconds)
+    private let cacheMaxAge: TimeInterval = 10.0
+    
     // NOTE: Thread safety for start/stop is handled via objc_sync_enter/exit
     // since these methods must run on main thread anyway (UI operations).
     
@@ -242,10 +306,21 @@ final class DimmingCoordinator {
             mouseClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 // Small delay to let the window come to front first
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    self?.overlayManager.reorderAllRegionOverlays()
+                    guard let self = self, self.isRunning else { return }
+                    
+                    // HYBRID Z-ORDERING: Update overlay levels based on frontmost app
+                    // This catches clicks that might change the frontmost window/app
+                    self.overlayManager.updateOverlayLevelsForFrontmostApp()
+                    
+                    // OPTIMIZATION: Trigger immediate re-analysis for clicked window
+                    // The cache will detect that the frontmost status changed and
+                    // re-analyze only that window, keeping the experience responsive
+                    self.analysisQueue.async {
+                        self.performPerRegionAnalysis()
+                    }
                 }
             }
-            print("🖱️ Global mouse click monitor installed")
+            print("🖱️ Global mouse click monitor installed (hybrid z-order + immediate analysis)")
         }
         
         print("▶️ DimmingCoordinator started (interval: \(configuration.scanInterval)s)")
@@ -290,7 +365,10 @@ final class DimmingCoordinator {
         // This allows quick re-enable without recreation overhead
         overlayManager.hideAllOverlays()
         
-        print("⏹️ DimmingCoordinator stopped (overlays hidden)")
+        // Clear analysis cache (will rebuild on next start)
+        analysisCache.removeAll()
+        
+        print("⏹️ DimmingCoordinator stopped (overlays hidden, cache cleared)")
     }
     
     /**
@@ -509,23 +587,57 @@ final class DimmingCoordinator {
             return
         }
         
-        // 3. Detect bright regions within each window
+        // 3. Get frontmost app for cache invalidation
+        let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+        
+        // 4. Detect bright regions within each window (with caching!)
         let screenCapture = ScreenCaptureService.shared
         let regionDetector = BrightRegionDetector.shared
         let threshold = Float(self.configuration.brightnessThreshold)
         let gridSize = SettingsManager.shared.regionGridSize
-        debugLog("🎯 Using threshold: \(threshold), gridSize: \(gridSize)")
         
         var allRegionDecisions: [RegionDimmingDecision] = []
+        var cacheHits = 0
+        var cacheMisses = 0
         
-        // UPDATED: Analyze ALL visible windows, not just the active one
-        // This fixes the issue where only one Mail window was being dimmed
-        // The z-ordering is now handled by the overlay window level (.floating)
-        // which sits just above normal windows but below system UI
-        let windowsToAnalyze = windows
-        debugLog("🎯 Analyzing ALL \(windowsToAnalyze.count) visible windows")
+        // Track which windows we're analyzing (for cache cleanup)
+        let currentWindowIDs = Set(windows.map { $0.id })
         
-        for window in windowsToAnalyze {
+        for window in windows {
+            let isFrontmost = window.ownerPID == frontmostPID
+            
+            // OPTIMIZATION: Check cache first
+            if let cached = analysisCache[window.id],
+               cached.isValid(for: window, isFrontmost: isFrontmost, maxAge: cacheMaxAge) {
+                // Cache hit! Use cached regions
+                cacheHits += 1
+                
+                // Build decisions from cached regions
+                for region in cached.regions {
+                    let regionRect = region.rect(in: window.bounds)
+                    let dimLevel = calculateRegionDimLevel(
+                        brightness: region.brightness,
+                        threshold: threshold,
+                        isActiveWindow: window.isActive
+                    )
+                    
+                    let decision = RegionDimmingDecision(
+                        windowID: window.id,
+                        windowName: cached.windowName,
+                        ownerPID: cached.ownerPID,
+                        isFrontmostWindow: window.isActive,
+                        regionRect: regionRect,
+                        brightness: region.brightness,
+                        dimLevel: dimLevel
+                    )
+                    allRegionDecisions.append(decision)
+                }
+                continue
+            }
+            
+            // Cache miss - need to capture and analyze
+            cacheMisses += 1
+            
             // Capture window content
             guard let windowImage = screenCapture.captureWindow(window.id) else {
                 debugLog("⚠️ Could not capture window \(window.id) (\(window.ownerName))")
@@ -533,36 +645,31 @@ final class DimmingCoordinator {
             }
             
             // Detect bright regions within this window
-            // FIX (Jan 8, 2026): Increased minRegionSize from 2 to 4 to reduce patchwork effect
-            // Also using coarser grid (6x6 instead of 9x9) for larger, more meaningful regions
             var brightRegions = regionDetector.detectBrightRegions(
                 in: windowImage,
                 threshold: threshold,
                 gridSize: gridSize,
-                minRegionSize: 4  // At least 4 cells to form a region (filters small scattered areas)
+                minRegionSize: 4
             )
             
             // Filter out regions that are too small in pixel terms
-            // This prevents tiny overlays that don't provide meaningful dimming
             brightRegions = regionDetector.filterByMinimumSize(brightRegions, windowBounds: window.bounds)
             
-            debugLog("🎯 Window '\(window.ownerName)': found \(brightRegions.count) bright regions (after filtering)")
+            // Cache the results for next cycle
+            analysisCache[window.id] = CachedAnalysis(
+                regions: brightRegions,
+                boundsHash: window.bounds.hashValue,
+                wasFrontmost: isFrontmost,
+                timestamp: Date(),
+                ownerPID: window.ownerPID,
+                windowName: window.ownerName
+            )
+            
+            debugLog("🎯 Window '\(window.ownerName)': found \(brightRegions.count) bright regions (fresh analysis)")
             
             // Create decisions for each bright region
             for region in brightRegions {
-                // Convert normalized rect to screen coordinates
                 let regionRect = region.rect(in: window.bounds)
-                
-                // DEBUG: Log coordinate conversion details
-                debugLog("""
-                🔍 Region coordinate conversion:
-                   Window: \(window.ownerName) (\(window.id))
-                   Window bounds: \(window.bounds)
-                   Normalized region: \(region.normalizedRect)
-                   Calculated screen rect: \(regionRect)
-                """)
-                
-                // Calculate dim level based on how bright the region is
                 let dimLevel = calculateRegionDimLevel(
                     brightness: region.brightness,
                     threshold: threshold,
@@ -572,6 +679,8 @@ final class DimmingCoordinator {
                 let decision = RegionDimmingDecision(
                     windowID: window.id,
                     windowName: window.ownerName,
+                    ownerPID: window.ownerPID,
+                    isFrontmostWindow: window.isActive,
                     regionRect: regionRect,
                     brightness: region.brightness,
                     dimLevel: dimLevel
@@ -580,16 +689,21 @@ final class DimmingCoordinator {
             }
         }
         
-        let analysisTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-        debugLog("🎯 [PerRegion] Analysis complete: \(allRegionDecisions.count) bright regions in \(String(format: "%.1f", analysisTime))ms")
+        // 5. Clean up cache entries for windows that no longer exist
+        let staleWindowIDs = Set(analysisCache.keys).subtracting(currentWindowIDs)
+        for staleID in staleWindowIDs {
+            analysisCache.removeValue(forKey: staleID)
+        }
         
-        // 4. Apply region overlays on main thread
+        let analysisTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+        debugLog("🎯 [PerRegion] Analysis complete: \(allRegionDecisions.count) regions in \(String(format: "%.1f", analysisTime))ms (cache: \(cacheHits) hits, \(cacheMisses) misses)")
+        
+        // 6. Apply region overlays on main thread
         DispatchQueue.main.async { [weak self] in
             guard self?.isRunning == true else {
                 debugLog("⚠️ Not running, skipping overlay application")
                 return
             }
-            debugLog("🎯 Applying \(allRegionDecisions.count) region overlays")
             self?.overlayManager.applyRegionDimmingDecisions(allRegionDecisions)
         }
     }
@@ -703,16 +817,18 @@ final class DimmingCoordinator {
             }
             .store(in: &cancellables)
         
-        // FIX (Jan 8, 2026): Listen for application activation changes
-        // When user clicks a window and it comes to front, we need to
-        // immediately re-order our overlays to stay above their target windows.
-        // Without this, overlays appear behind the clicked window until
-        // the next analysis cycle (jarring visual flash).
+        // HYBRID Z-ORDERING (Jan 8, 2026): Listen for application activation changes
+        // When the frontmost app changes, we switch overlay window levels:
+        // - New frontmost app's overlays → .floating (no flash when clicking within)
+        // - Background app overlays → .normal + relative positioning
+        //
+        // This is the KEY to eliminating flash! Active app overlays stay on top
+        // regardless of click ordering, while background overlays stay properly layered.
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification)
             .sink { [weak self] _ in
-                // Immediately reorder overlays when frontmost app changes
+                // Update overlay levels based on new frontmost app
                 DispatchQueue.main.async {
-                    self?.overlayManager.reorderAllRegionOverlays()
+                    self?.overlayManager.updateOverlayLevelsForFrontmostApp()
                 }
             }
             .store(in: &cancellables)

@@ -312,6 +312,10 @@ final class OverlayManager {
     /// Maps region overlay ID to target window ID (for proper Z-ordering)
     private var regionToWindowID: [String: CGWindowID] = [:]
     
+    /// Maps region overlay ID to owner PID (for hybrid z-ordering)
+    /// We use this to determine which overlays belong to the frontmost app
+    private var regionToOwnerPID: [String: pid_t] = [:]
+    
     /// Counter for generating unique region IDs
     private var regionCounter: Int = 0
     
@@ -379,20 +383,37 @@ final class OverlayManager {
                         updatedCount += 1
                     }
                     
-                    // Only update z-order if the target window changed
-                    // This prevents jarring re-ordering on every analysis cycle
-                    if windowChanged {
-                        overlay.orderAboveWindow(decision.windowID)
-                        regionToWindowID[overlayID] = decision.windowID
+                    // HYBRID Z-ORDERING: Use .floating ONLY for the actual frontmost window
+                    // FIX (Jan 8, 2026): Previously used ownerPID which made ALL windows
+                    // from the frontmost app have .floating overlays. Now we use
+                    // isFrontmostWindow which is set per-window, not per-app.
+                    let targetLevel: NSWindow.Level = decision.isFrontmostWindow ? .floating : .normal
+                    
+                    if overlay.level != targetLevel || windowChanged {
+                        overlay.level = targetLevel
+                        if decision.isFrontmostWindow {
+                            // Frontmost window: just bring to front (stays above all normal windows)
+                            overlay.orderFront(nil)
+                        } else {
+                            // Background window: position relative to target window
+                            overlay.orderAboveWindow(decision.windowID)
+                        }
                     }
+                    
+                    // Update mappings
+                    regionToWindowID[overlayID] = decision.windowID
+                    regionToOwnerPID[overlayID] = decision.ownerPID
                     
                     // Always update dim level (it's fast and smooth with animation)
                     overlay.setDimLevel(decision.dimLevel, animated: true)
                     
                     // Make sure it's visible (in case it was hidden previously)
                     if !overlay.isVisible {
-                        overlay.orderAboveWindow(decision.windowID)
-                        regionToWindowID[overlayID] = decision.windowID
+                        if decision.isFrontmostWindow {
+                            overlay.orderFront(nil)
+                        } else {
+                            overlay.orderAboveWindow(decision.windowID)
+                        }
                     }
                 }
             } else {
@@ -422,7 +443,15 @@ final class OverlayManager {
     /**
      Creates an overlay for a specific bright region.
      
-     - Parameter decision: The region dimming decision
+     HYBRID Z-ORDERING (Jan 8, 2026):
+     - isFrontmostWindow=true: Use .floating level (no flash when clicking)
+     - isFrontmostWindow=false: Use .normal level with relative positioning
+     
+     FIX (Jan 8, 2026): Changed from isFrontmostApp to isFrontmostWindow.
+     Previously ALL windows from the frontmost app got .floating, but only
+     the actual frontmost window should get .floating.
+     
+     - Parameter decision: The region dimming decision (includes isFrontmostWindow)
      */
     private func createRegionOverlay(for decision: RegionDimmingDecision) {
         // Generate unique ID for this region
@@ -430,13 +459,13 @@ final class OverlayManager {
         let regionID = "region-\(decision.windowID)-\(regionCounter)"
         
         // Debug: Log the region details to our file-based debug log
-        // (print/NSLog don't reliably appear in console for background apps)
         let logMessage = """
         🎯 Creating overlay: \(regionID)
-           - Window: \(decision.windowName)
+           - Window: \(decision.windowName) (PID: \(decision.ownerPID))
            - Rect: \(decision.regionRect)
            - Brightness: \(decision.brightness)
            - DimLevel: \(decision.dimLevel)
+           - isFrontmostWindow: \(decision.isFrontmostWindow)
         """
         
         // Write to debug log file
@@ -458,14 +487,23 @@ final class OverlayManager {
             id: regionID
         )
         
-        // FIX (Jan 8, 2026): Position overlay DIRECTLY above target window
-        // This is the key to proper Z-ordering - the overlay appears just
-        // above the window it's dimming, not above ALL windows
-        overlay.orderAboveWindow(decision.windowID)
+        // HYBRID Z-ORDERING: Set window level based on frontmost status
+        if decision.isFrontmostWindow {
+            // Frontmost window: Use .floating level so it NEVER falls behind
+            // This eliminates flash when clicking within the active window
+            overlay.level = .floating
+            overlay.orderFront(nil)
+        } else {
+            // Background window: Use .normal level with relative positioning
+            // This ensures proper layering with windows in front
+            overlay.level = .normal
+            overlay.orderAboveWindow(decision.windowID)
+        }
         
         // Store references
         regionOverlays[regionID] = overlay
         regionToWindowID[regionID] = decision.windowID
+        regionToOwnerPID[regionID] = decision.ownerPID
     }
     
     /**
@@ -631,6 +669,65 @@ final class OverlayManager {
         
         if reorderedCount > 0 {
             print("🔄 Reordered \(reorderedCount) overlays after window focus change")
+        }
+    }
+    
+    /**
+     HYBRID Z-ORDERING: Updates overlay window levels based on the frontmost WINDOW.
+     
+     FIX (Jan 8, 2026): This is the KEY fix for eliminating flash when clicking windows!
+     
+     UPDATE (Jan 8, 2026): Changed from frontmost APP to frontmost WINDOW.
+     Previously ALL windows from the frontmost app got .floating overlays, but
+     only the actual frontmost window should get .floating. Other windows from
+     the same app should use .normal with relative positioning.
+     
+     The solution: Use TWO different window levels:
+     - FRONTMOST WINDOW overlays: .floating level (always on top, never flash)
+     - ALL OTHER WINDOW overlays: .normal level with orderAboveWindow()
+     
+     When the frontmost window changes:
+     1. Demote old frontmost window's overlays to .normal
+     2. Promote new frontmost window's overlays to .floating
+     3. Reorder background overlays relative to their target windows
+     */
+    func updateOverlayLevelsForFrontmostApp() {
+        guard isActive else { return }
+        
+        // Get the actual frontmost WINDOW ID (not just frontmost app)
+        guard let frontmostWindow = WindowTrackerService.shared.getFrontmostWindow() else {
+            return
+        }
+        let frontmostWindowID = frontmostWindow.id
+        
+        var promotedCount = 0
+        var demotedCount = 0
+        
+        for (overlayID, overlay) in regionOverlays {
+            guard overlay.isVisible else { continue }
+            
+            guard let targetWindowID = regionToWindowID[overlayID] else { continue }
+            
+            if targetWindowID == frontmostWindowID {
+                // This overlay belongs to the frontmost WINDOW - use .floating
+                if overlay.level != .floating {
+                    overlay.level = .floating
+                    overlay.orderFront(nil)
+                    promotedCount += 1
+                }
+            } else {
+                // This overlay belongs to a background window - use .normal with relative ordering
+                if overlay.level != .normal {
+                    overlay.level = .normal
+                    demotedCount += 1
+                }
+                // Reorder relative to target window
+                overlay.orderAboveWindow(targetWindowID)
+            }
+        }
+        
+        if promotedCount > 0 || demotedCount > 0 {
+            print("🔄 Hybrid z-order: promoted \(promotedCount), demoted \(demotedCount) overlays (frontmost window: \(frontmostWindowID))")
         }
     }
     
@@ -804,6 +901,15 @@ struct RegionDimmingDecision {
     
     /// Window owner name (for debugging)
     let windowName: String
+    
+    /// Process ID of the window's owner app
+    let ownerPID: pid_t
+    
+    /// Whether THIS SPECIFIC WINDOW is the frontmost window (not just frontmost app)
+    /// FIX (Jan 8, 2026): Previously we used ownerPID to determine floating level,
+    /// but that made ALL windows from the frontmost app have .floating overlays.
+    /// Now we track the actual frontmost window so only its overlays float.
+    let isFrontmostWindow: Bool
     
     /// The region to dim (in screen coordinates)
     let regionRect: CGRect
