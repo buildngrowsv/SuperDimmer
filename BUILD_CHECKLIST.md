@@ -539,7 +539,7 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-### 2.10 Inactivity Decay Dimming (WINDOW-LEVEL)
+### 2.10 Inactivity Decay Dimming (WINDOW-LEVEL) ✅ COMPLETED
 
 > **UNIQUE FEATURE** - Progressive dimming for windows that are not in use
 > Windows that haven't been switched to will gradually increase in dimness over time
@@ -550,47 +550,45 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 > recently naturally fade more, helping you focus on what's active while keeping
 > background windows accessible but less distracting.
 
-#### 2.10.1 Decay Dimming Settings
-- [ ] Add `inactivityDecayEnabled` setting to SettingsManager
-- [ ] Add `decayRate` setting (0.01-0.10 per second, default 0.02 = 2% per second)
-- [ ] Add `decayStartDelay` setting (seconds before decay starts, default 30 seconds)
-- [ ] Add `maxDecayDimLevel` setting (0.4-0.9, default 0.7 = 70% max dimming)
-- [ ] Persist decay settings to UserDefaults
+**COMPLETED: January 8, 2026**
 
-#### 2.10.2 Window Inactivity Tracker
-- [ ] Create `WindowInactivityTracker.swift` or extend WindowTrackerService
-- [ ] Track `lastActiveTimestamp` per window ID
-- [ ] Update timestamp when window becomes active (frontmost app's windows)
-- [ ] Calculate `timeSinceLastActive` for each tracked window
-- [ ] Emit decay dimming decisions based on inactivity duration
+#### 2.10.1 Decay Dimming Settings ✅
+- [x] Add `inactivityDecayEnabled` setting to SettingsManager
+- [x] Add `decayRate` setting (0.005-0.05 per second)
+- [x] Add `decayStartDelay` setting (default 30 seconds)
+- [x] Add `maxDecayDimLevel` setting (0-100%, default 80%)
+- [x] Persist decay settings to UserDefaults
 
-#### 2.10.3 Decay Dimming Logic in Coordinator
-- [ ] Add `calculateDecayDimLevel()` method to DimmingCoordinator
-- [ ] Formula: `baseDimLevel + (decayRate * max(0, timeSinceActive - decayStartDelay))`
-- [ ] Clamp result to `maxDecayDimLevel`
-- [ ] Apply decay on top of existing inactive window dim level
-- [ ] Reset decay when window becomes active again
+#### 2.10.2 Window Inactivity Tracker ✅
+- [x] Create `WindowInactivityTracker.swift` service
+- [x] Track `lastActiveTimestamp` per window ID
+- [x] Track `lastFrontmostWindowID` for window-level (not app-level) tracking
+- [x] Update timestamp when specific window becomes active
+- [x] Calculate `timeSinceLastActive` for each tracked window
 
-#### 2.10.4 Decay Dimming UI
-- [ ] Add "Inactivity Decay" toggle to MenuBarView/Preferences
-- [ ] Add decay rate slider with descriptive labels (Slow/Medium/Fast)
-- [ ] Add decay start delay slider (10s - 120s)
-- [ ] Add max decay level slider (40% - 90%)
-- [ ] Show current decay status per window (optional debug view)
+#### 2.10.3 Decay Dimming Logic in Coordinator ✅
+- [x] Add `applyDecayDimmingToWindows()` method to DimmingCoordinator
+- [x] Formula: `decayRate × max(0, timeSinceActive - decayStartDelay)`
+- [x] Clamp result to `maxDecayDimLevel`
+- [x] Creates FULL-WINDOW overlays (separate from region overlays)
+- [x] Reset decay when window becomes active again
 
-#### 🔨 BUILD CHECK 2.10
-```bash
-xcodebuild -scheme SuperDimmer -configuration Debug build
-```
-- [ ] Build succeeds
+#### 2.10.4 Decay Dimming UI ✅
+- [x] Add "Inactivity Decay" toggle to MenuBarView
+- [x] Add "Fade Speed" slider (Slow/Medium/Fast)
+- [x] Add "Max Fade" slider (0% - 100%)
+- [x] Controls appear when Intelligent Mode is enabled
+
+#### 🔨 BUILD CHECK 2.10 ✅
+- [x] Build succeeds
 
 #### 🧪 TEST CHECK 2.10
-- [ ] Window starts decaying after delay when inactive
-- [ ] Decay respects rate setting (gradual increase)
-- [ ] Decay stops at max level (doesn't go darker)
-- [ ] Switching to window resets decay immediately
-- [ ] Decay settings persist across restart
-- [ ] Performance: Decay tracking adds minimal overhead
+- [x] Window starts decaying after delay when inactive
+- [x] Decay respects rate setting (gradual increase)
+- [x] Decay stops at max level
+- [x] Switching to window resets decay immediately
+- [x] Decay is WINDOW-LEVEL (not app-level) - other windows of same app decay
+- [ ] Performance verification needed
 
 ---
 
@@ -651,7 +649,85 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.12 Phase 2 Integration Testing
+### 2.12 Auto-Minimize Inactive Windows (WINDOW-LEVEL)
+
+> **SMART WINDOW MANAGEMENT** - Automatically minimize windows that haven't been used
+> Unlike Auto-Hide (which hides entire apps), this operates at the WINDOW level.
+> When an app has too many windows open (above a threshold), the oldest inactive
+> windows are automatically minimized to the Dock.
+>
+> **Key Intelligence:**
+> - Only counts ACTIVE usage time (pauses when you walk away)
+> - Resets counters after extended idle (configurable)
+> - Per-app window threshold (e.g., keep 2 Cursor windows, minimize extras)
+> - Won't minimize below threshold (always keeps N windows per app)
+>
+> **Why this matters:** During a workday, you might open 15 browser tabs as windows
+> or 8 Cursor windows. Instead of manual cleanup, SuperDimmer minimizes the oldest
+> ones while keeping your most recent windows accessible.
+
+#### 2.12.1 Auto-Minimize Settings
+- [ ] Add `autoMinimizeEnabled` setting to SettingsManager
+- [ ] Add `autoMinimizeDelay` setting (minutes of ACTIVE use before minimize, default 15)
+- [ ] Add `autoMinimizeIdleResetTime` setting (minutes of idle to reset counters, default 5)
+- [ ] Add `autoMinimizeWindowThreshold` setting (min windows per app before minimizing, default 3)
+- [ ] Add `autoMinimizeExcludedApps` setting (Set<String> of bundle IDs)
+- [ ] Persist all settings to UserDefaults
+
+#### 2.12.2 Active Usage Tracker
+- [ ] Create `ActiveUsageTracker.swift` service
+- [ ] Detect user activity (mouse movement, key presses) via CGEventTap or IOKit
+- [ ] Track `isUserActive` state (true if activity within last 30 seconds)
+- [ ] Track `totalActiveTime` per window (only increments when user is active)
+- [ ] Reset all window timers when idle exceeds `autoMinimizeIdleResetTime`
+- [ ] Handle wake from sleep (reset timers)
+
+#### 2.12.3 Window Inactivity Counter
+- [ ] Extend `WindowInactivityTracker` or create dedicated tracker
+- [ ] Track `activeUsageAccumulator` per window ID (seconds of active usage while inactive)
+- [ ] Only increment when `isUserActive == true` AND window is not frontmost
+- [ ] Reset accumulator when window becomes frontmost
+- [ ] Reset ALL accumulators when user returns from extended idle
+
+#### 2.12.4 Auto-Minimize Logic
+- [ ] Create `AutoMinimizeManager.swift` service
+- [ ] Group windows by owner app (bundle ID)
+- [ ] For each app: count visible windows on current Space
+- [ ] If count > `autoMinimizeWindowThreshold`:
+  - [ ] Sort windows by `activeUsageAccumulator` (highest = oldest inactive)
+  - [ ] Minimize oldest until count == threshold
+- [ ] Use `NSWindow.miniaturize()` via Accessibility API or AppleScript
+- [ ] Skip excluded apps
+- [ ] Log minimize actions for user transparency
+
+#### 2.12.5 Auto-Minimize UI
+- [ ] Add "Auto-Minimize Windows" section to Preferences
+- [ ] Add enable/disable toggle
+- [ ] Add "Minimize After" slider (5-60 minutes of active use)
+- [ ] Add "Reset After Idle" slider (2-30 minutes)
+- [ ] Add "Keep At Least" stepper (1-10 windows per app)
+- [ ] Add excluded apps list editor
+- [ ] Add "Recently Minimized" section with restore option
+- [ ] Show status indicator: "Tracking: 5 windows across 3 apps"
+
+#### 🔨 BUILD CHECK 2.12
+```bash
+xcodebuild -scheme SuperDimmer -configuration Debug build
+```
+- [ ] Build succeeds
+
+#### 🧪 TEST CHECK 2.12
+- [ ] Windows minimize after configured active-use time
+- [ ] Timer pauses when user is idle (no mouse/keyboard)
+- [ ] Timers reset after extended idle period
+- [ ] Threshold respected (keeps N windows per app)
+- [ ] Excluded apps never auto-minimized
+- [ ] Walking away overnight doesn't minimize everything
+- [ ] Settings persist across restart
+
+---
+
+### 2.13 Phase 2 Integration Testing
 
 #### 🔨 BUILD CHECK - PHASE 2 FINAL
 ```bash

@@ -219,6 +219,67 @@ Existing brightness control apps offer only **full-screen uniform dimming** - th
 
 ---
 
+### 🧹 PRODUCTIVITY FEATURE: Inactivity Management
+
+**Smart window and app management based on usage patterns.**
+
+#### Feature: Inactivity Decay Dimming (Window-Level)
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Windows progressively dim based on how long they've been inactive |
+| **Level** | Per-WINDOW (not per-app) - each window tracks independently |
+| **Formula** | `dimLevel = decayRate × max(0, inactiveTime - decayStartDelay)` |
+| **Reset** | When window becomes frontmost, decay resets to 0 |
+| **Visual Effect** | Creates natural hierarchy - active window clear, stale windows faded |
+
+**User Controls:**
+- **Enable/Disable Toggle**: On/Off (default: Off)
+- **Fade Speed**: Slow (0.5%/s) / Medium (1%/s) / Fast (2%/s)
+- **Decay Start Delay**: How long before decay begins (default: 30 seconds)
+- **Max Fade Level**: Cap on how dark windows can get (0-100%, default: 80%)
+
+#### Feature: Auto-Hide Inactive Apps (App-Level)
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Automatically hide entire apps that haven't been used |
+| **Level** | Per-APP (uses `NSRunningApplication.hide()`) |
+| **Trigger** | App not frontmost for configured duration |
+| **Exclusions** | System apps (Finder), user-defined apps |
+| **Recovery** | Apps remain in Dock, easily unhidden |
+
+**User Controls:**
+- **Enable/Disable Toggle**: On/Off (default: Off)
+- **Hide After**: Time before hiding (5-120 minutes, default: 30)
+- **Excluded Apps**: List of bundle IDs to never hide
+- **Exclude System Apps**: Checkbox (default: On)
+
+#### Feature: Auto-Minimize Inactive Windows (Window-Level)
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Minimize oldest inactive windows when app has too many open |
+| **Level** | Per-WINDOW (uses `NSWindow.miniaturize()`) |
+| **Intelligence** | Only counts ACTIVE usage time (pauses when user idle) |
+| **Threshold** | Per-app: "Keep at least N windows, minimize extras" |
+| **Idle Reset** | All timers reset after extended user idle (prevents overnight minimize) |
+
+**User Controls:**
+- **Enable/Disable Toggle**: On/Off (default: Off)
+- **Minimize After**: Active usage time before minimize (5-60 min, default: 15)
+- **Reset After Idle**: User idle time to reset all timers (2-30 min, default: 5)
+- **Keep At Least**: Minimum windows per app (1-10, default: 3)
+- **Excluded Apps**: List of bundle IDs to never auto-minimize
+
+**Why This Feature:**
+During a workday, you might open 15 browser windows or 8 IDE instances.
+Instead of manually closing them, SuperDimmer minimizes the oldest inactive
+windows while keeping your most recent work accessible. Walking away overnight
+won't minimize everything because timers reset after idle.
+
+---
+
 ### ⚡ PRO FEATURES: Advanced Controls
 
 **Premium features for power users - requires Pro license.**
