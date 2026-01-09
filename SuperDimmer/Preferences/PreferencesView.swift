@@ -368,22 +368,160 @@ struct ColorPreferencesTab: View {
             }
             
             // ========================================================
-            // Schedule Section (placeholder for Phase 3)
+            // Schedule Section
             // ========================================================
             Section("Schedule") {
                 Toggle("Automatic scheduling", isOn: $settings.colorTemperatureScheduleEnabled)
-                    .help("Automatically adjust color temperature based on time")
+                    .help("Automatically adjust color temperature based on time of day")
                 
                 if settings.colorTemperatureScheduleEnabled {
-                    Text("Schedule settings coming in a future update")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.vertical, 8)
+                    // Day/Night Temperatures
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Day temperature
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "sun.max.fill")
+                                    .foregroundColor(.yellow)
+                                Text("Day Temperature")
+                                Spacer()
+                                Text("\(Int(settings.dayTemperature))K")
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $settings.dayTemperature, in: 4000...6500)
+                        }
+                        
+                        // Night temperature
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "moon.fill")
+                                    .foregroundColor(.orange)
+                                Text("Night Temperature")
+                                Spacer()
+                                Text("\(Int(settings.nightTemperature))K")
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $settings.nightTemperature, in: 1900...4000)
+                        }
+                    }
+                    .padding(.top, 4)
+                    
+                    Divider()
+                    
+                    // Schedule Type
+                    Toggle("Use sunrise/sunset times", isOn: $settings.useLocationBasedSchedule)
+                        .help("Automatically adjust based on your location")
+                    
+                    if !settings.useLocationBasedSchedule {
+                        // Manual Schedule Times
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Manual Schedule")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            HStack(spacing: 16) {
+                                // Night starts (sunset equivalent)
+                                VStack(alignment: .leading) {
+                                    Text("Night starts")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    HStack(spacing: 2) {
+                                        Picker("Hour", selection: $settings.scheduleStartHour) {
+                                            ForEach(0..<24, id: \.self) { hour in
+                                                Text(String(format: "%02d", hour)).tag(hour)
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .frame(width: 60)
+                                        
+                                        Text(":")
+                                        
+                                        Picker("Minute", selection: $settings.scheduleStartMinute) {
+                                            ForEach([0, 15, 30, 45], id: \.self) { minute in
+                                                Text(String(format: "%02d", minute)).tag(minute)
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .frame(width: 60)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                // Night ends (sunrise equivalent)
+                                VStack(alignment: .leading) {
+                                    Text("Day starts")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    HStack(spacing: 2) {
+                                        Picker("Hour", selection: $settings.scheduleEndHour) {
+                                            ForEach(0..<24, id: \.self) { hour in
+                                                Text(String(format: "%02d", hour)).tag(hour)
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .frame(width: 60)
+                                        
+                                        Text(":")
+                                        
+                                        Picker("Minute", selection: $settings.scheduleEndMinute) {
+                                            ForEach([0, 15, 30, 45], id: \.self) { minute in
+                                                Text(String(format: "%02d", minute)).tag(minute)
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .frame(width: 60)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    } else {
+                        // Location-based info
+                        HStack {
+                            Image(systemName: "location.fill")
+                                .foregroundColor(.blue)
+                            Text("Schedule will follow local sunrise/sunset")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    
+                    Divider()
+                    
+                    // Transition Duration
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Transition Duration")
+                            Spacer()
+                            Text(formatTransitionDuration(settings.transitionDuration))
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $settings.transitionDuration, in: 0...3600, step: 60)
+                        Text("0 = instant change")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }
         .formStyle(.grouped)
         .padding()
+    }
+    
+    /**
+     Formats transition duration in human-readable form.
+     */
+    private func formatTransitionDuration(_ seconds: TimeInterval) -> String {
+        if seconds == 0 {
+            return "Instant"
+        } else if seconds < 60 {
+            return "\(Int(seconds)) sec"
+        } else {
+            return "\(Int(seconds / 60)) min"
+        }
     }
 }
 

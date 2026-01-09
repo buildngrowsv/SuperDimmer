@@ -23,6 +23,7 @@
 		A8116E433AA8D37103819457 /* DimmingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761339A7D21F3EC383AFDC4E /* DimmingCoordinator.swift */; };
 		B15709EDC740B83EB0DE16E3 /* BrightnessAnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */; };
 		BBF642C631AD5718861E3858 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03E06F14D1A62C96A81A599C /* CoreGraphics.framework */; };
+		C951F27A7FB2798886F56E12 /* ScheduleManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27586C5BE0F771581C033B4C /* ScheduleManager.swift */; };
 		C95E79645601F9FFCC5B53AB /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BF3F80B0547D5C1A498D277 /* Accelerate.framework */; };
 		DE327EB0680EEFB0EFD48236 /* WindowTrackerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */; };
 		E2749825BB4A46ACA89FD676 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC43ECCDBC1C09B92EB293B5 /* MenuBarView.swift */; };
@@ -49,6 +50,7 @@
 		15182B36183FA683F3EF6E20 /* SuperDimmer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SuperDimmer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1786CD87303B63162133E819 /* DimOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimOverlayWindow.swift; sourceTree = "<group>"; };
 		1BB93951703F6D09744CAB95 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		27586C5BE0F771581C033B4C /* ScheduleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleManager.swift; sourceTree = "<group>"; };
 		31EE0BF2647E666C8DE787FC /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
 		3B4E7AF858AB9888AA55A487 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		43ADA7A645622AB3F65E274F /* SuperDimmerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperDimmerTests.swift; sourceTree = "<group>"; };
@@ -239,6 +241,7 @@
 			children = (
 				4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */,
 				AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */,
+				27586C5BE0F771581C033B4C /* ScheduleManager.swift */,
 				005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */,
 				494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */,
 			);
@@ -377,6 +380,7 @@
 				A0711D2CF87CDD82DFEAD1B8 /* OverlayManager.swift in Sources */,
 				E5E6653F4228B5FE2B0D5C28 /* PermissionManager.swift in Sources */,
 				2432D011DB19FE64F29AE6C1 /* PreferencesView.swift in Sources */,
+				C951F27A7FB2798886F56E12 /* ScheduleManager.swift in Sources */,
 				2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */,
 				9DF14CF8F541D544FC005E3B /* SettingsManager.swift in Sources */,
 				7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */,

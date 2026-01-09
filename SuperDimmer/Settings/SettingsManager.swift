@@ -104,6 +104,14 @@ final class SettingsManager: ObservableObject {
         case colorTemperatureEnabled = "superdimmer.colorTemperatureEnabled"
         case colorTemperature = "superdimmer.colorTemperature"
         case colorTemperatureScheduleEnabled = "superdimmer.colorTemperatureScheduleEnabled"
+        case dayTemperature = "superdimmer.dayTemperature"
+        case nightTemperature = "superdimmer.nightTemperature"
+        case scheduleStartHour = "superdimmer.scheduleStartHour"
+        case scheduleStartMinute = "superdimmer.scheduleStartMinute"
+        case scheduleEndHour = "superdimmer.scheduleEndHour"
+        case scheduleEndMinute = "superdimmer.scheduleEndMinute"
+        case transitionDuration = "superdimmer.transitionDuration"
+        case useLocationBasedSchedule = "superdimmer.useLocationBasedSchedule"
         
         // Wallpaper
         case wallpaperAutoSwitchEnabled = "superdimmer.wallpaperAutoSwitchEnabled"
@@ -409,6 +417,101 @@ final class SettingsManager: ObservableObject {
         }
     }
     
+    /**
+     Day temperature in Kelvin (neutral/cool).
+     Used when outside of night schedule.
+     Default: 6500K (daylight)
+     */
+    @Published var dayTemperature: Double {
+        didSet {
+            defaults.set(dayTemperature, forKey: Keys.dayTemperature.rawValue)
+        }
+    }
+    
+    /**
+     Night temperature in Kelvin (warm).
+     Used during night schedule.
+     Default: 2700K (warm white)
+     */
+    @Published var nightTemperature: Double {
+        didSet {
+            defaults.set(nightTemperature, forKey: Keys.nightTemperature.rawValue)
+        }
+    }
+    
+    /**
+     Start time for night schedule (when to start warming).
+     Stored as hour component.
+     Default: 20 (8:00 PM)
+     */
+    @Published var scheduleStartHour: Int {
+        didSet {
+            defaults.set(scheduleStartHour, forKey: Keys.scheduleStartHour.rawValue)
+        }
+    }
+    
+    /**
+     Start time for night schedule (minute component).
+     Default: 0
+     */
+    @Published var scheduleStartMinute: Int {
+        didSet {
+            defaults.set(scheduleStartMinute, forKey: Keys.scheduleStartMinute.rawValue)
+        }
+    }
+    
+    /**
+     End time for night schedule (when to return to day).
+     Stored as hour component.
+     Default: 7 (7:00 AM)
+     */
+    @Published var scheduleEndHour: Int {
+        didSet {
+            defaults.set(scheduleEndHour, forKey: Keys.scheduleEndHour.rawValue)
+        }
+    }
+    
+    /**
+     End time for night schedule (minute component).
+     Default: 0
+     */
+    @Published var scheduleEndMinute: Int {
+        didSet {
+            defaults.set(scheduleEndMinute, forKey: Keys.scheduleEndMinute.rawValue)
+        }
+    }
+    
+    /**
+     Duration of gradual transition in seconds.
+     Default: 60 (1 minute)
+     */
+    @Published var transitionDuration: TimeInterval {
+        didSet {
+            defaults.set(transitionDuration, forKey: Keys.transitionDuration.rawValue)
+        }
+    }
+    
+    /**
+     Whether to use location-based sunrise/sunset times.
+     When true, uses LocationService for schedule.
+     When false, uses manual scheduleStartTime/scheduleEndTime.
+     */
+    @Published var useLocationBasedSchedule: Bool {
+        didSet {
+            defaults.set(useLocationBasedSchedule, forKey: Keys.useLocationBasedSchedule.rawValue)
+        }
+    }
+    
+    /// Computed property: Schedule start time as Date
+    var scheduleStartTime: Date {
+        Calendar.current.date(bySettingHour: scheduleStartHour, minute: scheduleStartMinute, second: 0, of: Date()) ?? Date()
+    }
+    
+    /// Computed property: Schedule end time as Date
+    var scheduleEndTime: Date {
+        Calendar.current.date(bySettingHour: scheduleEndHour, minute: scheduleEndMinute, second: 0, of: Date()) ?? Date()
+    }
+    
     // ================================================================
     // MARK: - Wallpaper Settings
     // ================================================================
@@ -529,6 +632,30 @@ final class SettingsManager: ObservableObject {
         
         self.colorTemperatureScheduleEnabled = defaults.bool(forKey: Keys.colorTemperatureScheduleEnabled.rawValue)
         
+        // Schedule settings
+        self.dayTemperature = defaults.object(forKey: Keys.dayTemperature.rawValue) != nil ?
+            defaults.double(forKey: Keys.dayTemperature.rawValue) : 6500.0
+        
+        self.nightTemperature = defaults.object(forKey: Keys.nightTemperature.rawValue) != nil ?
+            defaults.double(forKey: Keys.nightTemperature.rawValue) : 2700.0
+        
+        self.scheduleStartHour = defaults.object(forKey: Keys.scheduleStartHour.rawValue) != nil ?
+            defaults.integer(forKey: Keys.scheduleStartHour.rawValue) : 20  // 8 PM
+        
+        self.scheduleStartMinute = defaults.object(forKey: Keys.scheduleStartMinute.rawValue) != nil ?
+            defaults.integer(forKey: Keys.scheduleStartMinute.rawValue) : 0
+        
+        self.scheduleEndHour = defaults.object(forKey: Keys.scheduleEndHour.rawValue) != nil ?
+            defaults.integer(forKey: Keys.scheduleEndHour.rawValue) : 7  // 7 AM
+        
+        self.scheduleEndMinute = defaults.object(forKey: Keys.scheduleEndMinute.rawValue) != nil ?
+            defaults.integer(forKey: Keys.scheduleEndMinute.rawValue) : 0
+        
+        self.transitionDuration = defaults.object(forKey: Keys.transitionDuration.rawValue) != nil ?
+            defaults.double(forKey: Keys.transitionDuration.rawValue) : 60.0  // 1 minute
+        
+        self.useLocationBasedSchedule = defaults.bool(forKey: Keys.useLocationBasedSchedule.rawValue)
+        
         // ============================================================
         // Load Wallpaper Settings
         // ============================================================
@@ -585,6 +712,14 @@ final class SettingsManager: ObservableObject {
         colorTemperatureEnabled = false
         colorTemperature = 6500.0
         colorTemperatureScheduleEnabled = false
+        dayTemperature = 6500.0
+        nightTemperature = 2700.0
+        scheduleStartHour = 20
+        scheduleStartMinute = 0
+        scheduleEndHour = 7
+        scheduleEndMinute = 0
+        transitionDuration = 60.0
+        useLocationBasedSchedule = false
         
         // Wallpaper
         wallpaperAutoSwitchEnabled = false
