@@ -77,6 +77,16 @@ final class DimOverlayWindow: NSWindow {
      */
     private(set) var overlayID: String = UUID().uuidString
     
+    /**
+     Flag to prevent double-close crashes.
+     
+     FIX (Jan 8, 2026): Added to prevent EXC_BAD_ACCESS crash.
+     The crash could happen when close() was called multiple times on the same
+     window (due to race conditions in overlay management). NSWindow.close()
+     is not idempotent - calling it twice on the same window can crash.
+     */
+    private var isClosing: Bool = false
+    
     // ================================================================
     // MARK: - Factory Methods
     // ================================================================
@@ -395,7 +405,43 @@ final class DimOverlayWindow: NSWindow {
         return false
     }
     
+    /**
+     Safe close that prevents double-close crashes.
+     
+     FIX (Jan 8, 2026): Added to prevent EXC_BAD_ACCESS crash.
+     NSWindow.close() is not idempotent - calling it twice can crash.
+     This override:
+     1. Checks if already closing (prevents double-close)
+     2. Flushes Core Animation transactions before closing
+     3. Clears layer references to help avoid use-after-free
+     */
+    override func close() {
+        // Prevent double-close
+        guard !isClosing else {
+            print("⚠️ DimOverlayWindow close() called but already closing: \(overlayID)")
+            return
+        }
+        isClosing = true
+        
+        // Flush any pending Core Animation transactions
+        // This helps ensure animations are committed before we tear down
+        CATransaction.flush()
+        
+        // Clear the dim view's layer to help avoid CA use-after-free
+        if let layer = dimView?.layer {
+            layer.removeAllAnimations()
+        }
+        dimView = nil
+        
+        // Now actually close
+        super.close()
+    }
+    
     deinit {
-        print("📦 DimOverlayWindow destroyed: \(overlayID)")
+        // Only log deinit if we weren't in the middle of closing
+        // (reduces log noise from normal cleanup)
+        if !isClosing {
+            print("📦 DimOverlayWindow destroyed (unexpected): \(overlayID)")
+        }
     }
 }

@@ -129,6 +129,27 @@ final class DimmingCoordinator: ObservableObject {
      */
     private var mouseClickMonitor: Any?
     
+    /**
+     Debounce work item for mouse click analysis.
+     
+     FIX (Jan 8, 2026): Added to prevent EXC_BAD_ACCESS crash.
+     Without debouncing, rapid mouse clicks would trigger multiple overlapping
+     analysis cycles, causing race conditions in overlay management.
+     Only the last click in a rapid series will trigger analysis.
+     */
+    private var pendingClickAnalysis: DispatchWorkItem?
+    
+    /**
+     Timestamp of last analysis to prevent too-frequent runs.
+     */
+    private var lastAnalysisTime: CFAbsoluteTime = 0
+    
+    /**
+     Minimum interval between analysis runs (in seconds).
+     Prevents rapid analysis from mouse clicks causing overlay churn.
+     */
+    private let minAnalysisInterval: CFAbsoluteTime = 0.3
+    
     // ================================================================
     // MARK: - Analysis Cache (Performance Optimization)
     // ================================================================
@@ -304,29 +325,47 @@ final class DimmingCoordinator: ObservableObject {
             RunLoop.current.add(analysisTimer!, forMode: .common)
         }
         
-        // FIX (Jan 8, 2026): Set up global mouse click monitor
+        // FIX (Jan 8, 2026): Set up global mouse click monitor with DEBOUNCING
         // This catches ALL mouse clicks (not just app switches) to immediately
         // reorder overlays when window z-order might have changed.
         // Without this, overlays fall behind windows when user clicks.
+        //
+        // UPDATE (Jan 8, 2026): Added debouncing to prevent EXC_BAD_ACCESS crash.
+        // Rapid mouse clicks were causing overlapping analysis cycles, which led
+        // to race conditions in overlay close() calls.
         if mouseClickMonitor == nil && useIntelligentMode {
             mouseClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                // Small delay to let the window come to front first
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                guard let self = self, self.isRunning else { return }
+                
+                // DEBOUNCE: Cancel any pending analysis from previous click
+                self.pendingClickAnalysis?.cancel()
+                
+                // HYBRID Z-ORDERING: Update overlay levels IMMEDIATELY (no delay needed)
+                // This is a fast operation - just changes window levels
+                DispatchQueue.main.async {
+                    self.overlayManager.updateOverlayLevelsForFrontmostApp()
+                }
+                
+                // DEBOUNCE: Schedule analysis with delay, so rapid clicks only trigger ONE analysis
+                let workItem = DispatchWorkItem { [weak self] in
                     guard let self = self, self.isRunning else { return }
                     
-                    // HYBRID Z-ORDERING: Update overlay levels based on frontmost app
-                    // This catches clicks that might change the frontmost window/app
-                    self.overlayManager.updateOverlayLevelsForFrontmostApp()
+                    // THROTTLE: Don't run analysis if we ran very recently
+                    let now = CFAbsoluteTimeGetCurrent()
+                    guard now - self.lastAnalysisTime >= self.minAnalysisInterval else {
+                        return
+                    }
                     
-                    // OPTIMIZATION: Trigger immediate re-analysis for clicked window
-                    // The cache will detect that the frontmost status changed and
-                    // re-analyze only that window, keeping the experience responsive
                     self.analysisQueue.async {
                         self.performPerRegionAnalysis()
                     }
                 }
+                self.pendingClickAnalysis = workItem
+                
+                // Small delay to let the window come to front first
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
             }
-            print("🖱️ Global mouse click monitor installed (hybrid z-order + immediate analysis)")
+            print("🖱️ Global mouse click monitor installed (debounced + throttled)")
         }
         
         print("▶️ DimmingCoordinator started (interval: \(configuration.scanInterval)s)")
@@ -469,13 +508,25 @@ final class DimmingCoordinator: ObservableObject {
      - perRegion: Finds bright areas WITHIN windows, dims only those regions
      
      This is dispatched to analysisQueue for performance.
+     
+     FIX (Jan 8, 2026): Added throttling and lastAnalysisTime tracking
+     to prevent rapid analysis from mouse clicks causing overlay churn.
      */
     private func performIntelligentAnalysis() {
         let analysisStart = CFAbsoluteTimeGetCurrent()
         
+        // THROTTLE: Skip if we just ran analysis very recently
+        // This prevents rapid calls from timer + mouse clicks overlapping
+        if analysisStart - lastAnalysisTime < minAnalysisInterval * 0.5 {
+            return
+        }
+        
         analysisQueue.async { [weak self] in
             guard let self = self else { return }
             guard self.isRunning else { return }
+            
+            // Track when analysis actually runs
+            self.lastAnalysisTime = CFAbsoluteTimeGetCurrent()
             
             let detectionMode = SettingsManager.shared.detectionMode
             
@@ -815,13 +866,17 @@ final class DimmingCoordinator: ObservableObject {
             // Clamp to max decay level
             let clampedDecayLevel = min(decayDimLevel, CGFloat(settings.maxDecayDimLevel))
             
-            // Debug: Log each window's decay calculation
-            if inactivityDuration > 0 || window.isActive {
-                print("⏰ Decay calc for '\(window.ownerName)' (ID:\(window.id)): " +
-                      "isActive=\(window.isActive), " +
-                      "inactivity=\(String(format: "%.1f", inactivityDuration))s, " +
-                      "delayedInactivity=\(String(format: "%.1f", delayedInactivity))s, " +
-                      "decayLevel=\(String(format: "%.2f", clampedDecayLevel))")
+            // FIX (Jan 8, 2026): Removed excessive per-window decay logging.
+            // The console was flooded with "Decay calc for..." messages (one per window
+            // per analysis cycle), which made debugging difficult and added overhead.
+            // The previous implementation logged EVERY window EVERY second.
+            //
+            // Now we only log to the file-based debug log when there's actually
+            // meaningful decay happening (not when window is active or decay is 0).
+            if !window.isActive && clampedDecayLevel > 0.01 {
+                debugLog("⏰ Decay: '\(window.ownerName)' ID:\(window.id) - " +
+                         "inactive=\(String(format: "%.0f", inactivityDuration))s, " +
+                         "level=\(String(format: "%.2f", clampedDecayLevel))")
             }
             
             let decision = OverlayManager.DecayDimmingDecision(

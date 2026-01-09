@@ -345,3 +345,94 @@ This breaks the cycle by allowing the current view update to complete before mod
 - [ ] Purchase and configure superdimmer.app domain
 - [ ] Integrate Paddle checkout
 - [ ] Add download links once app is signed/notarized
+
+---
+
+## [Jan 8, 2026 - Late Evening] EXC_BAD_ACCESS Crash in objc_release
+
+### Problem Description
+App crashes with `EXC_BAD_ACCESS (code=1)` in `objc_release` at address `0x1903dc120`.
+Crash occurs in `libobjc.A.dylib` during object deallocation. Console shows massive 
+"Decay calc for..." logging and "DimOverlayWindow destroyed: decay-XXXXX" just before crash.
+
+### Root Cause Analysis
+
+**The crash was a USE-AFTER-FREE / dangling pointer issue** caused by:
+
+1. **Race Condition in `applyDecayDimming()`**:
+   - Multiple triggers: Timer (~1s) + Every mouse click
+   - Mouse click handler called `performPerRegionAnalysis()` without debouncing
+   - Result: overlapping analysis cycles creating/destroying overlays simultaneously
+
+2. **Unsafe Overlay Close Pattern**:
+   ```swift
+   if let overlay = decayOverlays.removeValue(forKey: id) {
+       overlay.orderOut(nil)
+       DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+           overlay.close()  // Strong capture! CA might still be animating!
+       }
+   }
+   ```
+   The 0.05s delay wasn't enough - Core Animation could still be accessing the layer.
+
+3. **No Double-Close Protection**:
+   - Multiple close() calls on same window could happen
+   - NSWindow.close() is NOT idempotent
+
+4. **Excessive Logging Overhead**:
+   - Every window logged on every analysis cycle ("Decay calc for...")
+   - This created performance pressure and timing issues
+
+### Solution (4 Fixes Applied)
+
+**1. Safe Overlay Close (`safeCloseOverlay`):**
+```swift
+private func safeCloseOverlay(_ overlay: DimOverlayWindow) {
+    CATransaction.flush()  // Ensure animations committed
+    overlay.orderOut(nil)  // Hide first
+    
+    // WEAK reference prevents over-retain
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak overlay] in
+        guard let overlay = overlay else { return }
+        CATransaction.flush()
+        overlay.close()
+    }
+}
+```
+
+**2. Double-Close Protection in `DimOverlayWindow`:**
+```swift
+private var isClosing: Bool = false
+
+override func close() {
+    guard !isClosing else { return }  // Prevent double-close
+    isClosing = true
+    CATransaction.flush()
+    dimView?.layer?.removeAllAnimations()
+    dimView = nil
+    super.close()
+}
+```
+
+**3. Mouse Click Debouncing + Throttling:**
+- Cancel pending analysis when new click comes in
+- Min 0.3s between analysis runs
+- 0.15s delay before triggering analysis
+- Immediate z-order update (fast operation)
+
+**4. Reduced Logging:**
+- Removed per-window console logging every cycle
+- Now only logs to file when actual decay happening (level > 0.01)
+
+### Files Changed
+- `OverlayManager.swift`: safeCloseOverlay(), sync main thread dispatch
+- `DimOverlayWindow.swift`: isClosing flag, safe close override
+- `DimmingCoordinator.swift`: debouncing, throttling, reduced logging
+
+### Key Learnings
+
+1. **Core Animation has its own lifecycle** - flushing transactions before close is critical
+2. **Weak references in async blocks** prevent retain cycles AND over-retain
+3. **Every mouse click triggers events** - always debounce rapid-fire handlers
+4. **NSWindow.close() is NOT idempotent** - track closing state
+5. **Excessive logging can cause timing-sensitive bugs** to manifest more often
