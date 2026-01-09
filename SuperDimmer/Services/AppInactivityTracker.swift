@@ -186,7 +186,13 @@ final class AppInactivityTracker: ObservableObject {
         lock.lock()
         defer { lock.unlock() }
         
-        // Update the activity info
+        // Update the activity info - this resets the auto-hide timer
+        // NOTE: This fires when:
+        // - User clicks on an app
+        // - User Cmd+Tabs to an app
+        // - User clicks app icon in Dock
+        // - App is UNHIDDEN (via Dock, Cmd+Tab, etc.)
+        // So unhiding an app automatically resets its auto-hide timer ✅
         appActivity[bundleID] = AppActivityInfo(
             lastActiveTime: Date(),
             bundleID: bundleID,

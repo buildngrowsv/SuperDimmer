@@ -131,9 +131,9 @@ final class WindowInactivityTracker: ObservableObject {
     /**
      Updates tracking when an app becomes frontmost (via system notification).
      
-     CHANGED (Jan 8, 2026): No longer resets all windows of the app.
-     We need to wait for the actual window to be identified via windowBecameActive().
-     This just updates the PID for reference.
+     FIX (Jan 9, 2026): Reset decay timers for ALL windows of this app.
+     When an app is unhidden/activated, all its windows should start fresh
+     with no decay dimming. The user expects "reopening" an app to reset timers.
      
      - Parameter pid: The process ID of the app that became frontmost
      */
@@ -141,9 +141,17 @@ final class WindowInactivityTracker: ObservableObject {
         lock.lock()
         defer { lock.unlock() }
         
-        // Store the PID but don't reset window timestamps
-        // The actual frontmost window will be set via windowBecameActive()
         lastFrontmostPID = pid
+        
+        // FIX: Reset timestamps for ALL windows of this app
+        // This ensures unhiding an app resets decay for all its windows
+        let now = Date()
+        for (windowID, var info) in windowActivity {
+            if info.ownerPID == pid {
+                info.lastActiveTime = now
+                windowActivity[windowID] = info
+            }
+        }
     }
     
     /**
@@ -175,26 +183,50 @@ final class WindowInactivityTracker: ObservableObject {
     }
     
     /**
-     Registers a window if not already tracked.
+     Registers or refreshes a window's tracking.
      
-     New windows start with the current time as their last active time,
-     so they don't immediately start decaying.
+     FIX (Jan 9, 2026): Changed to ALWAYS update timestamp for new windows,
+     not just if window was never tracked. This ensures:
+     - New windows start with no decay
+     - Windows that were closed and reopened (same ID) also reset
+     
+     Existing active windows are NOT touched - only truly new appearances.
      
      - Parameters:
        - windowID: The window ID
        - ownerPID: The process ID
        - ownerName: The app name
+       - forceReset: If true, always reset the timestamp (for new window detection)
      */
-    func registerWindow(_ windowID: CGWindowID, ownerPID: pid_t, ownerName: String) {
+    func registerWindow(_ windowID: CGWindowID, ownerPID: pid_t, ownerName: String, forceReset: Bool = false) {
         lock.lock()
         defer { lock.unlock() }
         
-        if windowActivity[windowID] == nil {
+        if windowActivity[windowID] == nil || forceReset {
+            // New window or forced reset - set timestamp to now
             windowActivity[windowID] = WindowActivityInfo(
                 lastActiveTime: Date(),
                 ownerPID: ownerPID,
                 ownerName: ownerName
             )
+        }
+    }
+    
+    /**
+     Resets the inactivity timer for a specific window.
+     
+     Call this when a window is newly opened or becomes visible again
+     to prevent immediate decay dimming.
+     
+     - Parameter windowID: The window to reset
+     */
+    func resetWindowTimer(_ windowID: CGWindowID) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        if var info = windowActivity[windowID] {
+            info.lastActiveTime = Date()
+            windowActivity[windowID] = info
         }
     }
     
