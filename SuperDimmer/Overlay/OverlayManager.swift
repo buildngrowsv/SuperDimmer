@@ -151,11 +151,13 @@ final class OverlayManager {
         }
         
         // Create new full-screen overlay using factory method
+        // FIX (Jan 8, 2026): Start at 0 opacity and FADE IN to target level
+        // This prevents the jarring "pop-in" effect when full-screen dimming is enabled
         print("📺 Creating NEW full-screen overlay for \(screen.localizedName)")
         print("📺 Screen frame: \(screen.frame)")
         let overlay = DimOverlayWindow.create(
             frame: screen.frame,
-            dimLevel: dimLevel,
+            dimLevel: 0.0,  // Start invisible
             id: "display-\(displayID)"
         )
         
@@ -166,11 +168,13 @@ final class OverlayManager {
         // Store reference
         displayOverlays[displayID] = overlay
         
-        print("📺 ✓ Created full-screen overlay for display \(displayID)")
+        // Fade in to target dim level with smooth animation
+        overlay.setDimLevel(dimLevel, animated: true, duration: 0.4)
+        
+        print("📺 ✓ Created full-screen overlay for display \(displayID) with fade-in")
         print("📺   Overlay frame: \(overlay.frame)")
         print("📺   Overlay isVisible: \(overlay.isVisible)")
         print("📺   Overlay level: \(overlay.level.rawValue)")
-        print("📺   Overlay dimLevel: \(overlay.dimLevel)")
     }
     
     /**
@@ -240,19 +244,26 @@ final class OverlayManager {
      */
     func updateOverlay(for windowID: CGWindowID, bounds: CGRect, dimLevel: CGFloat, screen: NSScreen? = nil) {
         if let existing = windowOverlays[windowID] {
-            // Update existing overlay
+            // Update existing overlay with smooth animation
+            // FIX (Jan 8, 2026): Increased duration from 0.15s to 0.35s for smoother
+            // active/inactive transitions when switching between windows
             existing.updatePosition(to: bounds)
-            existing.setDimLevel(dimLevel, animated: true, duration: 0.15)
+            existing.setDimLevel(dimLevel, animated: true, duration: 0.35)
         } else {
             // Create new overlay using factory method
+            // FIX (Jan 8, 2026): Start at 0 opacity and FADE IN to target level
+            // This prevents the jarring "pop-in" effect when new overlays appear
             let overlay = DimOverlayWindow.create(
                 frame: bounds,
-                dimLevel: dimLevel,
+                dimLevel: 0.0,  // Start invisible
                 id: "window-\(windowID)"
             )
             overlay.orderFrontRegardless()
             windowOverlays[windowID] = overlay
-            print("🪟 Created overlay for window \(windowID)")
+            
+            // Fade in to target dim level with smooth animation
+            overlay.setDimLevel(dimLevel, animated: true, duration: 0.3)
+            print("🪟 Created overlay for window \(windowID) with fade-in")
         }
     }
     
@@ -413,8 +424,10 @@ final class OverlayManager {
                     regionToWindowID[overlayID] = decision.windowID
                     regionToOwnerPID[overlayID] = decision.ownerPID
                     
-                    // Always update dim level (it's fast and smooth with animation)
-                    overlay.setDimLevel(decision.dimLevel, animated: true)
+                    // Always update dim level with smooth animation
+                    // FIX (Jan 8, 2026): Use 0.35s duration for smooth active/inactive
+                    // transitions when user switches between windows
+                    overlay.setDimLevel(decision.dimLevel, animated: true, duration: 0.35)
                     
                     // Make sure it's visible (in case it was hidden previously)
                     if !overlay.isVisible {
@@ -490,9 +503,11 @@ final class OverlayManager {
         }
         
         // Create overlay using factory method
+        // FIX (Jan 8, 2026): Start at 0 opacity and FADE IN to target level
+        // This prevents the jarring "pop-in" effect when new bright regions are detected
         let overlay = DimOverlayWindow.create(
             frame: decision.regionRect,
-            dimLevel: decision.dimLevel,
+            dimLevel: 0.0,  // Start invisible
             id: regionID
         )
         
@@ -513,6 +528,9 @@ final class OverlayManager {
         regionOverlays[regionID] = overlay
         regionToWindowID[regionID] = decision.windowID
         regionToOwnerPID[regionID] = decision.ownerPID
+        
+        // Fade in to target dim level with smooth animation
+        overlay.setDimLevel(decision.dimLevel, animated: true, duration: 0.3)
     }
     
     /**
@@ -606,10 +624,12 @@ final class OverlayManager {
                     existing.orderAboveWindow(decision.windowID)
                 } else {
                     // Create new decay overlay using factory method
+                    // FIX (Jan 8, 2026): Start at 0 opacity and FADE IN to target level
+                    // This prevents the jarring "pop-in" effect when decay overlays appear
                     let overlayID = "decay-\(decision.windowID)"
                     let overlay = DimOverlayWindow.create(
                         frame: decision.windowBounds,
-                        dimLevel: decision.decayDimLevel,
+                        dimLevel: 0.0,  // Start invisible
                         id: overlayID
                     )
                     overlay.level = .normal
@@ -617,6 +637,9 @@ final class OverlayManager {
                     overlay.orderAboveWindow(decision.windowID)
                     
                     self.decayOverlays[decision.windowID] = overlay
+                    
+                    // Fade in to target dim level with smooth animation
+                    overlay.setDimLevel(decision.decayDimLevel, animated: true, duration: 0.3)
                 }
             }
             

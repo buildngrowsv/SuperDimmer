@@ -281,9 +281,13 @@ final class DimOverlayWindow: NSWindow {
      - Parameters:
        - level: The new dim level (0.0 = no dimming, 1.0 = full black)
        - animated: Whether to animate the transition (default: true)
-       - duration: Animation duration in seconds (default: 0.25)
+       - duration: Animation duration in seconds (default: 0.35 for smooth transitions)
+     
+     FIX (Jan 8, 2026): Increased default duration from 0.25s to 0.35s for smoother
+     transitions, especially when switching between active/inactive windows.
+     Uses .easeInEaseOut timing for natural, non-linear animation.
      */
-    func setDimLevel(_ level: CGFloat, animated: Bool = true, duration: TimeInterval = 0.25) {
+    func setDimLevel(_ level: CGFloat, animated: Bool = true, duration: TimeInterval = 0.35) {
         guard let layer = dimView?.layer else {
             print("⚠️ DimOverlayWindow: No layer available for dim level change")
             return
