@@ -1130,13 +1130,29 @@ xcodebuild -scheme SuperDimmer -configuration Release archive
 
 #### 6.7 Pre-Launch Verification
 
+#### 6.7.1 DMG Packaging (Added Jan 8, 2026)
+- [x] Created `packaging/` folder with DMG creation scripts
+- [x] Created `create-dmg.sh` - main DMG creation script
+- [x] Created `build-release.sh` - one-command build + DMG
+- [x] Created `create-background.sh` - custom DMG background generator
+- [x] Added hdiutil fallback for systems without create-dmg tool
+- [x] Tested DMG creation successfully (SuperDimmer-v1.0.0.dmg)
+
+**To create a DMG:**
+```bash
+cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Mac-App/packaging
+./build-release.sh              # Build and create DMG
+./build-release.sh --sign       # Build, sign, and create DMG
+./build-release.sh --notarize   # Build, sign, notarize, and create DMG
+```
+
 #### 🔨 BUILD CHECK - FINAL RELEASE
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Release archive -archivePath SuperDimmer.xcarchive
 ```
 - [ ] Final archive builds
 - [ ] Archive exports for distribution
-- [ ] DMG/ZIP created for download
+- [x] DMG creation scripts ready (packaging/ folder)
 
 #### 🧪 FINAL TEST CHECKLIST
 - [ ] Fresh install on clean Mac
