@@ -2,139 +2,47 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- 
-    ====================================================================
-    SuperDimmer Info.plist
-    ====================================================================
-    
-    PURPOSE:
-    This file configures the application bundle metadata and system 
-    permissions. It defines how macOS treats the app, what permissions
-    it requests, and how it appears to users.
-    
-    KEY DECISIONS:
-    - LSUIElement = true: Makes this a menu bar only app (no dock icon)
-      This is consistent with f.lux, Umbra, MonitorControlLite approach
-    - Minimum macOS 13.0 (Ventura): Required for modern SwiftUI features
-      and screen capture APIs we need
-    - Screen Recording permission: UNIQUE to SuperDimmer - needed for
-      brightness detection. Other apps (f.lux, etc.) don't need this.
-    
-    IMPORTANT: This file must be linked in Xcode project settings under
-    Build Settings > Info.plist File
-    ====================================================================
-    -->
-    
-    <!-- Bundle Identity -->
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    
-    <key>CFBundleName</key>
-    <string>SuperDimmer</string>
-    
-    <key>CFBundleDisplayName</key>
-    <string>SuperDimmer</string>
-    
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    
-    <!-- Version Information -->
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    
-    <!-- 
-    ====================================================================
-    MENU BAR APP CONFIGURATION
-    ====================================================================
-    LSUIElement = true means:
-    - No dock icon
-    - No main window by default
-    - App controlled via menu bar only
-    This is the standard pattern for utility apps like f.lux, Umbra, etc.
-    ====================================================================
-    -->
-    <key>LSUIElement</key>
-    <true/>
-    
-    <!-- App Category - Utilities like MonitorControl, BetterDisplay -->
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.utilities</string>
-    
-    <!-- Minimum macOS Version - Ventura for modern APIs -->
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-    
-    <!-- Application Type for AppKit/SwiftUI hybrid -->
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-    
-    <!-- 
-    ====================================================================
-    PERMISSION DESCRIPTIONS
-    ====================================================================
-    These strings are shown to users when requesting permissions.
-    Clear, honest descriptions help users trust the app.
-    
-    Screen Recording: CRITICAL for SuperDimmer's unique feature
-    - CGWindowListCreateImage requires this to capture OTHER apps' content
-    - Without it, we can only capture our own windows (useless for brightness detection)
-    
-    Location: For sunrise/sunset automation (like f.lux)
-    - Optional - app works without it, just no auto sun-based scheduling
-    
-    AppleEvents/Automation: For wallpaper switching (like Umbra)
-    - Optional - only needed if user wants wallpaper features
-    ====================================================================
-    -->
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>SuperDimmer needs screen access to detect bright areas on your display and apply intelligent dimming. Your screen content is analyzed locally and never stored or transmitted.</string>
-    
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>SuperDimmer uses your location to calculate sunrise and sunset times for automatic color temperature adjustments. Location data stays on your device.</string>
-    
-    <key>NSAppleEventsUsageDescription</key>
-    <string>SuperDimmer needs this permission to automatically switch wallpapers when you change between Light and Dark mode.</string>
-    
-    <!-- 
-    ====================================================================
-    SPARKLE AUTO-UPDATES (to be configured before release)
-    ====================================================================
-    Following BetterDisplay and f.lux pattern of using Sparkle for updates.
-    These keys will be populated before first release.
-    ====================================================================
-    -->
-    <key>SUFeedURL</key>
-    <string>https://superdimmer.app/sparkle/appcast.xml</string>
-    
-    <key>SUEnableAutomaticChecks</key>
-    <true/>
-    
-    <!-- Placeholder for EdDSA public key - generate before release -->
-    <!-- <key>SUPublicEDKey</key>
-    <string>GENERATE_BEFORE_RELEASE</string> -->
-    
-    <!-- Graceful termination support -->
-    <key>NSSupportsAutomaticTermination</key>
-    <true/>
-    
-    <key>NSSupportsSuddenTermination</key>
-    <true/>
-    
-    <!-- Copyright -->
-    <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 SuperDimmer. All rights reserved.</string>
-    
-    <!-- High resolution support for Retina displays -->
-    <key>NSHighResolutionCapable</key>
-    <true/>
+	<key>CFBundleDisplayName</key>
+	<string>SuperDimmer</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>SuperDimmer</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>3</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>SuperDimmer needs this permission to automatically switch wallpapers when you change between Light and Dark mode.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 SuperDimmer. All rights reserved.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SuperDimmer uses your location to calculate sunrise and sunset times for automatic color temperature adjustments. Location data stays on your device.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>SuperDimmer needs screen access to detect bright areas on your display and apply intelligent dimming. Your screen content is analyzed locally and never stored or transmitted.</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<true/>
+	<key>NSSupportsSuddenTermination</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://superdimmer.app/sparkle/appcast.xml</string>
 </dict>
 </plist>

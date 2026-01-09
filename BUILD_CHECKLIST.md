@@ -525,21 +525,133 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 - [ ] Add toggle for active/inactive differentiation
 - [ ] Show real-time detection status indicator
 
-#### 🔨 BUILD CHECK 2.7
+#### 🔨 BUILD CHECK 2.9
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Debug build
 ```
 - [ ] Build succeeds
 - [ ] SwiftUI previews render
 
-#### 🧪 TEST CHECK 2.7
+#### 🧪 TEST CHECK 2.9
 - [ ] All new controls are functional
 - [ ] Threshold changes affect detection immediately
 - [ ] Dim level changes apply immediately
 
 ---
 
-#### 2.8 Phase 2 Integration Testing
+### 2.10 Inactivity Decay Dimming (WINDOW-LEVEL)
+
+> **UNIQUE FEATURE** - Progressive dimming for windows that are not in use
+> Windows that haven't been switched to will gradually increase in dimness over time
+> until they hit a user-configurable maximum limit. This creates a visual hierarchy
+> that emphasizes the active window while naturally de-emphasizing stale windows.
+> 
+> **Why this matters:** When you have many windows open, the ones you haven't used
+> recently naturally fade more, helping you focus on what's active while keeping
+> background windows accessible but less distracting.
+
+#### 2.10.1 Decay Dimming Settings
+- [ ] Add `inactivityDecayEnabled` setting to SettingsManager
+- [ ] Add `decayRate` setting (0.01-0.10 per second, default 0.02 = 2% per second)
+- [ ] Add `decayStartDelay` setting (seconds before decay starts, default 30 seconds)
+- [ ] Add `maxDecayDimLevel` setting (0.4-0.9, default 0.7 = 70% max dimming)
+- [ ] Persist decay settings to UserDefaults
+
+#### 2.10.2 Window Inactivity Tracker
+- [ ] Create `WindowInactivityTracker.swift` or extend WindowTrackerService
+- [ ] Track `lastActiveTimestamp` per window ID
+- [ ] Update timestamp when window becomes active (frontmost app's windows)
+- [ ] Calculate `timeSinceLastActive` for each tracked window
+- [ ] Emit decay dimming decisions based on inactivity duration
+
+#### 2.10.3 Decay Dimming Logic in Coordinator
+- [ ] Add `calculateDecayDimLevel()` method to DimmingCoordinator
+- [ ] Formula: `baseDimLevel + (decayRate * max(0, timeSinceActive - decayStartDelay))`
+- [ ] Clamp result to `maxDecayDimLevel`
+- [ ] Apply decay on top of existing inactive window dim level
+- [ ] Reset decay when window becomes active again
+
+#### 2.10.4 Decay Dimming UI
+- [ ] Add "Inactivity Decay" toggle to MenuBarView/Preferences
+- [ ] Add decay rate slider with descriptive labels (Slow/Medium/Fast)
+- [ ] Add decay start delay slider (10s - 120s)
+- [ ] Add max decay level slider (40% - 90%)
+- [ ] Show current decay status per window (optional debug view)
+
+#### 🔨 BUILD CHECK 2.10
+```bash
+xcodebuild -scheme SuperDimmer -configuration Debug build
+```
+- [ ] Build succeeds
+
+#### 🧪 TEST CHECK 2.10
+- [ ] Window starts decaying after delay when inactive
+- [ ] Decay respects rate setting (gradual increase)
+- [ ] Decay stops at max level (doesn't go darker)
+- [ ] Switching to window resets decay immediately
+- [ ] Decay settings persist across restart
+- [ ] Performance: Decay tracking adds minimal overhead
+
+---
+
+### 2.11 Auto-Hide Inactive Apps (APP-LEVEL)
+
+> **PRODUCTIVITY FEATURE** - Automatically hide apps that haven't been used for a while
+> Unlike decay dimming (which is per-window), this feature operates at the APP level.
+> After an app hasn't been in the foreground for a configurable duration, it gets hidden.
+> This reduces visual clutter and helps focus on actively used applications.
+>
+> **Why this matters:** Over the course of a workday, many apps accumulate on screen
+> that you opened briefly but forgot about. Auto-hiding them keeps your workspace clean
+> without requiring manual intervention.
+
+#### 2.11.1 Auto-Hide Settings
+- [ ] Add `autoHideEnabled` setting to SettingsManager
+- [ ] Add `autoHideDelay` setting (minutes before hiding, default 30 minutes)
+- [ ] Add `autoHideExcludedApps` setting (Set<String> of bundle IDs)
+- [ ] Add `autoHideExcludeSystemApps` setting (default true - Finder, etc.)
+- [ ] Persist auto-hide settings to UserDefaults
+
+#### 2.11.2 App Inactivity Tracker
+- [ ] Create `AppInactivityTracker.swift` service
+- [ ] Track `lastForegroundTimestamp` per bundle ID
+- [ ] Update timestamp when app becomes frontmost (NSWorkspace observer)
+- [ ] Calculate `timeSinceLastForeground` for each running app
+- [ ] Maintain list of apps that should be auto-hidden
+
+#### 2.11.3 Auto-Hide Logic
+- [ ] Create `AutoHideManager.swift` service
+- [ ] Implement `hideApp(bundleID:)` using NSRunningApplication.hide()
+- [ ] Check inactivity timer periodically (every 60 seconds)
+- [ ] Skip excluded apps (user-defined + system apps if setting enabled)
+- [ ] Skip apps with unsaved changes (if detectable via Accessibility)
+- [ ] Log auto-hide actions for user transparency
+
+#### 2.11.4 Auto-Hide UI
+- [ ] Add "Auto-Hide Inactive Apps" toggle to Preferences
+- [ ] Add auto-hide delay slider (5 min - 120 min)
+- [ ] Add excluded apps list editor (reuse ExcludedAppsPreferencesTab pattern)
+- [ ] Add "Exclude system apps" checkbox
+- [ ] Show notification when app is auto-hidden (optional)
+- [ ] Add "Recently Auto-Hidden" list with "Unhide" buttons
+
+#### 🔨 BUILD CHECK 2.11
+```bash
+xcodebuild -scheme SuperDimmer -configuration Debug build
+```
+- [ ] Build succeeds
+
+#### 🧪 TEST CHECK 2.11
+- [ ] Apps are hidden after inactivity delay
+- [ ] Excluded apps are never auto-hidden
+- [ ] Using app resets its inactivity timer
+- [ ] Auto-hide settings persist across restart
+- [ ] Notification shown when app hidden (if enabled)
+- [ ] Hidden apps can be unhidden from list
+
+---
+
+#### 2.12 Phase 2 Integration Testing
 
 #### 🔨 BUILD CHECK - PHASE 2 FINAL
 ```bash
