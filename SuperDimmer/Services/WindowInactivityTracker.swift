@@ -78,8 +78,13 @@ final class WindowInactivityTracker: ObservableObject {
     /// Combine subscriptions
     private var cancellables = Set<AnyCancellable>()
     
-    /// Last known frontmost app PID
+    /// Last known frontmost app PID (for app-level tracking reference)
     private var lastFrontmostPID: pid_t = 0
+    
+    /// Last known frontmost WINDOW ID (for window-level tracking)
+    /// CHANGED (Jan 8, 2026): Track specific window, not just app
+    /// Only this specific window is considered "active" (no decay)
+    private var lastFrontmostWindowID: CGWindowID = 0
     
     // ================================================================
     // MARK: - Initialization
@@ -97,6 +102,10 @@ final class WindowInactivityTracker: ObservableObject {
     /**
      Marks a window as having just been active.
      
+     CHANGED (Jan 8, 2026): Now sets `lastFrontmostWindowID` for window-level tracking.
+     Only this specific window will be considered "active" (no decay applied).
+     Other windows of the same app WILL decay.
+     
      Call this when a window becomes the frontmost window.
      
      - Parameters:
@@ -113,13 +122,18 @@ final class WindowInactivityTracker: ObservableObject {
             ownerPID: ownerPID,
             ownerName: ownerName
         )
+        
+        // Track the specific frontmost window for window-level decay
+        lastFrontmostWindowID = windowID
+        lastFrontmostPID = ownerPID
     }
     
     /**
-     Marks all windows belonging to an app as active.
+     Updates tracking when an app becomes frontmost (via system notification).
      
-     Called when an app becomes frontmost - all its windows are considered "active"
-     since the user is now interacting with that app.
+     CHANGED (Jan 8, 2026): No longer resets all windows of the app.
+     We need to wait for the actual window to be identified via windowBecameActive().
+     This just updates the PID for reference.
      
      - Parameter pid: The process ID of the app that became frontmost
      */
@@ -127,19 +141,17 @@ final class WindowInactivityTracker: ObservableObject {
         lock.lock()
         defer { lock.unlock() }
         
-        let now = Date()
-        for (windowID, var info) in windowActivity {
-            if info.ownerPID == pid {
-                info.lastActiveTime = now
-                windowActivity[windowID] = info
-            }
-        }
-        
+        // Store the PID but don't reset window timestamps
+        // The actual frontmost window will be set via windowBecameActive()
         lastFrontmostPID = pid
     }
     
     /**
      Gets how long a window has been inactive.
+     
+     CHANGED (Jan 8, 2026): Now tracks at WINDOW level, not APP level.
+     Only the actual frontmost window (lastFrontmostWindowID) returns 0.
+     Other windows of the same app WILL decay if they're not the active window.
      
      - Parameter windowID: The window to check
      - Returns: Time interval since last active, or 0 if window is currently active or unknown
@@ -153,8 +165,9 @@ final class WindowInactivityTracker: ObservableObject {
             return 0
         }
         
-        // If this window's app is currently frontmost, it's active
-        if info.ownerPID == lastFrontmostPID {
+        // FIX: Only the ACTUAL frontmost window is considered active
+        // Other windows of the same app SHOULD decay
+        if windowID == lastFrontmostWindowID {
             return 0
         }
         

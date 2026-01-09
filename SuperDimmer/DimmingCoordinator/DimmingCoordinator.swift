@@ -815,6 +815,15 @@ final class DimmingCoordinator: ObservableObject {
             // Clamp to max decay level
             let clampedDecayLevel = min(decayDimLevel, CGFloat(settings.maxDecayDimLevel))
             
+            // Debug: Log each window's decay calculation
+            if inactivityDuration > 0 || window.isActive {
+                print("⏰ Decay calc for '\(window.ownerName)' (ID:\(window.id)): " +
+                      "isActive=\(window.isActive), " +
+                      "inactivity=\(String(format: "%.1f", inactivityDuration))s, " +
+                      "delayedInactivity=\(String(format: "%.1f", delayedInactivity))s, " +
+                      "decayLevel=\(String(format: "%.2f", clampedDecayLevel))")
+            }
+            
             let decision = OverlayManager.DecayDimmingDecision(
                 windowID: window.id,
                 windowName: window.ownerName,
@@ -830,7 +839,9 @@ final class DimmingCoordinator: ObservableObject {
         // Apply decay overlays
         overlayManager.applyDecayDimming(decayDecisions)
         
-        debugLog("⏰ Applied decay dimming to \(decayDecisions.filter { !$0.isActive && $0.decayDimLevel > 0 }.count) inactive windows")
+        let decayingCount = decayDecisions.filter { !$0.isActive && $0.decayDimLevel > 0 }.count
+        let totalInactive = decayDecisions.filter { !$0.isActive }.count
+        debugLog("⏰ Applied decay dimming: \(decayingCount) with visible dim, \(totalInactive) total inactive")
     }
     
     /**
