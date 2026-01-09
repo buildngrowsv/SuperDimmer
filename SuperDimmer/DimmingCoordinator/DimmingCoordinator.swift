@@ -614,8 +614,19 @@ final class DimmingCoordinator: ObservableObject {
         // Track which windows we're analyzing (for cache cleanup)
         let currentWindowIDs = Set(windows.map { $0.id })
         
+        // Register windows with inactivity tracker for decay dimming
+        let inactivityTracker = WindowInactivityTracker.shared
+        
         for window in windows {
             let isFrontmost = window.ownerPID == frontmostPID
+            
+            // Register window for inactivity tracking
+            inactivityTracker.registerWindow(window.id, ownerPID: window.ownerPID, ownerName: window.ownerName)
+            
+            // If this window is frontmost, mark it as active
+            if window.isActive {
+                inactivityTracker.windowBecameActive(window.id, ownerPID: window.ownerPID, ownerName: window.ownerName)
+            }
             
             // OPTIMIZATION: Check cache first
             if let cached = analysisCache[window.id],
@@ -629,7 +640,8 @@ final class DimmingCoordinator: ObservableObject {
                     let dimLevel = calculateRegionDimLevel(
                         brightness: region.brightness,
                         threshold: threshold,
-                        isActiveWindow: window.isActive
+                        isActiveWindow: window.isActive,
+                        windowID: window.id
                     )
                     
                     let decision = RegionDimmingDecision(
@@ -684,7 +696,8 @@ final class DimmingCoordinator: ObservableObject {
                 let dimLevel = calculateRegionDimLevel(
                     brightness: region.brightness,
                     threshold: threshold,
-                    isActiveWindow: window.isActive
+                    isActiveWindow: window.isActive,
+                    windowID: window.id
                 )
                 
                 let decision = RegionDimmingDecision(
@@ -705,6 +718,9 @@ final class DimmingCoordinator: ObservableObject {
         for staleID in staleWindowIDs {
             analysisCache.removeValue(forKey: staleID)
         }
+        
+        // Also clean up inactivity tracker
+        inactivityTracker.cleanup(activeWindowIDs: currentWindowIDs)
         
         let analysisTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
         debugLog("🎯 [PerRegion] Analysis complete: \(allRegionDecisions.count) regions in \(String(format: "%.1f", analysisTime))ms (cache: \(cacheHits) hits, \(cacheMisses) misses)")
@@ -732,11 +748,15 @@ final class DimmingCoordinator: ObservableObject {
     
     /**
      Calculates dim level for a specific bright region.
+     
+     Includes inactivity decay if enabled - windows that haven't been
+     active for a while will progressively dim more.
      */
     private func calculateRegionDimLevel(
         brightness: Float,
         threshold: Float,
-        isActiveWindow: Bool
+        isActiveWindow: Bool,
+        windowID: CGWindowID = 0
     ) -> CGFloat {
         // How much above threshold
         let overage = brightness - threshold
@@ -752,12 +772,45 @@ final class DimmingCoordinator: ObservableObject {
             dimLevel = min(dimLevel, configuration.activeDimLevel)
         }
         
+        // Apply inactivity decay for inactive windows
+        if !isActiveWindow && SettingsManager.shared.inactivityDecayEnabled && windowID != 0 {
+            dimLevel = applyInactivityDecay(baseDimLevel: dimLevel, windowID: windowID)
+        }
+        
         // Ensure minimum visibility - if user set dim level > 10%, 
         // use at least 15% so overlays are visible
         let minimumDimLevel: CGFloat = max(0.15, baseDimLevel * 0.5)
         dimLevel = max(dimLevel, minimumDimLevel)
         
         return dimLevel
+    }
+    
+    /**
+     Applies inactivity decay to a dim level.
+     
+     Formula: baseDim + (decayRate × max(0, inactivityTime - decayStartDelay))
+     Clamped to maxDecayDimLevel.
+     
+     - Parameters:
+       - baseDimLevel: The starting dim level before decay
+       - windowID: The window to check inactivity for
+     - Returns: Adjusted dim level with decay applied
+     */
+    private func applyInactivityDecay(baseDimLevel: CGFloat, windowID: CGWindowID) -> CGFloat {
+        let settings = SettingsManager.shared
+        let inactivityTracker = WindowInactivityTracker.shared
+        
+        let inactivityDuration = inactivityTracker.getInactivityDuration(for: windowID)
+        let delayedInactivity = max(0, inactivityDuration - settings.decayStartDelay)
+        
+        // Calculate decay amount
+        let decayAmount = CGFloat(settings.decayRate * delayedInactivity)
+        
+        // Apply decay and clamp to max
+        let decayedLevel = baseDimLevel + decayAmount
+        let maxLevel = CGFloat(settings.maxDecayDimLevel)
+        
+        return min(decayedLevel, maxLevel)
     }
     
     /**

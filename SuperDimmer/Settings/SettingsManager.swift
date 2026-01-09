@@ -97,6 +97,12 @@ final class SettingsManager: ObservableObject {
         // Debug mode (shows colored borders on overlays)
         case debugOverlayBorders = "superdimmer.debugOverlayBorders"
         
+        // Inactivity Decay Dimming
+        case inactivityDecayEnabled = "superdimmer.inactivityDecayEnabled"
+        case decayRate = "superdimmer.decayRate"
+        case decayStartDelay = "superdimmer.decayStartDelay"
+        case maxDecayDimLevel = "superdimmer.maxDecayDimLevel"
+        
         // Excluded Apps
         case excludedAppBundleIDs = "superdimmer.excludedAppBundleIDs"
         
@@ -339,6 +345,68 @@ final class SettingsManager: ObservableObject {
     @Published var debugOverlayBorders: Bool {
         didSet {
             defaults.set(debugOverlayBorders, forKey: Keys.debugOverlayBorders.rawValue)
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Inactivity Decay Dimming
+    // ================================================================
+    
+    /**
+     Whether inactivity decay dimming is enabled.
+     
+     When true, windows that haven't been active for a while will
+     progressively dim more, creating a visual hierarchy that
+     emphasizes the active window.
+     */
+    @Published var inactivityDecayEnabled: Bool {
+        didSet {
+            defaults.set(inactivityDecayEnabled, forKey: Keys.inactivityDecayEnabled.rawValue)
+        }
+    }
+    
+    /**
+     Rate at which inactive windows decay (dim increase per second).
+     
+     Range: 0.005 to 0.05 (0.5% to 5% per second)
+     Default: 0.01 (1% per second)
+     
+     At default rate, a window would reach max decay after ~40 seconds
+     of inactivity (assuming 30s delay + 40s to reach 40% additional dim).
+     */
+    @Published var decayRate: Double {
+        didSet {
+            defaults.set(decayRate, forKey: Keys.decayRate.rawValue)
+        }
+    }
+    
+    /**
+     Seconds of inactivity before decay starts.
+     
+     Range: 5 to 120 seconds
+     Default: 30 seconds
+     
+     This grace period prevents decay from starting immediately
+     when you briefly switch to another window.
+     */
+    @Published var decayStartDelay: TimeInterval {
+        didSet {
+            defaults.set(decayStartDelay, forKey: Keys.decayStartDelay.rawValue)
+        }
+    }
+    
+    /**
+     Maximum dim level from decay (cap).
+     
+     Range: 0.4 to 0.9 (40% to 90%)
+     Default: 0.6 (60%)
+     
+     This prevents windows from becoming completely invisible.
+     The total dim = base inactive dim + decay dim, capped at this value.
+     */
+    @Published var maxDecayDimLevel: Double {
+        didSet {
+            defaults.set(maxDecayDimLevel, forKey: Keys.maxDecayDimLevel.rawValue)
         }
     }
     
@@ -618,6 +686,20 @@ final class SettingsManager: ObservableObject {
         self.debugOverlayBorders = defaults.bool(forKey: Keys.debugOverlayBorders.rawValue)
         
         // ============================================================
+        // Load Inactivity Decay Settings
+        // ============================================================
+        self.inactivityDecayEnabled = defaults.bool(forKey: Keys.inactivityDecayEnabled.rawValue)
+        
+        self.decayRate = defaults.object(forKey: Keys.decayRate.rawValue) != nil ?
+            defaults.double(forKey: Keys.decayRate.rawValue) : 0.01  // 1% per second
+        
+        self.decayStartDelay = defaults.object(forKey: Keys.decayStartDelay.rawValue) != nil ?
+            defaults.double(forKey: Keys.decayStartDelay.rawValue) : 30.0  // 30 seconds
+        
+        self.maxDecayDimLevel = defaults.object(forKey: Keys.maxDecayDimLevel.rawValue) != nil ?
+            defaults.double(forKey: Keys.maxDecayDimLevel.rawValue) : 0.6  // 60% max
+        
+        // ============================================================
         // Load Excluded Apps
         // ============================================================
         self.excludedAppBundleIDs = defaults.object(forKey: Keys.excludedAppBundleIDs.rawValue) as? [String] ?? []
@@ -707,6 +789,10 @@ final class SettingsManager: ObservableObject {
         regionGridSize = 8
         scanInterval = 1.0
         excludedAppBundleIDs = []
+        inactivityDecayEnabled = false
+        decayRate = 0.01
+        decayStartDelay = 30.0
+        maxDecayDimLevel = 0.6
         
         // Color Temperature
         colorTemperatureEnabled = false

@@ -300,6 +300,9 @@ struct MenuBarView: View {
                         // Active/inactive differentiation toggle and sliders
                         activeInactiveSection
                         
+                        // Inactivity decay section
+                        inactivityDecaySection
+                        
                         // Debug toggle for developers/troubleshooting
                         debugSection
                         
@@ -480,6 +483,95 @@ struct MenuBarView: View {
             
             Divider()
                 .padding(.vertical, 4)
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Inactivity Decay Section
+    // ================================================================
+    
+    /**
+     Controls for inactivity-based progressive dimming.
+     Windows that aren't used gradually dim more.
+     */
+    private var inactivityDecaySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Toggle for decay dimming
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundColor(.cyan)
+                    .font(.caption)
+                
+                Text("Inactivity Decay")
+                    .font(.caption)
+                
+                Spacer()
+                
+                Toggle("", isOn: $settings.inactivityDecayEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+            }
+            
+            if settings.inactivityDecayEnabled {
+                // Decay rate slider
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("Fade Speed")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(decayRateLabel)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Slider(value: $settings.decayRate, in: 0.005...0.05)
+                        .tint(.cyan)
+                        .controlSize(.mini)
+                }
+                
+                // Max decay level
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("Max Fade")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(Int(settings.maxDecayDimLevel * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    
+                    Slider(value: $settings.maxDecayDimLevel, in: 0.4...0.9)
+                        .tint(.cyan)
+                        .controlSize(.mini)
+                }
+                
+                Text("Unused windows fade after \(Int(settings.decayStartDelay))s")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Windows keep same dim level when inactive")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            
+            Divider()
+                .padding(.vertical, 4)
+        }
+    }
+    
+    /// Human-readable label for decay rate
+    private var decayRateLabel: String {
+        let rate = settings.decayRate
+        if rate <= 0.01 {
+            return "Slow"
+        } else if rate <= 0.025 {
+            return "Medium"
+        } else {
+            return "Fast"
         }
     }
     

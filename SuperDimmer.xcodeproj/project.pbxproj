@@ -23,6 +23,7 @@
 		A8116E433AA8D37103819457 /* DimmingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761339A7D21F3EC383AFDC4E /* DimmingCoordinator.swift */; };
 		B15709EDC740B83EB0DE16E3 /* BrightnessAnalysisEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */; };
 		BBF642C631AD5718861E3858 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03E06F14D1A62C96A81A599C /* CoreGraphics.framework */; };
+		C21173BD4C3C9897E9867077 /* WindowInactivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */; };
 		C951F27A7FB2798886F56E12 /* ScheduleManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27586C5BE0F771581C033B4C /* ScheduleManager.swift */; };
 		C95E79645601F9FFCC5B53AB /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BF3F80B0547D5C1A498D277 /* Accelerate.framework */; };
 		DE327EB0680EEFB0EFD48236 /* WindowTrackerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */; };
@@ -57,6 +58,7 @@
 		43ADA7A645622AB3F65E274F /* SuperDimmerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperDimmerTests.swift; sourceTree = "<group>"; };
 		494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowTrackerService.swift; sourceTree = "<group>"; };
 		4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrightnessAnalysisEngine.swift; sourceTree = "<group>"; };
+		568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowInactivityTracker.swift; sourceTree = "<group>"; };
 		608B44F65F59A9F4646E6B74 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		73D0D7E7FF2F4335B2B8EABD /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
 		761339A7D21F3EC383AFDC4E /* DimmingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimmingCoordinator.swift; sourceTree = "<group>"; };
@@ -246,6 +248,7 @@
 				99D465058B8A750951B2B515 /* LocationService.swift */,
 				27586C5BE0F771581C033B4C /* ScheduleManager.swift */,
 				005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */,
+				568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */,
 				494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */,
 			);
 			path = Services;
@@ -388,6 +391,7 @@
 				2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */,
 				9DF14CF8F541D544FC005E3B /* SettingsManager.swift in Sources */,
 				7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */,
+				C21173BD4C3C9897E9867077 /* WindowInactivityTracker.swift in Sources */,
 				DE327EB0680EEFB0EFD48236 /* WindowTrackerService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
