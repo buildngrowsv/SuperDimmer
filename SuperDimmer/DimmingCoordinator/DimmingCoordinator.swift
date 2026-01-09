@@ -69,7 +69,7 @@ fileprivate func debugLog(_ message: String) {
  The coordinator does analysis work on a background queue but
  updates UI (overlays) on the main queue.
  */
-final class DimmingCoordinator {
+final class DimmingCoordinator: ObservableObject {
     
     // ================================================================
     // MARK: - Properties
@@ -84,6 +84,12 @@ final class DimmingCoordinator {
      Whether the coordinator is currently running.
      */
     private(set) var isRunning: Bool = false
+    
+    /**
+     Current detection status - used by UI to show real-time feedback.
+     Published so SwiftUI views can observe it.
+     */
+    @Published private(set) var detectionStatus = DetectionStatus()
     
     /**
      The overlay manager for creating/updating dim windows.
@@ -572,6 +578,11 @@ final class DimmingCoordinator {
         debugLog("🎯 Starting PerRegion analysis...")
         let startTime = CFAbsoluteTimeGetCurrent()
         
+        // Update status to show we're analyzing
+        DispatchQueue.main.async { [weak self] in
+            self?.detectionStatus.isAnalyzing = true
+        }
+        
         // 1. Get visible windows
         let windows = WindowTrackerService.shared.getVisibleWindows()
         debugLog("🎯 Found \(windows.count) visible windows")
@@ -698,13 +709,24 @@ final class DimmingCoordinator {
         let analysisTime = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
         debugLog("🎯 [PerRegion] Analysis complete: \(allRegionDecisions.count) regions in \(String(format: "%.1f", analysisTime))ms (cache: \(cacheHits) hits, \(cacheMisses) misses)")
         
-        // 6. Apply region overlays on main thread
+        // 6. Apply region overlays on main thread and update status
+        let regionCount = allRegionDecisions.count
+        let windowsAnalyzed = windows.count
+        
         DispatchQueue.main.async { [weak self] in
-            guard self?.isRunning == true else {
+            guard let self = self, self.isRunning else {
                 debugLog("⚠️ Not running, skipping overlay application")
                 return
             }
-            self?.overlayManager.applyRegionDimmingDecisions(allRegionDecisions)
+            
+            self.overlayManager.applyRegionDimmingDecisions(allRegionDecisions)
+            
+            // Update detection status for UI feedback
+            self.detectionStatus.isAnalyzing = false
+            self.detectionStatus.windowCount = windowsAnalyzed
+            self.detectionStatus.regionCount = regionCount
+            self.detectionStatus.overlayCount = regionCount
+            self.detectionStatus.lastAnalysisTime = Date()
         }
     }
     
@@ -913,5 +935,45 @@ struct DimmingConfiguration {
             differentiateActiveInactive: settings.differentiateActiveInactive,
             scanInterval: settings.scanInterval
         )
+    }
+}
+
+// ====================================================================
+// MARK: - Detection Status
+// ====================================================================
+
+/**
+ Real-time status of the detection system.
+ 
+ Used by the UI to show feedback about what the system is doing.
+ Updated after each analysis cycle.
+ */
+struct DetectionStatus {
+    /// Number of windows currently being analyzed
+    var windowCount: Int = 0
+    
+    /// Number of bright regions detected
+    var regionCount: Int = 0
+    
+    /// Number of active overlays
+    var overlayCount: Int = 0
+    
+    /// Last analysis timestamp
+    var lastAnalysisTime: Date?
+    
+    /// Whether analysis is currently in progress
+    var isAnalyzing: Bool = false
+    
+    /// Human-readable status string
+    var statusText: String {
+        if !isAnalyzing && overlayCount == 0 && windowCount == 0 {
+            return "Idle"
+        } else if isAnalyzing {
+            return "Scanning..."
+        } else if overlayCount > 0 {
+            return "\(overlayCount) region\(overlayCount == 1 ? "" : "s") dimmed"
+        } else {
+            return "No bright areas detected"
+        }
     }
 }

@@ -294,11 +294,11 @@ struct MenuBarView: View {
                     }
                     
                     if settings.intelligentDimmingEnabled {
-                        // Simple description of what intelligent mode does
-                        Text("Finds and dims bright areas within windows")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .padding(.vertical, 4)
+                        // Detection status indicator
+                        detectionStatusIndicator
+                        
+                        // Active/inactive differentiation toggle and sliders
+                        activeInactiveSection
                         
                         // Debug toggle for developers/troubleshooting
                         debugSection
@@ -359,6 +359,132 @@ struct MenuBarView: View {
     
     // ================================================================
     // MARK: - Edge Blur Section
+    // ================================================================
+    
+    // ================================================================
+    // MARK: - Detection Status Indicator
+    // ================================================================
+    
+    /**
+     Real-time detection status display.
+     Shows what the intelligent mode is currently doing.
+     */
+    private var detectionStatusIndicator: some View {
+        HStack(spacing: 6) {
+            // Status indicator dot
+            Circle()
+                .fill(statusIndicatorColor)
+                .frame(width: 6, height: 6)
+            
+            // Status text
+            Text(detectionStatusText)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+    
+    /// Color for the status indicator dot
+    private var statusIndicatorColor: Color {
+        if let coordinator = AppDelegate.shared?.dimmingCoordinator {
+            if coordinator.detectionStatus.isAnalyzing {
+                return .yellow
+            } else if coordinator.detectionStatus.overlayCount > 0 {
+                return .green
+            }
+        }
+        return .gray
+    }
+    
+    /// Text showing current detection status
+    private var detectionStatusText: String {
+        guard let coordinator = AppDelegate.shared?.dimmingCoordinator else {
+            return "Not active"
+        }
+        return coordinator.detectionStatus.statusText
+    }
+    
+    // ================================================================
+    // MARK: - Active/Inactive Section
+    // ================================================================
+    
+    /**
+     Controls for differentiating active vs inactive window dimming.
+     */
+    private var activeInactiveSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Toggle for differentiation
+            HStack {
+                Image(systemName: "rectangle.2.swap")
+                    .foregroundColor(.blue)
+                    .font(.caption)
+                
+                Text("Different Dim Levels")
+                    .font(.caption)
+                
+                Spacer()
+                
+                Toggle("", isOn: $settings.differentiateActiveInactive)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+            }
+            
+            if settings.differentiateActiveInactive {
+                // Active window dim slider
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("Active Window")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(Int(settings.activeDimLevel * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    
+                    Slider(value: $settings.activeDimLevel, in: 0...0.5)
+                        .tint(.green)
+                        .controlSize(.mini)
+                }
+                
+                // Inactive window dim slider
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("Background Windows")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(Int(settings.inactiveDimLevel * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    
+                    Slider(value: $settings.inactiveDimLevel, in: 0...0.8)
+                        .tint(.purple)
+                        .controlSize(.mini)
+                }
+                
+                Text("Active window dimmed less for focus")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("All windows use the same dim level")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            
+            Divider()
+                .padding(.vertical, 4)
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Debug Section
     // ================================================================
     
     /**
