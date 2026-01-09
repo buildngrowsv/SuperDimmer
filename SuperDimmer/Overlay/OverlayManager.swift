@@ -739,80 +739,145 @@ final class OverlayManager {
      Creates full-window overlays for inactive windows based on their
      inactivity duration. Active windows get no decay overlay.
      
-     FIX (Jan 8, 2026): Completely reworked to prevent EXC_BAD_ACCESS crash.
-     The crash was caused by race conditions:
-     1. Multiple analysis cycles could overlap (timer + mouse clicks)
-     2. Overlay was removed from dictionary, then close() scheduled with delay
-     3. Core Animation was still animating when close() was called
-     4. objc_release crashed on deallocated CA layer
+     FIX (Jan 9, 2026): COMPLETELY REWRITTEN to fix EXC_BAD_ACCESS crash.
      
-     Solution:
-     - Use weak references in async close blocks
-     - Flush CA transactions before closing
-     - Track overlays being closed to prevent double-close
+     ROOT CAUSE OF CRASH:
+     - `DispatchQueue.main.sync` from background thread caused race conditions
+     - Rapid overlay creation/destruction overwhelmed Core Animation
+     - `safeCloseOverlay()` 0.1s delay created window where overlays could be
+       recreated before old ones finished closing
+     
+     SOLUTION:
+     - Use ASYNC dispatch instead of sync (no blocking)
+     - Don't remove overlays, just HIDE them with setDimLevel(0)
+     - Only create NEW overlays for windows we've never seen
+     - Let hidden overlays persist and be reused when window becomes inactive again
      
      - Parameter decisions: Array of decay dimming decisions for all windows
      */
     func applyDecayDimming(_ decisions: [DecayDimmingDecision]) {
-        // CRITICAL: Run synchronously on main thread to prevent race conditions
-        // Don't use async dispatch - the caller already handles threading
-        guard Thread.isMainThread else {
-            DispatchQueue.main.sync { [weak self] in
-                self?.applyDecayDimming(decisions)
-            }
-            return
-        }
-        
-        // Track which windows have decisions
-        var decisionWindowIDs = Set<CGWindowID>()
-        
-        for decision in decisions {
-            decisionWindowIDs.insert(decision.windowID)
+        // FIX: Use async instead of sync to prevent blocking and race conditions
+        // The slight delay is acceptable for decay dimming (it's gradual anyway)
+        let applyBlock: () -> Void = { [weak self] in
+            guard let self = self else { return }
             
-            // Skip active windows - they don't get decay overlays
-            if decision.isActive || decision.decayDimLevel <= 0 {
-                // Remove existing decay overlay if any
-                if let overlay = self.decayOverlays.removeValue(forKey: decision.windowID) {
-                    safeCloseOverlay(overlay)
+            // Track which windows have decisions
+            var decisionWindowIDs = Set<CGWindowID>()
+            
+            for decision in decisions {
+                decisionWindowIDs.insert(decision.windowID)
+                
+                // For active windows or windows with no decay, HIDE the overlay (don't destroy)
+                if decision.isActive || decision.decayDimLevel <= 0.01 {
+                    // Just hide existing overlay - don't remove from dictionary
+                    if let existing = self.decayOverlays[decision.windowID] {
+                        // Fade to invisible instead of destroying
+                        if existing.dimLevel > 0.01 {
+                            existing.setDimLevel(0.0, animated: true, duration: 0.2)
+                        }
+                    }
+                    continue
                 }
-                continue
+                
+                // Update existing or create new decay overlay
+                if let existing = self.decayOverlays[decision.windowID] {
+                    // Update position and dim level
+                    existing.updatePosition(to: decision.windowBounds, animated: true, duration: 0.3)
+                    existing.setDimLevel(decision.decayDimLevel, animated: true)
+                    
+                    // Make sure it's visible and properly ordered
+                    if !existing.isVisible {
+                        existing.orderFront(nil)
+                    }
+                    existing.orderAboveWindow(decision.windowID)
+                } else {
+                    // Create new decay overlay using factory method
+                    // Start at 0 opacity and FADE IN to target level
+                    let overlayID = "decay-\(decision.windowID)"
+                    let overlay = DimOverlayWindow.create(
+                        frame: decision.windowBounds,
+                        dimLevel: 0.0,  // Start invisible
+                        id: overlayID
+                    )
+                    overlay.level = .normal
+                    overlay.orderFront(nil)
+                    overlay.orderAboveWindow(decision.windowID)
+                    
+                    self.decayOverlays[decision.windowID] = overlay
+                    
+                    // Fade in to target dim level with smooth animation
+                    overlay.setDimLevel(decision.decayDimLevel, animated: true, duration: 0.3)
+                }
             }
             
-            // Update existing or create new decay overlay
-            if let existing = self.decayOverlays[decision.windowID] {
-                // Update position and dim level
-                // FIX (Jan 8, 2026): Enable animation for decay overlays too for smooth
-                // transitions when windows resize. Since analysis runs ~1x/sec, animation
-                // won't cause "lag behind" issues like it would for drag operations.
-                existing.updatePosition(to: decision.windowBounds, animated: true, duration: 0.3)
-                existing.setDimLevel(decision.decayDimLevel, animated: true)
-                existing.orderAboveWindow(decision.windowID)
+            // For windows that no longer exist, HIDE the overlay but keep reference
+            // We'll clean them up later with a separate cleanup pass
+            let staleIDs = Set(self.decayOverlays.keys).subtracting(decisionWindowIDs)
+            for staleID in staleIDs {
+                if let overlay = self.decayOverlays[staleID] {
+                    // Just hide it - don't close
+                    if overlay.isVisible {
+                        overlay.setDimLevel(0.0, animated: true, duration: 0.2)
+                        overlay.orderOut(nil)
+                    }
+                }
+            }
+            
+            // Periodically clean up truly stale overlays (hidden for > 30 seconds)
+            // This prevents memory leak while avoiding rapid create/destroy cycles
+            self.cleanupStaleDecayOverlays(activeIDs: decisionWindowIDs)
+        }
+        
+        // Run on main thread (async to prevent blocking)
+        if Thread.isMainThread {
+            applyBlock()
+        } else {
+            DispatchQueue.main.async(execute: applyBlock)
+        }
+    }
+    
+    /// Timestamps when decay overlays became hidden (for cleanup)
+    private var decayOverlayHiddenTimes: [CGWindowID: Date] = [:]
+    
+    /**
+     Cleans up decay overlays that have been hidden for too long.
+     
+     This prevents memory leaks while avoiding the rapid create/destroy
+     cycles that were causing crashes.
+     */
+    private func cleanupStaleDecayOverlays(activeIDs: Set<CGWindowID>) {
+        let now = Date()
+        let maxHiddenTime: TimeInterval = 30.0  // 30 seconds before cleanup
+        
+        // Update hidden timestamps
+        for (windowID, overlay) in decayOverlays {
+            if !activeIDs.contains(windowID) || overlay.dimLevel < 0.01 {
+                // Overlay is hidden
+                if decayOverlayHiddenTimes[windowID] == nil {
+                    decayOverlayHiddenTimes[windowID] = now
+                }
             } else {
-                // Create new decay overlay using factory method
-                // FIX (Jan 8, 2026): Start at 0 opacity and FADE IN to target level
-                // This prevents the jarring "pop-in" effect when decay overlays appear
-                let overlayID = "decay-\(decision.windowID)"
-                let overlay = DimOverlayWindow.create(
-                    frame: decision.windowBounds,
-                    dimLevel: 0.0,  // Start invisible
-                    id: overlayID
-                )
-                overlay.level = .normal
-                overlay.orderFront(nil)
-                overlay.orderAboveWindow(decision.windowID)
-                
-                self.decayOverlays[decision.windowID] = overlay
-                
-                // Fade in to target dim level with smooth animation
-                overlay.setDimLevel(decision.decayDimLevel, animated: true, duration: 0.3)
+                // Overlay is active - clear timestamp
+                decayOverlayHiddenTimes.removeValue(forKey: windowID)
             }
         }
         
-        // Remove decay overlays for windows that no longer exist
-        let staleIDs = Set(self.decayOverlays.keys).subtracting(decisionWindowIDs)
-        for staleID in staleIDs {
-            if let overlay = self.decayOverlays.removeValue(forKey: staleID) {
-                safeCloseOverlay(overlay)
+        // Clean up overlays hidden for too long
+        var toRemove: [CGWindowID] = []
+        for (windowID, hiddenTime) in decayOverlayHiddenTimes {
+            if now.timeIntervalSince(hiddenTime) > maxHiddenTime {
+                toRemove.append(windowID)
+            }
+        }
+        
+        for windowID in toRemove {
+            decayOverlayHiddenTimes.removeValue(forKey: windowID)
+            if let overlay = decayOverlays.removeValue(forKey: windowID) {
+                // Safe close with longer delay since we're not in a rush
+                overlay.orderOut(nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak overlay] in
+                    overlay?.close()
+                }
             }
         }
     }
@@ -820,13 +885,15 @@ final class OverlayManager {
     /**
      Safely closes an overlay window, ensuring Core Animation has finished.
      
-     FIX (Jan 8, 2026): Added to prevent EXC_BAD_ACCESS crash.
-     The crash happened when close() was called while Core Animation
-     was still animating the overlay. This method:
+     FIX (Jan 9, 2026): INCREASED delay from 0.1s to 0.3s to give CA more time.
+     The original 0.1s was too short when multiple overlays were being closed
+     simultaneously, causing EXC_BAD_ACCESS in objc_release.
+     
+     This method:
      1. Flushes any pending CA transactions
      2. Hides the window first
      3. Uses weak reference in delayed close to prevent over-retain
-     4. Gives CA time to finish before actually closing
+     4. Gives CA MORE time to finish before actually closing (0.3s instead of 0.1s)
      
      - Parameter overlay: The overlay window to close
      */
@@ -838,8 +905,9 @@ final class OverlayManager {
         overlay.orderOut(nil)
         
         // Step 3: Delayed close with WEAK reference
-        // If overlay is already deallocated by the time this runs, it's fine
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak overlay] in
+        // FIX (Jan 9, 2026): Increased from 0.1s to 0.3s to prevent crashes
+        // The longer delay gives Core Animation more time to complete animations
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak overlay] in
             guard let overlay = overlay else {
                 // Already deallocated - nothing to do
                 return
@@ -854,15 +922,30 @@ final class OverlayManager {
     /**
      Removes all decay overlays.
      
-     FIX (Jan 8, 2026): Uses safeCloseOverlay to prevent EXC_BAD_ACCESS crash.
+     FIX (Jan 9, 2026): Uses STAGGERED close timing to prevent overwhelming CA.
+     Previous implementation closed all overlays at once with 0.1s delay,
+     which still caused crashes when there were many overlays.
+     Now we stagger the close operations by 50ms each.
      */
     private func removeAllDecayOverlays() {
         let overlaysToClose = Array(decayOverlays.values)
         decayOverlays.removeAll()
+        decayOverlayHiddenTimes.removeAll()
         
-        // Use safe close for each overlay
-        for overlay in overlaysToClose {
-            safeCloseOverlay(overlay)
+        // FIX: Stagger close operations to prevent overwhelming Core Animation
+        // Each overlay gets 50ms more delay than the previous one
+        for (index, overlay) in overlaysToClose.enumerated() {
+            let delay = 0.3 + Double(index) * 0.05  // 0.3s base + 50ms per overlay
+            
+            // Hide immediately
+            overlay.orderOut(nil)
+            
+            // Staggered close
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak overlay] in
+                guard let overlay = overlay else { return }
+                CATransaction.flush()
+                overlay.close()
+            }
         }
     }
     
@@ -922,8 +1005,15 @@ final class OverlayManager {
      Hides all overlays without destroying them.
      
      Used for temporary pause functionality.
+     
+     FIX (Jan 9, 2026): Added fade out for decay overlays to prevent jarring changes,
+     and wrapped in CA transaction for smoother handling.
      */
     func hideAllOverlays() {
+        // Begin a CA transaction for smoother batch updates
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.2)
+        
         for (_, overlay) in windowOverlays {
             overlay.orderOut(nil)
         }
@@ -933,9 +1023,15 @@ final class OverlayManager {
         for (_, overlay) in regionOverlays {
             overlay.orderOut(nil)
         }
+        
+        // Fade out decay overlays before hiding
         for (_, overlay) in decayOverlays {
+            overlay.setDimLevel(0.0, animated: false)  // Immediate fade
             overlay.orderOut(nil)
         }
+        
+        CATransaction.commit()
+        
         isActive = false
     }
     

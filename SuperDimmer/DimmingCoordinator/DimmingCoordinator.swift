@@ -835,11 +835,20 @@ final class DimmingCoordinator: ObservableObject {
     // MARK: - Decay Dimming
     // ================================================================
     
+    /// Timestamp of last decay dimming application (for throttling)
+    private var lastDecayApplicationTime: CFAbsoluteTime = 0
+    
+    /// Minimum interval between decay dimming updates (seconds)
+    private let minDecayInterval: CFAbsoluteTime = 1.0
+    
     /**
      Generates and applies decay dimming for all inactive windows.
      
      This creates FULL-WINDOW overlays for inactive windows based on
      how long they've been inactive. Separate from region-based dimming.
+     
+     FIX (Jan 9, 2026): Added throttling to prevent rapid overlay updates.
+     Decay dimming is gradual, so we don't need to update every analysis cycle.
      
      - Parameter windows: All visible windows to consider
      */
@@ -849,6 +858,14 @@ final class DimmingCoordinator: ObservableObject {
             overlayManager.applyDecayDimming([])
             return
         }
+        
+        // THROTTLE: Don't update decay overlays too frequently
+        // Decay is gradual, updating every 1+ second is plenty
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastDecayApplicationTime >= minDecayInterval else {
+            return
+        }
+        lastDecayApplicationTime = now
         
         let settings = SettingsManager.shared
         let inactivityTracker = WindowInactivityTracker.shared
@@ -866,14 +883,8 @@ final class DimmingCoordinator: ObservableObject {
             // Clamp to max decay level
             let clampedDecayLevel = min(decayDimLevel, CGFloat(settings.maxDecayDimLevel))
             
-            // FIX (Jan 8, 2026): Removed excessive per-window decay logging.
-            // The console was flooded with "Decay calc for..." messages (one per window
-            // per analysis cycle), which made debugging difficult and added overhead.
-            // The previous implementation logged EVERY window EVERY second.
-            //
-            // Now we only log to the file-based debug log when there's actually
-            // meaningful decay happening (not when window is active or decay is 0).
-            if !window.isActive && clampedDecayLevel > 0.01 {
+            // Only log when there's meaningful decay happening
+            if !window.isActive && clampedDecayLevel > 0.05 {
                 debugLog("⏰ Decay: '\(window.ownerName)' ID:\(window.id) - " +
                          "inactive=\(String(format: "%.0f", inactivityDuration))s, " +
                          "level=\(String(format: "%.2f", clampedDecayLevel))")
@@ -891,12 +902,8 @@ final class DimmingCoordinator: ObservableObject {
             decayDecisions.append(decision)
         }
         
-        // Apply decay overlays
+        // Apply decay overlays (this now uses async dispatch internally)
         overlayManager.applyDecayDimming(decayDecisions)
-        
-        let decayingCount = decayDecisions.filter { !$0.isActive && $0.decayDimLevel > 0 }.count
-        let totalInactive = decayDecisions.filter { !$0.isActive }.count
-        debugLog("⏰ Applied decay dimming: \(decayingCount) with visible dim, \(totalInactive) total inactive")
     }
     
     /**
