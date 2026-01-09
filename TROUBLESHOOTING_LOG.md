@@ -525,3 +525,55 @@ Use:
 2. Window becomes inactive → fade overlay back to target opacity
 
 Same visual result, but no object lifecycle churn.
+
+---
+
+## [Jan 9, 2026 - Follow-up] Still Crashing After Previous Fixes
+
+### Problem Description
+App still crashing with `EXC_BAD_ACCESS` in `objc_release`. Console shows many decay overlays 
+being created: `decay-27099`, `decay-146`, `decay-28514`, etc. - all within milliseconds.
+Xcode shows ~50 concurrent threads active.
+
+### Root Cause
+**The previous fix didn't actually implement HIDE/SHOW** - it still DESTROYED overlays when
+windows became active (lines 764-769):
+
+```swift
+if decision.isActive || decision.decayDimLevel <= 0.01 {
+    // Remove overlay if it exists  
+    if let overlay = self.decayOverlays.removeValue(forKey: decision.windowID) {
+        self.safeCloseOverlay(overlay)  // DESTROYS it!
+    }
+    continue
+}
+```
+
+This meant:
+- Window becomes active → overlay DESTROYED
+- Window becomes inactive → NEW overlay CREATED
+- Repeat every analysis cycle
+- Constant create/destroy churn overwhelms Core Animation
+
+### Solution (Jan 9, 2026)
+
+**ACTUALLY implement hide/show pattern:**
+
+```swift
+if let existing = self.decayOverlays[decision.windowID] {
+    // REUSE existing overlay - just update dim level
+    let targetLevel = (decision.isActive || decision.decayDimLevel <= 0.01) ? 0.0 : decision.decayDimLevel
+    existing.setDimLevel(targetLevel, animated: true)  // HIDE by setting to 0, not destroy!
+} else if !decision.isActive && decision.decayDimLevel > 0.01 {
+    // Only CREATE if window needs dimming AND doesn't have overlay yet
+    // Create new overlay...
+}
+// If no overlay AND window is active: do nothing, wait for inactivity
+```
+
+**Key changes:**
+1. NEVER destroy overlay just because window became active
+2. Set dimLevel to 0.0 to HIDE (visually invisible, but window object stays alive)
+3. Only DESTROY when window actually CLOSES (stale window IDs)
+4. Increased safeCloseOverlay delay from 0.3s to 0.5s
+5. Remove animations before hiding to stop CA from accessing layer
