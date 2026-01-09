@@ -86,6 +86,12 @@ final class WindowInactivityTracker: ObservableObject {
     /// Only this specific window is considered "active" (no decay)
     private var lastFrontmostWindowID: CGWindowID = 0
     
+    /// Apps that are currently hidden (for detecting unhide vs window switch)
+    /// FIX (Jan 9, 2026): We need to distinguish between:
+    /// - App was hidden and got unhidden → reset ALL windows
+    /// - App was visible, user clicked another window → reset only THAT window
+    private var hiddenAppPIDs: Set<pid_t> = []
+    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
@@ -131,9 +137,9 @@ final class WindowInactivityTracker: ObservableObject {
     /**
      Updates tracking when an app becomes frontmost (via system notification).
      
-     FIX (Jan 9, 2026): Reset decay timers for ALL windows of this app.
-     When an app is unhidden/activated, all its windows should start fresh
-     with no decay dimming. The user expects "reopening" an app to reset timers.
+     FIX (Jan 9, 2026): Only reset ALL windows if app was previously HIDDEN.
+     If app was already visible and user just clicked a different window,
+     only that specific window should reset (via windowBecameActive).
      
      - Parameter pid: The process ID of the app that became frontmost
      */
@@ -141,17 +147,41 @@ final class WindowInactivityTracker: ObservableObject {
         lock.lock()
         defer { lock.unlock() }
         
+        // Check if this app was previously hidden
+        let wasHidden = hiddenAppPIDs.contains(pid)
+        
+        // App is now active, remove from hidden set
+        hiddenAppPIDs.remove(pid)
+        
         lastFrontmostPID = pid
         
-        // FIX: Reset timestamps for ALL windows of this app
-        // This ensures unhiding an app resets decay for all its windows
-        let now = Date()
-        for (windowID, var info) in windowActivity {
-            if info.ownerPID == pid {
-                info.lastActiveTime = now
-                windowActivity[windowID] = info
+        // Only reset ALL windows if app was UNHIDDEN (not just window switch)
+        if wasHidden {
+            let now = Date()
+            for (windowID, var info) in windowActivity {
+                if info.ownerPID == pid {
+                    info.lastActiveTime = now
+                    windowActivity[windowID] = info
+                }
             }
+            print("⏰ App unhidden (PID \(pid)) - reset all window timers")
         }
+        // If app wasn't hidden, individual window resets via windowBecameActive()
+    }
+    
+    /**
+     Called when an app is hidden.
+     
+     We track hidden apps so we can reset all their window timers
+     when they're unhidden (vs just clicking a different window).
+     
+     - Parameter pid: The process ID of the hidden app
+     */
+    func appWasHidden(pid: pid_t) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        hiddenAppPIDs.insert(pid)
     }
     
     /**
@@ -264,7 +294,7 @@ final class WindowInactivityTracker: ObservableObject {
     // ================================================================
     
     /**
-     Sets up observers for app activation changes.
+     Sets up observers for app activation and hide changes.
      */
     private func setupObservers() {
         // Observe when apps become frontmost
@@ -279,9 +309,29 @@ final class WindowInactivityTracker: ObservableObject {
             }
             .store(in: &cancellables)
         
+        // Observe when apps are hidden (Cmd+H or programmatically)
+        // FIX (Jan 9, 2026): Track hidden apps so we know when they're UNHIDDEN
+        // vs just switching windows within an already-visible app
+        NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.didHideApplicationNotification)
+            .sink { [weak self] notification in
+                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+                    return
+                }
+                self?.appWasHidden(pid: app.processIdentifier)
+            }
+            .store(in: &cancellables)
+        
         // Initialize with current frontmost app
         if let frontmost = NSWorkspace.shared.frontmostApplication {
             lastFrontmostPID = frontmost.processIdentifier
+        }
+        
+        // Initialize hidden apps set from currently running apps
+        for app in NSWorkspace.shared.runningApplications {
+            if app.isHidden {
+                hiddenAppPIDs.insert(app.processIdentifier)
+            }
         }
     }
 }
