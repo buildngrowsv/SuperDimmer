@@ -106,6 +106,19 @@ final class SettingsManager: ObservableObject {
         // Excluded Apps
         case excludedAppBundleIDs = "superdimmer.excludedAppBundleIDs"
         
+        // Auto-Hide Inactive Apps (APP-LEVEL)
+        case autoHideEnabled = "superdimmer.autoHideEnabled"
+        case autoHideDelay = "superdimmer.autoHideDelay"
+        case autoHideExcludedApps = "superdimmer.autoHideExcludedApps"
+        case autoHideExcludeSystemApps = "superdimmer.autoHideExcludeSystemApps"
+        
+        // Auto-Minimize Inactive Windows (WINDOW-LEVEL)
+        case autoMinimizeEnabled = "superdimmer.autoMinimizeEnabled"
+        case autoMinimizeDelay = "superdimmer.autoMinimizeDelay"
+        case autoMinimizeIdleResetTime = "superdimmer.autoMinimizeIdleResetTime"
+        case autoMinimizeWindowThreshold = "superdimmer.autoMinimizeWindowThreshold"
+        case autoMinimizeExcludedApps = "superdimmer.autoMinimizeExcludedApps"
+        
         // Color Temperature
         case colorTemperatureEnabled = "superdimmer.colorTemperatureEnabled"
         case colorTemperature = "superdimmer.colorTemperature"
@@ -431,6 +444,144 @@ final class SettingsManager: ObservableObject {
     }
     
     // ================================================================
+    // MARK: - Auto-Hide Inactive Apps Settings
+    // ================================================================
+    
+    /**
+     Master toggle for auto-hiding inactive apps.
+     
+     When enabled, apps that haven't been used for `autoHideDelay` minutes
+     will be automatically hidden (like pressing Cmd+H).
+     
+     Default: true (ON by default - this is a non-destructive feature)
+     */
+    @Published var autoHideEnabled: Bool {
+        didSet {
+            defaults.set(autoHideEnabled, forKey: Keys.autoHideEnabled.rawValue)
+        }
+    }
+    
+    /**
+     Minutes of inactivity before an app is auto-hidden.
+     
+     Range: 5-120 minutes
+     Default: 30 minutes
+     
+     The timer starts when an app loses focus. If the user returns to the app
+     before the delay, the timer resets.
+     */
+    @Published var autoHideDelay: Double {
+        didSet {
+            defaults.set(autoHideDelay, forKey: Keys.autoHideDelay.rawValue)
+        }
+    }
+    
+    /**
+     Bundle IDs of apps that should never be auto-hidden.
+     
+     These apps will remain visible regardless of inactivity.
+     Example: ["com.apple.finder", "com.apple.systempreferences"]
+     */
+    @Published var autoHideExcludedApps: [String] {
+        didSet {
+            defaults.set(autoHideExcludedApps, forKey: Keys.autoHideExcludedApps.rawValue)
+        }
+    }
+    
+    /**
+     Whether to automatically exclude system apps from auto-hide.
+     
+     When true, apps like Finder, System Preferences, Activity Monitor
+     will never be auto-hidden. Default: true
+     */
+    @Published var autoHideExcludeSystemApps: Bool {
+        didSet {
+            defaults.set(autoHideExcludeSystemApps, forKey: Keys.autoHideExcludeSystemApps.rawValue)
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Auto-Minimize Inactive Windows Settings
+    // ================================================================
+    
+    /**
+     Master toggle for auto-minimizing inactive windows.
+     
+     When enabled, windows that have been inactive for `autoMinimizeDelay`
+     minutes of ACTIVE user time will be minimized to the Dock IF the
+     app has more than `autoMinimizeWindowThreshold` windows open.
+     
+     IMPORTANT: This only counts active usage time (mouse/keyboard activity).
+     Walking away won't cause windows to minimize.
+     
+     Default: false (OFF by default - this is more aggressive)
+     */
+    @Published var autoMinimizeEnabled: Bool {
+        didSet {
+            defaults.set(autoMinimizeEnabled, forKey: Keys.autoMinimizeEnabled.rawValue)
+        }
+    }
+    
+    /**
+     Minutes of ACTIVE use before inactive windows are minimized.
+     
+     Range: 5-60 minutes
+     Default: 15 minutes
+     
+     NOTE: This only counts time when the user is actively using the computer
+     (mouse movement, keyboard input). Idle time doesn't count.
+     */
+    @Published var autoMinimizeDelay: Double {
+        didSet {
+            defaults.set(autoMinimizeDelay, forKey: Keys.autoMinimizeDelay.rawValue)
+        }
+    }
+    
+    /**
+     Minutes of user idle time that resets ALL window minimize timers.
+     
+     Range: 2-30 minutes
+     Default: 5 minutes
+     
+     WHY: If you walk away for 5+ minutes (coffee break, meeting),
+     all timers reset. This prevents coming back to everything minimized.
+     Also resets on wake from sleep.
+     */
+    @Published var autoMinimizeIdleResetTime: Double {
+        didSet {
+            defaults.set(autoMinimizeIdleResetTime, forKey: Keys.autoMinimizeIdleResetTime.rawValue)
+        }
+    }
+    
+    /**
+     Minimum windows per app before auto-minimize kicks in.
+     
+     Range: 1-10
+     Default: 3
+     
+     Example: If set to 3 and Cursor has 8 windows, the 5 oldest inactive
+     windows will be minimized (leaving 3). If Cursor has 2 windows, none
+     will be minimized.
+     */
+    @Published var autoMinimizeWindowThreshold: Int {
+        didSet {
+            defaults.set(autoMinimizeWindowThreshold, forKey: Keys.autoMinimizeWindowThreshold.rawValue)
+        }
+    }
+    
+    /**
+     Bundle IDs of apps that should never have windows auto-minimized.
+     
+     These apps' windows will remain visible regardless of count or inactivity.
+     Example: ["com.apple.finder", "com.apple.mail"]
+     */
+    @Published var autoMinimizeExcludedApps: [String] {
+        didSet {
+            defaults.set(autoMinimizeExcludedApps, forKey: Keys.autoMinimizeExcludedApps.rawValue)
+        }
+    }
+    
+    // ================================================================
     // MARK: - Color Temperature Settings
     // ================================================================
     
@@ -705,6 +856,38 @@ final class SettingsManager: ObservableObject {
         self.excludedAppBundleIDs = defaults.object(forKey: Keys.excludedAppBundleIDs.rawValue) as? [String] ?? []
         
         // ============================================================
+        // Load Auto-Hide Settings
+        // ============================================================
+        // NOTE: Auto-Hide is ON by default (non-destructive feature)
+        self.autoHideEnabled = defaults.object(forKey: Keys.autoHideEnabled.rawValue) != nil ?
+            defaults.bool(forKey: Keys.autoHideEnabled.rawValue) : true  // ON by default
+        
+        self.autoHideDelay = defaults.object(forKey: Keys.autoHideDelay.rawValue) != nil ?
+            defaults.double(forKey: Keys.autoHideDelay.rawValue) : 30.0  // 30 minutes
+        
+        self.autoHideExcludedApps = defaults.object(forKey: Keys.autoHideExcludedApps.rawValue) as? [String] ?? []
+        
+        self.autoHideExcludeSystemApps = defaults.object(forKey: Keys.autoHideExcludeSystemApps.rawValue) != nil ?
+            defaults.bool(forKey: Keys.autoHideExcludeSystemApps.rawValue) : true  // Exclude system apps by default
+        
+        // ============================================================
+        // Load Auto-Minimize Settings
+        // ============================================================
+        // NOTE: Auto-Minimize is OFF by default (more aggressive feature)
+        self.autoMinimizeEnabled = defaults.bool(forKey: Keys.autoMinimizeEnabled.rawValue)  // OFF by default
+        
+        self.autoMinimizeDelay = defaults.object(forKey: Keys.autoMinimizeDelay.rawValue) != nil ?
+            defaults.double(forKey: Keys.autoMinimizeDelay.rawValue) : 15.0  // 15 minutes of active use
+        
+        self.autoMinimizeIdleResetTime = defaults.object(forKey: Keys.autoMinimizeIdleResetTime.rawValue) != nil ?
+            defaults.double(forKey: Keys.autoMinimizeIdleResetTime.rawValue) : 5.0  // 5 minutes idle resets timers
+        
+        self.autoMinimizeWindowThreshold = defaults.object(forKey: Keys.autoMinimizeWindowThreshold.rawValue) != nil ?
+            defaults.integer(forKey: Keys.autoMinimizeWindowThreshold.rawValue) : 3  // Keep at least 3 windows
+        
+        self.autoMinimizeExcludedApps = defaults.object(forKey: Keys.autoMinimizeExcludedApps.rawValue) as? [String] ?? []
+        
+        // ============================================================
         // Load Color Temperature Settings
         // ============================================================
         self.colorTemperatureEnabled = defaults.bool(forKey: Keys.colorTemperatureEnabled.rawValue)
@@ -793,6 +976,19 @@ final class SettingsManager: ObservableObject {
         decayRate = 0.01
         decayStartDelay = 30.0
         maxDecayDimLevel = 0.8
+        
+        // Auto-Hide (ON by default)
+        autoHideEnabled = true
+        autoHideDelay = 30.0
+        autoHideExcludedApps = []
+        autoHideExcludeSystemApps = true
+        
+        // Auto-Minimize (OFF by default)
+        autoMinimizeEnabled = false
+        autoMinimizeDelay = 15.0
+        autoMinimizeIdleResetTime = 5.0
+        autoMinimizeWindowThreshold = 3
+        autoMinimizeExcludedApps = []
         
         // Color Temperature
         colorTemperatureEnabled = false

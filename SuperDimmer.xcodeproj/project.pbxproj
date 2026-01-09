@@ -8,12 +8,15 @@
 
 /* Begin PBXBuildFile section */
 		18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1786CD87303B63162133E819 /* DimOverlayWindow.swift */; };
+		1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */; };
 		1DE410E49A5AC8F149E219C0 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */; };
 		2432D011DB19FE64F29AE6C1 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 007F0A55A64BEF81B7363D45 /* PreferencesView.swift */; };
 		29BD586ACDE68974C13A7BF1 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EE0BF2647E666C8DE787FC /* LaunchAtLoginManager.swift */; };
 		2D56097619E851E2CC830DF9 /* ColorTemperatureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0BFACA94CF0754453B87312 /* ColorTemperatureManager.swift */; };
 		2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */; };
 		305FA57277603D003500DA9C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B44F65F59A9F4646E6B74 /* AppDelegate.swift */; };
+		34184663D93157DBBB3F3EC7 /* ActiveUsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */; };
+		353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */; };
 		4DD0AECDF80AE9516DB78ABB /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73D0D7E7FF2F4335B2B8EABD /* CoreLocation.framework */; };
 		7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A846E425944D8F0661CB8819 /* SuperDimmerApp.swift */; };
 		9C327178B91606D6643F60EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0CA522F75EAE80D96E8E88F /* Assets.xcassets */; };
@@ -26,6 +29,7 @@
 		C21173BD4C3C9897E9867077 /* WindowInactivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */; };
 		C951F27A7FB2798886F56E12 /* ScheduleManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27586C5BE0F771581C033B4C /* ScheduleManager.swift */; };
 		C95E79645601F9FFCC5B53AB /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8BF3F80B0547D5C1A498D277 /* Accelerate.framework */; };
+		D2603A35C27DD775210CE256 /* AutoHideManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F66E8844DCCCD25531199A7D /* AutoHideManager.swift */; };
 		DE327EB0680EEFB0EFD48236 /* WindowTrackerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */; };
 		E2749825BB4A46ACA89FD676 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC43ECCDBC1C09B92EB293B5 /* MenuBarView.swift */; };
 		E5E6653F4228B5FE2B0D5C28 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C48704075B408B0F4A21CA /* PermissionManager.swift */; };
@@ -54,6 +58,7 @@
 		1BB93951703F6D09744CAB95 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		27586C5BE0F771581C033B4C /* ScheduleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleManager.swift; sourceTree = "<group>"; };
 		31EE0BF2647E666C8DE787FC /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInactivityTracker.swift; sourceTree = "<group>"; };
 		3B4E7AF858AB9888AA55A487 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		43ADA7A645622AB3F65E274F /* SuperDimmerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperDimmerTests.swift; sourceTree = "<group>"; };
 		494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowTrackerService.swift; sourceTree = "<group>"; };
@@ -64,15 +69,18 @@
 		761339A7D21F3EC383AFDC4E /* DimmingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimmingCoordinator.swift; sourceTree = "<group>"; };
 		76856B00C83C0C88F34C0E5E /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		8BF3F80B0547D5C1A498D277 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveUsageTracker.swift; sourceTree = "<group>"; };
 		99D465058B8A750951B2B515 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
 		A18AD95BFAF7198E0481573C /* SuperDimmer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SuperDimmer.entitlements; sourceTree = "<group>"; };
 		A846E425944D8F0661CB8819 /* SuperDimmerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperDimmerApp.swift; sourceTree = "<group>"; };
 		AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrightRegionDetector.swift; sourceTree = "<group>"; };
 		B0BFACA94CF0754453B87312 /* ColorTemperatureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTemperatureManager.swift; sourceTree = "<group>"; };
+		BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoMinimizeManager.swift; sourceTree = "<group>"; };
 		C5C48704075B408B0F4A21CA /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		D0CA522F75EAE80D96E8E88F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		EC43ECCDBC1C09B92EB293B5 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		F17205C30B76A224ED5805C1 /* SuperDimmerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SuperDimmerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F66E8844DCCCD25531199A7D /* AutoHideManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoHideManager.swift; sourceTree = "<group>"; };
 		FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -243,6 +251,10 @@
 		D1EB4FF3BCEC41A74119B510 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */,
+				3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */,
+				F66E8844DCCCD25531199A7D /* AutoHideManager.swift */,
+				BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */,
 				4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */,
 				AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */,
 				99D465058B8A750951B2B515 /* LocationService.swift */,
@@ -374,7 +386,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				34184663D93157DBBB3F3EC7 /* ActiveUsageTracker.swift in Sources */,
 				305FA57277603D003500DA9C /* AppDelegate.swift in Sources */,
+				353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */,
+				D2603A35C27DD775210CE256 /* AutoHideManager.swift in Sources */,
+				1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */,
 				F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */,
 				B15709EDC740B83EB0DE16E3 /* BrightnessAnalysisEngine.swift in Sources */,
 				2D56097619E851E2CC830DF9 /* ColorTemperatureManager.swift in Sources */,
