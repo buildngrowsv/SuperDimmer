@@ -110,13 +110,127 @@ final class OverlayManager {
     // ================================================================
     
     /**
+     Whether overlays are temporarily hidden due to Mission Control / Spaces.
+     We hide overlays during Space transitions to avoid visual glitches.
+     */
+    private var isHiddenForSpaceChange: Bool = false
+    
+    /**
      Private initializer enforces singleton pattern.
      Sets up observers for settings and display changes.
      */
     private init() {
         setupDisplayChangeObserver()
         setupSettingsObservers()
+        setupSpaceChangeObserver()
         print("✓ OverlayManager initialized")
+    }
+    
+    /**
+     Sets up observer for Space changes (Mission Control, Space switching).
+     
+     MISSION CONTROL HANDLING:
+     There's no official API to detect Mission Control activation.
+     However, we can detect Space changes which occur when:
+     - User switches Spaces via swipe or keyboard
+     - User exits Mission Control to a different Space
+     - User uses App Exposé
+     
+     WORKAROUND:
+     When a Space change is detected, we hide overlays briefly,
+     then show them again. This prevents visual glitches during
+     the transition animation.
+     */
+    private func setupSpaceChangeObserver() {
+        // Observe Space changes
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSpaceChange),
+            name: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil
+        )
+        
+        // Also observe when we switch TO full screen apps
+        // This helps with Mission Control edge cases
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWindowDidChangeScreen),
+            name: NSWindow.didChangeScreenNotification,
+            object: nil
+        )
+        
+        print("✓ OverlayManager: Space change observer configured")
+    }
+    
+    @objc private func handleSpaceChange(_ notification: Notification) {
+        // Hide overlays during Space transition
+        hideOverlaysForSpaceChange()
+        
+        // Restore after a brief delay to let animation complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.restoreOverlaysAfterSpaceChange()
+        }
+    }
+    
+    @objc private func handleWindowDidChangeScreen(_ notification: Notification) {
+        // A window moved screens - might be exiting Mission Control
+        // Brief hide and restore to sync state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.restoreOverlaysAfterSpaceChange()
+        }
+    }
+    
+    /**
+     Temporarily hides all overlays during Space/Mission Control transitions.
+     */
+    private func hideOverlaysForSpaceChange() {
+        guard !isHiddenForSpaceChange else { return }
+        
+        isHiddenForSpaceChange = true
+        
+        // Hide all overlay types
+        for (_, overlay) in windowOverlays {
+            overlay.orderOut(nil)
+        }
+        for (_, overlay) in displayOverlays {
+            overlay.orderOut(nil)
+        }
+        for (_, overlay) in regionOverlays {
+            overlay.orderOut(nil)
+        }
+        for (_, overlay) in decayOverlays {
+            overlay.orderOut(nil)
+        }
+        
+        print("🌀 OverlayManager: Overlays hidden for Space change")
+    }
+    
+    /**
+     Restores overlays after Space/Mission Control transition completes.
+     */
+    private func restoreOverlaysAfterSpaceChange() {
+        guard isHiddenForSpaceChange else { return }
+        
+        isHiddenForSpaceChange = false
+        
+        // Only restore if we were active before
+        guard isActive else { return }
+        
+        // Restore all overlay types
+        for (_, overlay) in windowOverlays {
+            overlay.orderFront(nil)
+        }
+        for (_, overlay) in displayOverlays {
+            overlay.orderFront(nil)
+        }
+        for (_, overlay) in regionOverlays {
+            overlay.orderFront(nil)
+        }
+        for (_, overlay) in decayOverlays {
+            overlay.orderFront(nil)
+        }
+        
+        print("🌀 OverlayManager: Overlays restored after Space change")
     }
     
     // ================================================================

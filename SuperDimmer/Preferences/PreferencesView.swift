@@ -457,32 +457,50 @@ struct WindowManagementPreferencesTab: View {
             // Excluded Apps Section (for both features)
             // ========================================================
             Section("Exclusions") {
-                NavigationLink {
-                    AutoHideExclusionsList()
+                Button {
+                    showAutoHideExclusions = true
                 } label: {
                     HStack {
                         Text("Auto-Hide Exclusions")
                         Spacer()
                         Text("\(settings.autoHideExcludedApps.count)")
                             .foregroundColor(.secondary)
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
                     }
                 }
+                .buttonStyle(.plain)
                 
-                NavigationLink {
-                    AutoMinimizeExclusionsList()
+                Button {
+                    showAutoMinimizeExclusions = true
                 } label: {
                     HStack {
                         Text("Auto-Minimize Exclusions")
                         Spacer()
                         Text("\(settings.autoMinimizeExcludedApps.count)")
                             .foregroundColor(.secondary)
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
                     }
                 }
+                .buttonStyle(.plain)
             }
         }
         .formStyle(.grouped)
         .padding()
+        .sheet(isPresented: $showAutoHideExclusions) {
+            AutoHideExclusionsList(isPresented: $showAutoHideExclusions)
+        }
+        .sheet(isPresented: $showAutoMinimizeExclusions) {
+            AutoMinimizeExclusionsList(isPresented: $showAutoMinimizeExclusions)
+        }
     }
+    
+    // State for sheets
+    @State private var showAutoHideExclusions = false
+    @State private var showAutoMinimizeExclusions = false
 }
 
 // ====================================================================
@@ -491,12 +509,21 @@ struct WindowManagementPreferencesTab: View {
 
 struct AutoHideExclusionsList: View {
     @EnvironmentObject var settings: SettingsManager
+    @Binding var isPresented: Bool
     @State private var newBundleID: String = ""
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Apps excluded from Auto-Hide")
-                .font(.headline)
+            // Header with close button
+            HStack {
+                Text("Apps excluded from Auto-Hide")
+                    .font(.headline)
+                Spacer()
+                Button("Done") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.defaultAction)
+            }
             
             Text("These apps will never be automatically hidden, regardless of inactivity.")
                 .font(.caption)
@@ -521,18 +548,25 @@ struct AutoHideExclusionsList: View {
             HStack {
                 TextField("Bundle ID (e.g., com.apple.mail)", text: $newBundleID)
                     .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        addBundleID()
+                    }
                 
                 Button("Add") {
-                    if !newBundleID.isEmpty && !settings.autoHideExcludedApps.contains(newBundleID) {
-                        settings.autoHideExcludedApps.append(newBundleID)
-                        newBundleID = ""
-                    }
+                    addBundleID()
                 }
                 .disabled(newBundleID.isEmpty)
             }
         }
         .padding()
-        .frame(width: 400, height: 300)
+        .frame(width: 450, height: 350)
+    }
+    
+    private func addBundleID() {
+        if !newBundleID.isEmpty && !settings.autoHideExcludedApps.contains(newBundleID) {
+            settings.autoHideExcludedApps.append(newBundleID)
+            newBundleID = ""
+        }
     }
 }
 
@@ -542,12 +576,21 @@ struct AutoHideExclusionsList: View {
 
 struct AutoMinimizeExclusionsList: View {
     @EnvironmentObject var settings: SettingsManager
+    @Binding var isPresented: Bool
     @State private var newBundleID: String = ""
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Apps excluded from Auto-Minimize")
-                .font(.headline)
+            // Header with close button
+            HStack {
+                Text("Apps excluded from Auto-Minimize")
+                    .font(.headline)
+                Spacer()
+                Button("Done") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.defaultAction)
+            }
             
             Text("These apps will never have their windows automatically minimized.")
                 .font(.caption)
@@ -572,18 +615,25 @@ struct AutoMinimizeExclusionsList: View {
             HStack {
                 TextField("Bundle ID (e.g., com.apple.Safari)", text: $newBundleID)
                     .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        addBundleID()
+                    }
                 
                 Button("Add") {
-                    if !newBundleID.isEmpty && !settings.autoMinimizeExcludedApps.contains(newBundleID) {
-                        settings.autoMinimizeExcludedApps.append(newBundleID)
-                        newBundleID = ""
-                    }
+                    addBundleID()
                 }
                 .disabled(newBundleID.isEmpty)
             }
         }
         .padding()
-        .frame(width: 400, height: 300)
+        .frame(width: 450, height: 350)
+    }
+    
+    private func addBundleID() {
+        if !newBundleID.isEmpty && !settings.autoMinimizeExcludedApps.contains(newBundleID) {
+            settings.autoMinimizeExcludedApps.append(newBundleID)
+            newBundleID = ""
+        }
     }
 }
 
