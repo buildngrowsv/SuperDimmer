@@ -436,3 +436,92 @@ override func close() {
 3. **Every mouse click triggers events** - always debounce rapid-fire handlers
 4. **NSWindow.close() is NOT idempotent** - track closing state
 5. **Excessive logging can cause timing-sensitive bugs** to manifest more often
+
+---
+
+## [Jan 9, 2026] Continued EXC_BAD_ACCESS in Decay Overlay Management
+
+### Problem Description
+Despite previous fixes, app still crashed shortly after launch with `EXC_BAD_ACCESS` in `objc_release`.
+Console showed many decay overlays being created rapidly (`decay-28590`, `decay-5337`, etc.) - about 14+
+overlays before the crash.
+
+### Additional Root Causes Discovered
+
+1. **`DispatchQueue.main.sync` from background thread** - The `applyDecayDimming()` method used
+   `DispatchQueue.main.sync` when called from background thread, which could cause subtle race
+   conditions when multiple analysis cycles overlapped.
+
+2. **Rapid create/destroy cycles** - When windows became active, overlays were DESTROYED and when 
+   inactive, RECREATED. This constant churn overwhelmed Core Animation.
+
+3. **0.1s delay still insufficient** - With many overlays being closed simultaneously, 0.1s wasn't
+   enough time for CA to complete all animations.
+
+4. **No throttling on decay dimming** - Decay dimming ran every analysis cycle but is gradual by
+   nature - didn't need such frequent updates.
+
+### Solution (Jan 9, 2026)
+
+**1. Changed from sync to async dispatch:**
+```swift
+// OLD (dangerous)
+guard Thread.isMainThread else {
+    DispatchQueue.main.sync { ... }  // BLOCKING!
+}
+
+// NEW (safe)
+if Thread.isMainThread {
+    applyBlock()
+} else {
+    DispatchQueue.main.async(execute: applyBlock)
+}
+```
+
+**2. HIDE instead of destroy overlays:**
+```swift
+// OLD: Destroy on active
+if decision.isActive {
+    if let overlay = decayOverlays.removeValue(forKey: id) {
+        safeCloseOverlay(overlay)  // Destroyed!
+    }
+}
+
+// NEW: Just hide, keep reference
+if decision.isActive {
+    if let existing = decayOverlays[windowID] {
+        existing.setDimLevel(0.0, animated: true)  // Hidden, not destroyed
+    }
+}
+```
+
+**3. Delayed cleanup for truly stale overlays:**
+- Track when each overlay became hidden
+- Only destroy after 30 seconds of being hidden
+- Prevents memory leak while avoiding rapid create/destroy
+
+**4. Increased safeCloseOverlay delay to 0.3s:**
+- Was 0.1s, now 0.3s
+- Gives CA more time, especially during batch operations
+
+**5. Staggered close operations:**
+- When closing multiple overlays, each gets 50ms additional delay
+- `delay = 0.3 + (index * 0.05)`
+- Prevents overwhelming CA with simultaneous operations
+
+**6. Added throttling to decay dimming:**
+- New `minDecayInterval: 1.0` second minimum between updates
+- Decay is gradual - doesn't need per-cycle updates
+
+### Key Insight
+**Don't destroy/recreate objects rapidly - hide/show is more stable.**
+
+Instead of the pattern:
+1. Window becomes active → destroy overlay
+2. Window becomes inactive → create new overlay
+
+Use:
+1. Window becomes active → fade overlay to 0% opacity
+2. Window becomes inactive → fade overlay back to target opacity
+
+Same visual result, but no object lifecycle churn.
