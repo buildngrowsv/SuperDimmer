@@ -953,24 +953,41 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 ---
 
 #### 5.7 Sparkle Auto-Updates
-- [ ] Add Sparkle framework (SPM)
-- [ ] Configure SUFeedURL in Info.plist
-- [ ] Generate EdDSA key pair
-- [ ] Add public key to Info.plist
-- [ ] Create `UpdateManager.swift`
-- [ ] Add update check menu item
+
+> **📚 Full Documentation:** See `/docs/deployment/UPDATE_DEPLOYMENT_STRATEGY.md` for comprehensive
+> guide including appcast format, EdDSA signing, and release workflow.
+
+**One-Time Setup:**
+- [ ] Add Sparkle framework via SPM (https://github.com/sparkle-project/Sparkle)
+- [ ] Generate EdDSA key pair using `./bin/generate_keys`
+- [ ] **BACKUP private key** to secure location (not in Git!)
+- [ ] Add public key to Info.plist as `SUPublicEDKey`
+- [ ] Configure SUFeedURL in Info.plist → `https://superdimmer.app/sparkle/appcast.xml`
+- [ ] Create `UpdateManager.swift` (see docs for implementation)
+- [ ] Add "Check for Updates..." menu item
+
+**Per-Release Workflow:**
+- [ ] Build Release configuration
+- [ ] Sign with Developer ID + notarize
+- [ ] Create DMG using packaging scripts
+- [ ] Sign archive with EdDSA (`./sign_update`)
+- [ ] Update appcast.xml with new `<item>`
+- [ ] Upload DMG to `SuperDimmer-Website/releases/`
+- [ ] Push to GitHub → Cloudflare auto-deploys
 
 #### 🔨 BUILD CHECK 5.7
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Debug build
 ```
 - [ ] Build succeeds
-- [ ] Sparkle linked
+- [ ] Sparkle framework linked
+- [ ] SUPublicEDKey in Info.plist
 
 #### 🧪 TEST CHECK 5.7
-- [ ] Manual update check works
-- [ ] Sparkle UI shows correctly
-- [ ] Test with local appcast
+- [ ] Manual "Check for Updates" works
+- [ ] Sparkle update dialog UI shows correctly
+- [ ] Test update flow with local/staging appcast
+- [ ] Verify EdDSA signature validation
 
 ---
 

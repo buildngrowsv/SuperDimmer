@@ -51,61 +51,72 @@ struct PreferencesView: View {
     // MARK: - State
     // ================================================================
     
-    @State private var selectedTab = 0
+    /// Currently selected preference section
+    @State private var selectedSection: PreferenceSection = .general
+    
+    // ================================================================
+    // MARK: - Preference Sections
+    // ================================================================
+    
+    /// Available preference sections for sidebar navigation
+    enum PreferenceSection: String, CaseIterable, Identifiable {
+        case general = "General"
+        case brightness = "Brightness"
+        case color = "Color"
+        case excludedApps = "Excluded Apps"
+        case about = "About"
+        
+        var id: String { rawValue }
+        
+        var icon: String {
+            switch self {
+            case .general: return "gear"
+            case .brightness: return "sun.max"
+            case .color: return "thermometer.sun"
+            case .excludedApps: return "minus.circle"
+            case .about: return "info.circle"
+            }
+        }
+    }
     
     // ================================================================
     // MARK: - Body
     // ================================================================
     
     var body: some View {
-        TabView(selection: $selectedTab) {
+        NavigationSplitView {
             // ========================================================
-            // General Tab
+            // Sidebar - Navigation List
             // ========================================================
-            GeneralPreferencesTab()
-                .tabItem {
-                    Label("General", systemImage: "gear")
+            List(PreferenceSection.allCases, selection: $selectedSection) { section in
+                NavigationLink(value: section) {
+                    Label(section.rawValue, systemImage: section.icon)
                 }
-                .tag(0)
-            
+            }
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 220)
+        } detail: {
             // ========================================================
-            // Brightness Tab
+            // Detail - Selected Section Content
             // ========================================================
-            BrightnessPreferencesTab()
-                .tabItem {
-                    Label("Brightness", systemImage: "sun.max")
+            Group {
+                switch selectedSection {
+                case .general:
+                    GeneralPreferencesTab()
+                case .brightness:
+                    BrightnessPreferencesTab()
+                case .color:
+                    ColorPreferencesTab()
+                case .excludedApps:
+                    ExcludedAppsPreferencesTab()
+                case .about:
+                    AboutPreferencesTab()
                 }
-                .tag(1)
-            
-            // ========================================================
-            // Color Tab
-            // ========================================================
-            ColorPreferencesTab()
-                .tabItem {
-                    Label("Color", systemImage: "thermometer.sun")
-                }
-                .tag(2)
-            
-            // ========================================================
-            // Excluded Apps Tab
-            // ========================================================
-            ExcludedAppsPreferencesTab()
-                .tabItem {
-                    Label("Excluded Apps", systemImage: "minus.circle")
-                }
-                .tag(3)
-            
-            // ========================================================
-            // About Tab
-            // ========================================================
-            AboutPreferencesTab()
-                .tabItem {
-                    Label("About", systemImage: "info.circle")
-                }
-                .tag(4)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
         }
-        .frame(width: 500, height: 400)
-        .padding()
+        .frame(width: 650, height: 450)
     }
 }
 
