@@ -779,7 +779,8 @@ final class DimmingCoordinator: ObservableObject {
         let windowsAnalyzed = windows.count
         
         // 7. Apply decay dimming to all inactive windows (full-window overlays)
-        applyDecayDimmingToWindows(windows)
+        // DEBUG: Temporarily disabled to isolate crash source
+        // applyDecayDimmingToWindows(windows)
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.isRunning else {

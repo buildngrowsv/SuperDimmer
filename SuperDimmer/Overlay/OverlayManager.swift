@@ -453,6 +453,12 @@ final class OverlayManager {
     /// Counter for generating unique region IDs
     private var regionCounter: Int = 0
     
+    /// Strong references to overlays being closed
+    /// FIX (Jan 9, 2026): Without this, overlays are deallocated immediately when removed
+    /// from regionOverlays dictionary, causing EXC_BAD_ACCESS in Core Animation.
+    /// We hold them here until close() actually completes.
+    private var overlaysBeingClosed: [DimOverlayWindow] = []
+    
     /**
      Applies dimming overlays for specific bright regions within windows.
      
@@ -885,37 +891,38 @@ final class OverlayManager {
     /**
      Safely closes an overlay window, ensuring Core Animation has finished.
      
-     FIX (Jan 9, 2026): INCREASED delay from 0.1s to 0.3s to give CA more time.
-     The original 0.1s was too short when multiple overlays were being closed
-     simultaneously, causing EXC_BAD_ACCESS in objc_release.
+     FIX (Jan 9, 2026): ROOT CAUSE FOUND - overlays were being deallocated
+     IMMEDIATELY when removed from regionOverlays dictionary, before the
+     delayed close could run. The [weak overlay] was useless because the
+     overlay was already gone.
      
-     This method:
-     1. Flushes any pending CA transactions
-     2. Hides the window first
-     3. Uses weak reference in delayed close to prevent over-retain
-     4. Gives CA MORE time to finish before actually closing (0.3s instead of 0.1s)
+     SOLUTION: Hold a STRONG reference in overlaysBeingClosed array until
+     the close actually completes. This prevents premature deallocation.
      
      - Parameter overlay: The overlay window to close
      */
     private func safeCloseOverlay(_ overlay: DimOverlayWindow) {
+        // CRITICAL FIX: Hold strong reference to prevent immediate deallocation
+        // Without this, removing from dictionary = immediate dealloc = crash
+        overlaysBeingClosed.append(overlay)
+        
         // Step 1: Flush CA transactions to ensure animations are committed
         CATransaction.flush()
         
         // Step 2: Hide immediately
         overlay.orderOut(nil)
         
-        // Step 3: Delayed close with WEAK reference
-        // FIX (Jan 9, 2026): Increased from 0.1s to 0.3s to prevent crashes
-        // The longer delay gives Core Animation more time to complete animations
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak overlay] in
-            guard let overlay = overlay else {
-                // Already deallocated - nothing to do
-                return
-            }
+        // Step 3: Delayed close - NOW we use weak self to avoid retain cycle
+        // The overlay is kept alive by overlaysBeingClosed, not by this closure
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self else { return }
             
             // Flush again before close
             CATransaction.flush()
             overlay.close()
+            
+            // Remove from strong reference array
+            self.overlaysBeingClosed.removeAll { $0 === overlay }
         }
     }
     
