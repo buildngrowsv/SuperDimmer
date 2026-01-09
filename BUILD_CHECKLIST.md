@@ -1066,40 +1066,98 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 #### 5.7 Sparkle Auto-Updates
 
-> **📚 Full Documentation:** See `/docs/deployment/UPDATE_DEPLOYMENT_STRATEGY.md` for comprehensive
-> guide including appcast format, EdDSA signing, and release workflow.
+> **📚 Full Documentation:** See `SuperDimmer-Website/UPDATE_SYSTEM_CHECKLIST.md` for comprehensive
+> setup guide and release workflow.
 
-**One-Time Setup:**
-- [ ] Add Sparkle framework via SPM (https://github.com/sparkle-project/Sparkle)
-- [ ] Generate EdDSA key pair using `./bin/generate_keys`
-- [ ] **BACKUP private key** to secure location (not in Git!)
-- [ ] Add public key to Info.plist as `SUPublicEDKey`
-- [ ] Configure SUFeedURL in Info.plist → `https://superdimmer.app/sparkle/appcast.xml`
-- [ ] Create `UpdateManager.swift` (see docs for implementation)
-- [ ] Add "Check for Updates..." menu item
+> **What is Sparkle?**
+> Open-source framework for macOS app auto-updates. Used by BetterDisplay, f.lux, etc.
+> App checks appcast.xml → finds new version → downloads DMG → installs automatically.
 
-**Per-Release Workflow:**
-- [ ] Build Release configuration
-- [ ] Sign with Developer ID + notarize
-- [ ] Create DMG using packaging scripts
-- [ ] Sign archive with EdDSA (`./sign_update`)
-- [ ] Update appcast.xml with new `<item>`
-- [ ] Upload DMG to `SuperDimmer-Website/releases/`
-- [ ] Push to GitHub → Cloudflare auto-deploys
+**5.7.1 Add Sparkle Framework (One-Time)**
+```
+In Xcode:
+1. File → Add Package Dependencies
+2. Enter: https://github.com/sparkle-project/Sparkle
+3. Select version 2.6.0 or later
+4. Add to SuperDimmer target
+```
+- [ ] Sparkle package added to Xcode
+- [ ] Build succeeds with Sparkle imported
+
+**5.7.2 Generate EdDSA Keys (One-Time)**
+```bash
+# After adding Sparkle, find the tools:
+cd ~/Library/Developer/Xcode/DerivedData/SuperDimmer-*/SourcePackages/artifacts/sparkle/Sparkle/bin
+
+# Generate keys (saves private to Keychain, prints public)
+./generate_keys
+
+# CRITICAL: Backup private key!
+./generate_keys -x ~/Desktop/superdimmer-sparkle-private.key
+# Store backup somewhere SAFE (not in Git!)
+```
+- [ ] Ran `generate_keys`
+- [ ] Copied the public key output
+- [ ] **Backed up private key** to secure location
+
+**5.7.3 Update Info.plist (One-Time)**
+Add the public key from generate_keys:
+```xml
+<key>SUPublicEDKey</key>
+<string>YOUR_PUBLIC_KEY_HERE</string>
+```
+- [ ] Added `SUPublicEDKey` to Info.plist
+- [x] `SUFeedURL` already set to `https://superdimmer.app/sparkle/appcast.xml`
+
+**5.7.4 Create UpdateManager.swift (One-Time)**
+```swift
+import Foundation
+import Sparkle
+
+final class UpdateManager {
+    static let shared = UpdateManager()
+    private var updaterController: SPUStandardUpdaterController!
+    
+    private init() {
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+    }
+    
+    func checkForUpdates() {
+        updaterController.checkForUpdates(nil)
+    }
+}
+```
+- [ ] Created `UpdateManager.swift`
+- [ ] Added to Xcode project
+- [ ] Added "Check for Updates..." menu item calling `UpdateManager.shared.checkForUpdates()`
+
+**5.7.5 Release Workflow (Each Release)**
+```bash
+cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
+./release.sh X.Y.Z
+
+# Then:
+cd ..
+git add . && git commit -m "Release vX.Y.Z" && git push
+```
+The script handles: build → sign → DMG → notarize → EdDSA sign → update appcast.xml
 
 #### 🔨 BUILD CHECK 5.7
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Debug build
 ```
 - [ ] Build succeeds
-- [ ] Sparkle framework linked
+- [ ] Sparkle framework linked (no import errors)
 - [ ] SUPublicEDKey in Info.plist
 
 #### 🧪 TEST CHECK 5.7
-- [ ] Manual "Check for Updates" works
-- [ ] Sparkle update dialog UI shows correctly
-- [ ] Test update flow with local/staging appcast
-- [ ] Verify EdDSA signature validation
+- [ ] "Check for Updates" menu item works
+- [ ] Sparkle shows "up to date" or update dialog
+- [ ] Test full update: install old version → check → update installs
 
 ---
 
@@ -1155,71 +1213,129 @@ xcodebuild -scheme SuperDimmer -configuration Release build
 ### Week 15: Distribution Setup
 
 #### 6.1 Code Signing & Notarization
-- [ ] Configure Developer ID signing
-- [ ] Enable hardened runtime
-- [ ] Test app runs with hardened runtime
-- [ ] Create notarization script
-- [ ] Submit for notarization
-- [ ] Verify notarization succeeds
-- [ ] Staple notarization ticket
+
+> **What is Notarization?**
+> Apple's security check for apps distributed outside Mac App Store.
+> Without it, users see "cannot be opened" Gatekeeper warning.
+> With it, app opens normally with no warnings.
+
+**6.1.1 Developer ID Certificate (One-Time)**
+- [x] Have Apple Developer account ($99/year)
+- [x] Developer ID Application certificate in Keychain ✅
+  ```bash
+  # Verify with:
+  security find-identity -v -p codesigning | grep "Developer ID"
+  # Should show: Developer ID Application: Your Name (TEAM_ID)
+  ```
+
+**6.1.2 App-Specific Password (One-Time)**
+- [ ] Go to https://appleid.apple.com
+- [ ] Sign in → Security → App-Specific Passwords
+- [ ] Generate password named "SuperDimmer Notarization"
+- [ ] Copy the password (format: `xxxx-xxxx-xxxx-xxxx`)
+
+**6.1.3 Environment Variables (One-Time)**
+Add to `~/.zshrc`:
+```bash
+export APPLE_ID="your-apple-developer-email@example.com"
+export APPLE_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+export APPLE_TEAM_ID="HHHHZ6UV26"  # From your Developer ID cert
+```
+Then run: `source ~/.zshrc`
+
+- [ ] APPLE_ID set in ~/.zshrc
+- [ ] APPLE_APP_PASSWORD set in ~/.zshrc  
+- [ ] APPLE_TEAM_ID set in ~/.zshrc
+- [ ] Ran `source ~/.zshrc` to load variables
+
+**6.1.4 Verify Setup**
+```bash
+echo "ID: $APPLE_ID"
+echo "Team: $APPLE_TEAM_ID"
+echo "Password: ${APPLE_APP_PASSWORD:+SET}"
+```
+- [ ] All three variables show correctly
+
+**6.1.5 Test Notarization**
+```bash
+cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
+./release.sh 1.0.0
+# Should show "Notarization complete" in step 5
+```
+- [ ] Notarization succeeds
+- [ ] Stapling succeeds
 
 #### 🔨 BUILD CHECK 6.1
 ```bash
-xcodebuild -scheme SuperDimmer -configuration Release archive
+# The release.sh script handles everything:
+cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
+./release.sh X.Y.Z
 ```
-- [ ] Archive creates successfully
-- [ ] Archive is properly signed
+- [ ] Build succeeds
+- [ ] Code signing succeeds
+- [ ] Notarization succeeds (step 5)
+- [ ] DMG created and stapled
 
 #### 🧪 TEST CHECK 6.1
-- [ ] App runs on clean macOS (no dev tools)
-- [ ] No Gatekeeper warnings
-- [ ] Notarization ticket stapled
+- [ ] Download DMG on a different Mac (or VM)
+- [ ] Double-click to mount - no Gatekeeper warning
+- [ ] Drag app to Applications
+- [ ] Launch app - no "unidentified developer" warning
+- [ ] App runs correctly
 
 ---
 
 #### 6.2 Sparkle Appcast Setup
-- [ ] Create appcast.xml template
-- [ ] Set up hosting for appcast (S3, GitHub, etc.)
-- [ ] Create release notes format
-- [ ] Generate delta updates (optional)
+- [x] Create appcast.xml template ✅ (Jan 8, 2026)
+- [x] Set up hosting for appcast on Cloudflare Pages ✅
+- [x] Create release notes HTML format ✅
+- [ ] Generate delta updates (optional - reduces download size)
 - [ ] Test update flow end-to-end
 
+**Appcast Location:** `SuperDimmer-Website/sparkle/appcast.xml`
+**Release Notes:** `SuperDimmer-Website/release-notes/vX.Y.Z.html`
+**DMG Files:** `SuperDimmer-Website/releases/`
+
 #### 🧪 TEST CHECK 6.2
-- [ ] Appcast accessible at SUFeedURL
-- [ ] Update downloads correctly
-- [ ] Signature verification passes
+- [ ] Visit https://superdimmer.app/sparkle/appcast.xml - XML loads
+- [ ] Visit https://superdimmer.app/releases/ - DMG downloadable
+- [ ] Install old version → Check for Updates → New version found
+- [ ] EdDSA signature verification passes (no error in update dialog)
 
 ---
 
 #### 6.3 Website & Purchase Flow
-- [x] Create landing page for superdimmer.app ✅ (Jan 8, 2026 - marketing website created)
-- [ ] Deploy website to hosting (Cloudflare Pages recommended)
+- [x] Create landing page for superdimmer.app ✅ (Jan 8, 2026)
+- [x] Deploy website to Cloudflare Pages ✅ (connected to GitHub)
 - [ ] Integrate Paddle checkout
 - [ ] Set up license key delivery
-- [ ] Create download page with DMG/ZIP links
+- [x] Create download page with DMG links ✅ (releases/ folder)
 - [ ] Test full purchase → download → activate flow
 
 **Website Status (Jan 8, 2026):**
-- Repository: https://github.com/ak/SuperDimmer-Website
-- Features: Hero section, features grid, how-it-works flow, pricing tiers (Free/Pro), CTA, footer
-- Design: Dark theme with warm amber accents, Cormorant Garamond + Sora typography
-- Tech: Pure HTML/CSS, responsive, CSS animations
+- Repository: https://github.com/buildngrowsv/SuperDimmer-Website
+- Hosting: Cloudflare Pages (auto-deploys on push)
+- Features: Hero, features grid, pricing, download links
+- Design: Dark theme with warm amber accents
 
-**Recommended Hosting Options:**
-| Option | Pros | Cons | Best For |
-|--------|------|------|----------|
-| **Cloudflare Pages** ⭐ | Free, fast global CDN, auto-deploys from GitHub, free SSL, DDoS protection | Limited build minutes (500/mo free) | Static sites, best overall |
-| **GitHub Pages** | Free, simple, already on GitHub | No server functions, slower CDN | Very simple static sites |
-| **Vercel** | Fast, excellent DX, serverless functions | Limited bandwidth on free tier | If you need serverless |
-| **Netlify** | Easy forms/functions, good DX | Limited bandwidth (100GB/mo) | If you need forms |
-
-**Recommendation: Cloudflare Pages** - Best for a marketing site with potential for future growth.
+**Release Infrastructure Added:**
+```
+SuperDimmer-Website/
+├── packaging/
+│   └── release.sh      ← One command releases
+├── sparkle/
+│   └── appcast.xml     ← Auto-updated by release.sh
+├── releases/
+│   └── *.dmg           ← Download files
+└── release-notes/
+    └── vX.Y.Z.html     ← Shown in Sparkle dialog
+```
 
 #### 🧪 TEST CHECK 6.3
-- [ ] Website loads correctly on production domain
-- [ ] Paddle checkout works (sandbox)
+- [ ] Website loads at https://superdimmer.app
+- [ ] Download button works
+- [ ] Paddle checkout works (sandbox first, then production)
 - [ ] License delivered after purchase
-- [ ] Download link works
 
 ---
 

@@ -317,16 +317,34 @@ final class DimOverlayWindow: NSWindow {
     }
     
     /**
-     Updates the window's position and size.
+     Updates the window's position and size with smooth animation.
      
      - Parameter rect: The new frame rectangle (in screen coordinates)
-     - Parameter animated: Whether to animate the frame change
+     - Parameter animated: Whether to animate the frame change (default: true)
+     - Parameter duration: Animation duration in seconds (default: 0.3)
+     
+     FIX (Jan 8, 2026): Changed default from false to true for smooth transitions
+     when overlays resize (e.g., bright region grows/shrinks, aspect ratio changes).
+     Uses .easeInEaseOut for consistency with dim level animations.
+     
+     NOTE: For rapidly changing frames (window being dragged), callers can pass
+     animated: false to avoid "lag behind" effect.
      */
-    func updatePosition(to rect: CGRect, animated: Bool = false) {
+    func updatePosition(to rect: CGRect, animated: Bool = true, duration: TimeInterval = 0.3) {
+        // Skip animation if frame hasn't changed significantly (avoids micro-jitter)
+        let currentFrame = self.frame
+        let tolerance: CGFloat = 1.0
+        let significantChange = abs(currentFrame.origin.x - rect.origin.x) > tolerance ||
+                                abs(currentFrame.origin.y - rect.origin.y) > tolerance ||
+                                abs(currentFrame.width - rect.width) > tolerance ||
+                                abs(currentFrame.height - rect.height) > tolerance
+        
+        guard significantChange else { return }
+        
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.15
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                context.duration = duration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 self.animator().setFrame(rect, display: true)
             }
         } else {

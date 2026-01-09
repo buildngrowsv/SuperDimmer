@@ -398,8 +398,9 @@ final class OverlayManager {
                     
                     // Only update frame if it actually changed
                     if frameChanged {
-                        // Use display: false to avoid forced redraw
-                        overlay.setFrame(newFrame, display: false)
+                        // FIX (Jan 8, 2026): Use updatePosition for smooth animated transitions
+                        // when bright regions resize or change aspect ratio
+                        overlay.updatePosition(to: newFrame, animated: true, duration: 0.3)
                         updatedCount += 1
                     }
                     
@@ -619,7 +620,10 @@ final class OverlayManager {
                 // Update existing or create new decay overlay
                 if let existing = self.decayOverlays[decision.windowID] {
                     // Update position and dim level
-                    existing.updatePosition(to: decision.windowBounds, animated: false)
+                    // FIX (Jan 8, 2026): Enable animation for decay overlays too for smooth
+                    // transitions when windows resize. Since analysis runs ~1x/sec, animation
+                    // won't cause "lag behind" issues like it would for drag operations.
+                    existing.updatePosition(to: decision.windowBounds, animated: true, duration: 0.3)
                     existing.setDimLevel(decision.decayDimLevel, animated: true)
                     existing.orderAboveWindow(decision.windowID)
                 } else {
