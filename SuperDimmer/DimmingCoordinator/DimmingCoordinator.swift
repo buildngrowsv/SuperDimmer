@@ -1000,6 +1000,34 @@ final class DimmingCoordinator: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        
+        // ================================================================
+        // FIX (Jan 9, 2026): Remove overlays when apps are hidden or windows minimized
+        // Without this, hidden/minimized windows would have orphaned overlays
+        // floating on screen with nothing beneath them.
+        // ================================================================
+        
+        // When an app is hidden (Cmd+H or auto-hide), remove all its overlays
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didHideApplicationNotification)
+            .sink { [weak self] notification in
+                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+                DispatchQueue.main.async {
+                    self?.overlayManager.removeOverlaysForApp(pid: app.processIdentifier)
+                }
+            }
+            .store(in: &cancellables)
+        
+        // We also need to handle window minimization. Unfortunately, there's no
+        // direct notification for this in NSWorkspace. However, our analysis loop
+        // will naturally stop finding minimized windows (they're not in the visible
+        // window list returned by CGWindowListCopyWindowInfo).
+        //
+        // The stale overlay cleanup in the analysis loop handles this:
+        // - applyRegionDimmingDecisions() removes overlays for windows not in decisions
+        // - applyDecayDimming() removes overlays for windows not in tracked list
+        //
+        // For immediate response to minimize, we could use AX APIs or NSWindow
+        // observation, but the periodic cleanup is sufficient for good UX.
     }
     
     /**

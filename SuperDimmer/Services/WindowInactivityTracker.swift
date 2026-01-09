@@ -261,6 +261,22 @@ final class WindowInactivityTracker: ObservableObject {
     }
     
     /**
+     Gets the stored info for a window.
+     
+     Used by OverlayManager to check which app owns a window
+     when removing overlays for hidden apps.
+     
+     - Parameter windowID: The window to look up
+     - Returns: Window activity info if tracked, nil otherwise
+     */
+    func getWindowInfo(for windowID: CGWindowID) -> WindowActivityInfo? {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        return windowActivity[windowID]
+    }
+    
+    /**
      Removes entries for windows that no longer exist.
      
      - Parameter activeWindowIDs: Set of window IDs that are currently visible

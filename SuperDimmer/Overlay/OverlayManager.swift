@@ -972,6 +972,105 @@ final class OverlayManager {
         isActive = true
     }
     
+    // ================================================================
+    // MARK: - App/Window Hide/Minimize Support
+    // ================================================================
+    
+    /**
+     Removes all overlays belonging to a specific app.
+     
+     Called when:
+     - App is hidden by user (Cmd+H)
+     - App is hidden by AutoHideManager
+     
+     This removes region overlays and decay overlays for all windows
+     of the hidden app. They'll be recreated when the app is unhidden
+     and comes back into focus.
+     
+     - Parameter pid: The process ID of the hidden app
+     */
+    func removeOverlaysForApp(pid: pid_t) {
+        var removedCount = 0
+        
+        // Remove region overlays for this app's windows
+        let regionIDsToRemove = regionToOwnerPID.filter { $0.value == pid }.map { $0.key }
+        for overlayID in regionIDsToRemove {
+            if let overlay = regionOverlays.removeValue(forKey: overlayID) {
+                safeCloseOverlay(overlay)
+                removedCount += 1
+            }
+            regionToWindowID.removeValue(forKey: overlayID)
+            regionToOwnerPID.removeValue(forKey: overlayID)
+        }
+        
+        // Remove decay overlays for this app's windows
+        // We need to check the window info to find which windows belong to this app
+        // Since decayOverlays is keyed by windowID, we iterate and check PID
+        let decayWindowIDsToRemove = decayOverlays.compactMap { (windowID, overlay) -> CGWindowID? in
+            // Check if this window belongs to the hidden app
+            // We stored PID info during creation via the TrackedWindow
+            if let info = WindowInactivityTracker.shared.getWindowInfo(for: windowID),
+               info.ownerPID == pid {
+                return windowID
+            }
+            return nil
+        }
+        
+        for windowID in decayWindowIDsToRemove {
+            if let overlay = decayOverlays.removeValue(forKey: windowID) {
+                safeCloseOverlay(overlay)
+                removedCount += 1
+            }
+        }
+        
+        if removedCount > 0 {
+            print("🙈 Removed \(removedCount) overlays for hidden app (PID \(pid))")
+        }
+    }
+    
+    /**
+     Removes all overlays for a specific window.
+     
+     Called when:
+     - Window is minimized
+     - Window is closed
+     
+     This removes both region overlays and decay overlay for the window.
+     
+     - Parameter windowID: The window ID to remove overlays for
+     */
+    func removeOverlaysForWindow(windowID: CGWindowID) {
+        var removedCount = 0
+        
+        // Remove region overlays for this window
+        // Find all region overlay IDs associated with this window
+        let regionIDsToRemove = regionToWindowID.filter { $0.value == windowID }.map { $0.key }
+        for overlayID in regionIDsToRemove {
+            if let overlay = regionOverlays.removeValue(forKey: overlayID) {
+                safeCloseOverlay(overlay)
+                removedCount += 1
+            }
+            regionToWindowID.removeValue(forKey: overlayID)
+            regionToOwnerPID.removeValue(forKey: overlayID)
+        }
+        
+        // Remove decay overlay for this window
+        if let overlay = decayOverlays.removeValue(forKey: windowID) {
+            safeCloseOverlay(overlay)
+            removedCount += 1
+        }
+        
+        // Also remove from windowOverlays (per-window mode)
+        if let overlay = windowOverlays.removeValue(forKey: windowID) {
+            safeCloseOverlay(overlay)
+            removedCount += 1
+        }
+        
+        if removedCount > 0 {
+            print("📦 Removed \(removedCount) overlays for window \(windowID)")
+        }
+    }
+    
     /**
      Immediately re-orders all region overlays to be above their target windows.
      
