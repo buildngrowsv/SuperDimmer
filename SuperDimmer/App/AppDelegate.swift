@@ -101,6 +101,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var colorTemperatureManager: ColorTemperatureManager?
     
     /**
+     Manager for auto-hiding inactive apps.
+     
+     Periodically checks for apps that have been inactive longer than the
+     configured delay and hides them. ON by default as a helpful feature.
+     */
+    var autoHideManager: AutoHideManager?
+    
+    /**
      The preferences window.
      
      FIX (Jan 8, 2026): SwiftUI Settings scene doesn't work reliably for menu bar apps.
@@ -174,6 +182,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("✓ ColorTemperatureManager ready")
         
         // ============================================================
+        // Step 2.6: Initialize Auto-Hide Manager
+        // ============================================================
+        // Auto-hide inactive apps after configured delay
+        // Starts automatically if autoHideEnabled is true in settings
+        autoHideManager = AutoHideManager.shared
+        if SettingsManager.shared.autoHideEnabled {
+            autoHideManager?.start()
+            print("✓ AutoHideManager started (auto-hide is ON)")
+        } else {
+            print("✓ AutoHideManager ready (auto-hide is OFF)")
+        }
+        
+        // ============================================================
         // Step 3: Create Menu Bar Controller
         // ============================================================
         // This creates the NSStatusItem and popover
@@ -237,6 +258,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // stop() only hides them for quick re-enable
         dimmingCoordinator?.cleanup()
         print("✓ Dimming coordinator cleaned up")
+        
+        // ============================================================
+        // Stop auto-hide manager
+        // ============================================================
+        autoHideManager?.stop()
+        print("✓ Auto-hide manager stopped")
         
         // ============================================================
         // Restore color temperature to default
@@ -354,6 +381,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst() // Skip initial value - we handle it separately below
             .sink { [weak self] enabled in
                 self?.handleDimmingToggled(enabled)
+            }
+            .store(in: &cancellables)
+        
+        // Observe autoHideEnabled changes from the UI
+        SettingsManager.shared.$autoHideEnabled
+            .dropFirst()
+            .sink { [weak self] enabled in
+                if enabled {
+                    self?.autoHideManager?.start()
+                    print("✓ Auto-hide started")
+                } else {
+                    self?.autoHideManager?.stop()
+                    print("✓ Auto-hide stopped")
+                }
             }
             .store(in: &cancellables)
         
