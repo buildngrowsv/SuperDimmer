@@ -398,11 +398,11 @@ final class SettingsManager: ObservableObject {
     /**
      Maximum dim level from decay (cap).
      
-     Range: 0.4 to 0.9 (40% to 90%)
-     Default: 0.6 (60%)
+     Range: 0.0 to 1.0 (0% to 100%)
+     Default: 0.8 (80%)
      
-     This prevents windows from becoming completely invisible.
-     The total dim = base inactive dim + decay dim, capped at this value.
+     CHANGED (Jan 8, 2026): Now allows full 0-100% range.
+     At 100%, windows will become completely black after full decay.
      */
     @Published var maxDecayDimLevel: Double {
         didSet {
@@ -697,7 +697,7 @@ final class SettingsManager: ObservableObject {
             defaults.double(forKey: Keys.decayStartDelay.rawValue) : 30.0  // 30 seconds
         
         self.maxDecayDimLevel = defaults.object(forKey: Keys.maxDecayDimLevel.rawValue) != nil ?
-            defaults.double(forKey: Keys.maxDecayDimLevel.rawValue) : 0.6  // 60% max
+            defaults.double(forKey: Keys.maxDecayDimLevel.rawValue) : 0.8  // 80% max (can go to 100%)
         
         // ============================================================
         // Load Excluded Apps
@@ -792,7 +792,7 @@ final class SettingsManager: ObservableObject {
         inactivityDecayEnabled = false
         decayRate = 0.01
         decayStartDelay = 30.0
-        maxDecayDimLevel = 0.6
+        maxDecayDimLevel = 0.8
         
         // Color Temperature
         colorTemperatureEnabled = false

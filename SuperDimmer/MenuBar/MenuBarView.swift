@@ -544,7 +544,7 @@ struct MenuBarView: View {
                             .monospacedDigit()
                     }
                     
-                    Slider(value: $settings.maxDecayDimLevel, in: 0.4...0.9)
+                    Slider(value: $settings.maxDecayDimLevel, in: 0.0...1.0)
                         .tint(.cyan)
                         .controlSize(.mini)
                 }
