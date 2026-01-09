@@ -530,23 +530,22 @@ final class OverlayManager {
                     }
                 }
                 
-                // Remove extra overlays for this window (if we have more than needed)
+                // CRITICAL FIX (Jan 9, 2026): DON'T destroy extra overlays!
+                // Just hide them by setting dimLevel to 0.
+                // Destroying overlays causes EXC_BAD_ACCESS crash.
                 if existingOverlays.count > windowDecisions.count {
                     for i in windowDecisions.count..<existingOverlays.count {
-                        let (overlayID, overlay) = existingOverlays[i]
-                        regionOverlays.removeValue(forKey: overlayID)
-                        regionToWindowID.removeValue(forKey: overlayID)
-                        regionToOwnerPID.removeValue(forKey: overlayID)
-                        safeCloseOverlay(overlay)
+                        let (_, overlay) = existingOverlays[i]
+                        // Hide instead of destroy
+                        overlay.setDimLevel(0.0, animated: true)
+                        // Keep in dictionary - it's just invisible
                     }
                 }
             } else {
-                // This window had overlays but no longer has any decisions - remove all
-                for (overlayID, overlay) in existingOverlays {
-                    regionOverlays.removeValue(forKey: overlayID)
-                    regionToWindowID.removeValue(forKey: overlayID)
-                    regionToOwnerPID.removeValue(forKey: overlayID)
-                    safeCloseOverlay(overlay)
+                // This window had overlays but no longer has any decisions - HIDE all, don't destroy
+                for (_, overlay) in existingOverlays {
+                    overlay.setDimLevel(0.0, animated: true)
+                    // Keep in dictionary - it's just invisible
                 }
             }
         }
@@ -695,29 +694,23 @@ final class OverlayManager {
     }
     
     /**
-     Removes all region overlays.
+     Hides all region overlays.
      
-     Called before applying new region decisions, or when
-     switching away from per-region mode.
-     
-     FIX (Jan 8, 2026): Uses safeCloseOverlay to prevent EXC_BAD_ACCESS crash.
-     The crash was caused by race conditions where overlays were closed
-     while Core Animation was still rendering.
+     CRITICAL FIX (Jan 9, 2026): NEVER destroy overlays!
+     Just hide them by setting dimLevel to 0.
+     Destroying overlays causes EXC_BAD_ACCESS crash.
      */
     private func removeAllRegionOverlays() {
-        // Capture overlays to close
-        let overlaysToClose = Array(regionOverlays.values)
-        
-        // Clear our references immediately
-        regionOverlays.removeAll()
-        regionToWindowID.removeAll()
-        regionToOwnerPID.removeAll()
-        regionCounter = 0
-        
-        // Use safe close for each overlay
-        for overlay in overlaysToClose {
-            safeCloseOverlay(overlay)
+        // Just hide all overlays, don't destroy them
+        for (_, overlay) in regionOverlays {
+            overlay.setDimLevel(0.0, animated: false)
+            overlay.orderOut(nil)
         }
+        // Don't clear the dictionaries - keep references alive
+        // regionOverlays.removeAll()  // DISABLED
+        // regionToWindowID.removeAll()  // DISABLED
+        // regionToOwnerPID.removeAll()  // DISABLED
+        // regionCounter = 0  // DISABLED
     }
     
     // ================================================================
@@ -751,36 +744,35 @@ final class OverlayManager {
      - Parameter decisions: Array of decay dimming decisions for all windows
      */
     func applyDecayDimming(_ decisions: [DecayDimmingDecision]) {
-        // Run on main thread (async to prevent blocking from background thread)
+        // CRITICAL FIX (Jan 9, 2026): NEVER DESTROY decay overlays.
+        // 
+        // The EXC_BAD_ACCESS crash persists because:
+        // 1. NSWindow has complex lifecycle with window server & Core Animation
+        // 2. Even "safe" delayed close() crashes due to system thread contention
+        // 3. The ONLY safe solution: never destroy, only hide
+        //
+        // Strategy:
+        // - Create overlay once when window first needs dimming
+        // - Hide by setting dimLevel to 0 (orderOut not needed, invisible = safe)
+        // - NEVER call close() on decay overlays
+        // - They stay alive until app quits (small memory cost, but stable)
+        
+        // Run on main thread
         let applyBlock: () -> Void = { [weak self] in
             guard let self = self else { return }
             
-            var decisionWindowIDs = Set<CGWindowID>()
-            
             for decision in decisions {
-                decisionWindowIDs.insert(decision.windowID)
-                
-                // CRITICAL FIX (Jan 9, 2026): HIDE/SHOW overlays instead of CREATE/DESTROY
-                // 
-                // The EXC_BAD_ACCESS crash was caused by rapid overlay lifecycle churn:
-                // - Window becomes active → destroy overlay
-                // - Window becomes inactive → create new overlay
-                // - Repeat every analysis cycle
-                // 
-                // This overwhelmed Core Animation which has its own threading model.
-                // The fix: NEVER destroy overlays just because a window became active.
-                // Instead, set dimLevel to 0 (invisible) and keep the overlay alive.
-                // Only destroy when a window ACTUALLY CLOSES (stale window IDs).
-                
                 if let existing = self.decayOverlays[decision.windowID] {
-                    // REUSE existing overlay - just update its dim level
+                    // REUSE existing overlay - just update dim level
                     let targetLevel = (decision.isActive || decision.decayDimLevel <= 0.01) ? 0.0 : decision.decayDimLevel
-                    existing.updatePosition(to: decision.windowBounds, animated: false)  // No animation for position
+                    existing.updatePosition(to: decision.windowBounds, animated: false)
                     existing.setDimLevel(targetLevel, animated: true)
-                    existing.orderAboveWindow(decision.windowID)
+                    // Only bring to front if visible
+                    if targetLevel > 0 {
+                        existing.orderAboveWindow(decision.windowID)
+                    }
                 } else if !decision.isActive && decision.decayDimLevel > 0.01 {
-                    // Only CREATE new overlay if window needs dimming AND doesn't have one
-                    // Don't create overlays for active windows - wait until they become inactive
+                    // Create new overlay only if window needs dimming AND doesn't have one
                     let overlayID = "decay-\(decision.windowID)"
                     let overlay = DimOverlayWindow.create(
                         frame: decision.windowBounds,
@@ -793,17 +785,13 @@ final class OverlayManager {
                     self.decayOverlays[decision.windowID] = overlay
                     overlay.setDimLevel(decision.decayDimLevel, animated: true, duration: 0.5)
                 }
-                // If no existing overlay AND window is active, do nothing - wait for inactivity
+                // Active windows with no overlay: do nothing, wait for inactivity
             }
             
-            // ONLY destroy overlays for windows that NO LONGER EXIST (closed windows)
-            // NOT for windows that just became active!
-            let staleIDs = Set(self.decayOverlays.keys).subtracting(decisionWindowIDs)
-            for staleID in staleIDs {
-                if let overlay = self.decayOverlays.removeValue(forKey: staleID) {
-                    self.safeCloseOverlay(overlay)
-                }
-            }
+            // CRITICAL: DO NOT destroy stale overlays!
+            // Let them live with dimLevel=0. The memory cost is minimal
+            // (a few KB per overlay), but the stability gain is worth it.
+            // They will be cleaned up when app quits.
         }
         
         if Thread.isMainThread {
@@ -859,16 +847,18 @@ final class OverlayManager {
     /**
      Removes all decay overlays.
      
-     SIMPLIFIED (Jan 9, 2026): Now that safeCloseOverlay holds strong references,
-     we can just use it directly without staggering.
+     Only called when app is quitting or dimming is completely disabled.
+     In normal operation, decay overlays are NEVER destroyed (only hidden).
      */
     private func removeAllDecayOverlays() {
-        let overlaysToClose = Array(decayOverlays.values)
-        decayOverlays.removeAll()
-        
-        for overlay in overlaysToClose {
-            safeCloseOverlay(overlay)
+        // Just hide all overlays instead of destroying them
+        // They'll get cleaned up when app quits
+        for (_, overlay) in decayOverlays {
+            overlay.setDimLevel(0.0, animated: false)
+            overlay.orderOut(nil)
         }
+        // Don't clear the dictionary - keep references alive
+        // decayOverlays.removeAll()  // DISABLED - keep overlays alive
     }
     
     // ================================================================
