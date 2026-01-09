@@ -655,15 +655,15 @@ struct MenuBarView: View {
      to prevent crash when SwiftUI wraps the delegate.
      */
     private func openPreferences() {
-        // Close the popover first (safe optional access)
+        // FIX (Jan 8, 2026): Create and show preferences window directly
+        // The SwiftUI Settings scene + sendAction approach doesn't work reliably
+        // for menu bar apps without a main window.
+        
+        // Close the popover first
         AppDelegate.shared?.menuBarController?.closePopover()
         
-        // Open settings scene (defined in SuperDimmerApp)
-        if #available(macOS 13.0, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
+        // Create preferences window directly via AppDelegate
+        AppDelegate.shared?.showPreferencesWindow()
     }
     
     /**

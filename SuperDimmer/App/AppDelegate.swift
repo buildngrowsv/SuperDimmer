@@ -101,6 +101,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var colorTemperatureManager: ColorTemperatureManager?
     
     /**
+     The preferences window.
+     
+     FIX (Jan 8, 2026): SwiftUI Settings scene doesn't work reliably for menu bar apps.
+     We create our own NSWindow with PreferencesView hosted in it.
+     */
+    private var preferencesWindow: NSWindow?
+    
+    /**
      Combine subscriptions for settings observation.
      */
     private var cancellables = Set<AnyCancellable>()
@@ -395,6 +403,63 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("⏹️ Stopping dimming...")
             dimmingCoordinator?.stop()
         }
+    }
+    
+    // ================================================================
+    // MARK: - Preferences Window
+    // ================================================================
+    
+    /**
+     Shows the preferences window.
+     
+     FIX (Jan 8, 2026): SwiftUI's Settings scene + NSApp.sendAction doesn't work
+     reliably for menu bar apps. We create our own NSWindow with PreferencesView.
+     
+     This method:
+     1. Creates the window if it doesn't exist
+     2. Centers it on screen
+     3. Brings it to front
+     4. Activates the app (so it gets focus)
+     */
+    func showPreferencesWindow() {
+        // Activate the app to bring it to foreground
+        NSApp.activate(ignoringOtherApps: true)
+        
+        // If window already exists and is visible, just bring it to front
+        if let window = preferencesWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        
+        // Create the preferences view with environment object
+        let preferencesView = PreferencesView()
+            .environmentObject(SettingsManager.shared)
+        
+        // Create hosting controller
+        let hostingController = NSHostingController(rootView: preferencesView)
+        
+        // Create window
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 550, height: 500),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        
+        window.title = "SuperDimmer Preferences"
+        window.contentViewController = hostingController
+        window.center()
+        window.setFrameAutosaveName("SuperDimmerPreferences")
+        
+        // Make it a proper preferences window
+        window.isReleasedWhenClosed = false
+        window.level = .normal
+        
+        // Store reference and show
+        preferencesWindow = window
+        window.makeKeyAndOrderFront(nil)
+        
+        print("📋 Preferences window opened")
     }
 }
 
