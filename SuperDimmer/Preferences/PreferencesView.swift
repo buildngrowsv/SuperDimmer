@@ -62,6 +62,7 @@ struct PreferencesView: View {
     enum PreferenceSection: String, CaseIterable, Identifiable {
         case general = "General"
         case brightness = "Brightness"
+        case windowManagement = "Window Management"
         case color = "Color"
         case excludedApps = "Excluded Apps"
         case about = "About"
@@ -72,6 +73,7 @@ struct PreferencesView: View {
             switch self {
             case .general: return "gear"
             case .brightness: return "sun.max"
+            case .windowManagement: return "macwindow.on.rectangle"
             case .color: return "thermometer.sun"
             case .excludedApps: return "minus.circle"
             case .about: return "info.circle"
@@ -105,6 +107,8 @@ struct PreferencesView: View {
                     GeneralPreferencesTab()
                 case .brightness:
                     BrightnessPreferencesTab()
+                case .windowManagement:
+                    WindowManagementPreferencesTab()
                 case .color:
                     ColorPreferencesTab()
                 case .excludedApps:
@@ -304,6 +308,282 @@ struct BrightnessPreferencesTab: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+}
+
+// ====================================================================
+// MARK: - Window Management Preferences Tab
+// ====================================================================
+
+/**
+ Window Management settings: Auto-Hide and Auto-Minimize features
+ 
+ These features help manage window clutter:
+ - Auto-Hide: Hides entire apps after inactivity (like Cmd+H)
+ - Auto-Minimize: Minimizes excess windows per app to Dock
+ */
+struct WindowManagementPreferencesTab: View {
+    
+    @EnvironmentObject var settings: SettingsManager
+    @ObservedObject var autoHideManager = AutoHideManager.shared
+    @ObservedObject var autoMinimizeManager = AutoMinimizeManager.shared
+    
+    var body: some View {
+        Form {
+            // ========================================================
+            // Auto-Hide Inactive Apps Section
+            // ========================================================
+            Section {
+                Toggle("Enable Auto-Hide", isOn: $settings.autoHideEnabled)
+                    .help("Automatically hide apps that haven't been used for a while")
+                
+                if settings.autoHideEnabled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Hide apps after:")
+                            Spacer()
+                            Text("\(Int(settings.autoHideDelay)) min")
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $settings.autoHideDelay, in: 5...120, step: 5)
+                    }
+                    .padding(.leading, 20)
+                    
+                    Toggle("Exclude system apps", isOn: $settings.autoHideExcludeSystemApps)
+                        .padding(.leading, 20)
+                        .help("Never auto-hide Finder, System Preferences, etc.")
+                    
+                    // Recently hidden apps
+                    if !autoHideManager.recentlyHiddenApps.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Recently hidden:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            ForEach(autoHideManager.recentlyHiddenApps.prefix(5), id: \.bundleID) { app in
+                                HStack {
+                                    Text(app.name)
+                                        .font(.caption)
+                                    Spacer()
+                                    Button("Unhide") {
+                                        autoHideManager.unhideApp(bundleID: app.bundleID)
+                                    }
+                                    .font(.caption)
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
+                        .padding(.leading, 20)
+                        .padding(.top, 8)
+                    }
+                }
+            } header: {
+                HStack {
+                    Image(systemName: "eye.slash")
+                    Text("Auto-Hide Inactive Apps")
+                }
+            } footer: {
+                Text("Apps will be hidden (like pressing ⌘H) after being inactive. They remain in the Dock and can be unhidden anytime.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // ========================================================
+            // Auto-Minimize Inactive Windows Section
+            // ========================================================
+            Section {
+                Toggle("Enable Auto-Minimize", isOn: $settings.autoMinimizeEnabled)
+                    .help("Automatically minimize oldest windows when an app has too many")
+                
+                if settings.autoMinimizeEnabled {
+                    // Minimize delay (active time only)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Minimize after:")
+                            Spacer()
+                            Text("\(Int(settings.autoMinimizeDelay)) min of active use")
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $settings.autoMinimizeDelay, in: 5...60, step: 5)
+                    }
+                    .padding(.leading, 20)
+                    
+                    // Window threshold
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Keep at least:")
+                            Spacer()
+                            Text("\(settings.autoMinimizeWindowThreshold) window\(settings.autoMinimizeWindowThreshold == 1 ? "" : "s") per app")
+                                .foregroundColor(.secondary)
+                        }
+                        Stepper("", value: $settings.autoMinimizeWindowThreshold, in: 1...10)
+                            .labelsHidden()
+                    }
+                    .padding(.leading, 20)
+                    
+                    // Idle reset time
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Reset timers after idle:")
+                            Spacer()
+                            Text("\(Int(settings.autoMinimizeIdleResetTime)) min")
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $settings.autoMinimizeIdleResetTime, in: 2...30, step: 1)
+                    }
+                    .padding(.leading, 20)
+                    
+                    // Status
+                    HStack {
+                        Text("Tracking:")
+                        Text("\(autoMinimizeManager.trackedWindowCount) windows")
+                            .foregroundColor(.secondary)
+                    }
+                    .font(.caption)
+                    .padding(.leading, 20)
+                }
+            } header: {
+                HStack {
+                    Image(systemName: "arrow.down.to.line")
+                    Text("Auto-Minimize Inactive Windows")
+                }
+            } footer: {
+                Text("Only counts active usage time (not idle). Timers reset when you return from breaks. Windows minimize to Dock when an app has more than the threshold.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // ========================================================
+            // Excluded Apps Section (for both features)
+            // ========================================================
+            Section("Exclusions") {
+                NavigationLink {
+                    AutoHideExclusionsList()
+                } label: {
+                    HStack {
+                        Text("Auto-Hide Exclusions")
+                        Spacer()
+                        Text("\(settings.autoHideExcludedApps.count)")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                NavigationLink {
+                    AutoMinimizeExclusionsList()
+                } label: {
+                    HStack {
+                        Text("Auto-Minimize Exclusions")
+                        Spacer()
+                        Text("\(settings.autoMinimizeExcludedApps.count)")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+// ====================================================================
+// MARK: - Auto-Hide Exclusions List
+// ====================================================================
+
+struct AutoHideExclusionsList: View {
+    @EnvironmentObject var settings: SettingsManager
+    @State private var newBundleID: String = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Apps excluded from Auto-Hide")
+                .font(.headline)
+            
+            Text("These apps will never be automatically hidden, regardless of inactivity.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            List {
+                ForEach(settings.autoHideExcludedApps, id: \.self) { bundleID in
+                    HStack {
+                        Text(bundleID)
+                        Spacer()
+                        Button(role: .destructive) {
+                            settings.autoHideExcludedApps.removeAll { $0 == bundleID }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+            .frame(minHeight: 150)
+            
+            HStack {
+                TextField("Bundle ID (e.g., com.apple.mail)", text: $newBundleID)
+                    .textFieldStyle(.roundedBorder)
+                
+                Button("Add") {
+                    if !newBundleID.isEmpty && !settings.autoHideExcludedApps.contains(newBundleID) {
+                        settings.autoHideExcludedApps.append(newBundleID)
+                        newBundleID = ""
+                    }
+                }
+                .disabled(newBundleID.isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 400, height: 300)
+    }
+}
+
+// ====================================================================
+// MARK: - Auto-Minimize Exclusions List
+// ====================================================================
+
+struct AutoMinimizeExclusionsList: View {
+    @EnvironmentObject var settings: SettingsManager
+    @State private var newBundleID: String = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Apps excluded from Auto-Minimize")
+                .font(.headline)
+            
+            Text("These apps will never have their windows automatically minimized.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            List {
+                ForEach(settings.autoMinimizeExcludedApps, id: \.self) { bundleID in
+                    HStack {
+                        Text(bundleID)
+                        Spacer()
+                        Button(role: .destructive) {
+                            settings.autoMinimizeExcludedApps.removeAll { $0 == bundleID }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+            .frame(minHeight: 150)
+            
+            HStack {
+                TextField("Bundle ID (e.g., com.apple.Safari)", text: $newBundleID)
+                    .textFieldStyle(.roundedBorder)
+                
+                Button("Add") {
+                    if !newBundleID.isEmpty && !settings.autoMinimizeExcludedApps.contains(newBundleID) {
+                        settings.autoMinimizeExcludedApps.append(newBundleID)
+                        newBundleID = ""
+                    }
+                }
+                .disabled(newBundleID.isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 400, height: 300)
     }
 }
 
