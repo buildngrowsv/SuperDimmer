@@ -82,11 +82,8 @@ final class ScheduleManager: ObservableObject {
     /// Reference to color temperature manager
     private var colorTempManager: ColorTemperatureManager?
     
-    /// Location service for sunrise/sunset times (lazy loaded)
-    private lazy var locationService: LocationService? = {
-        // LocationService will be created in Phase 3.4
-        return nil
-    }()
+    /// Location service for sunrise/sunset times
+    private let locationService = LocationService.shared
     
     // ================================================================
     // MARK: - Schedule Configuration
@@ -212,9 +209,8 @@ final class ScheduleManager: ObservableObject {
      Uses location-based times if enabled, otherwise manual times.
      */
     private func getScheduleTimes() -> (start: Date, end: Date) {
-        if useLocationBasedSchedule, let locationService = locationService {
+        if useLocationBasedSchedule && locationService.hasPermission {
             // Use sunrise/sunset from location service
-            // This will be implemented in Phase 3.4
             let sunrise = locationService.sunriseTime ?? settings.scheduleEndTime
             let sunset = locationService.sunsetTime ?? settings.scheduleStartTime
             return (sunset, sunrise)
@@ -266,7 +262,7 @@ final class ScheduleManager: ObservableObject {
         let startComponents = calendar.dateComponents([.hour, .minute], from: start)
         let endComponents = calendar.dateComponents([.hour, .minute], from: end)
         
-        var todayStart = calendar.date(bySettingHour: startComponents.hour ?? 20,
+        let todayStart = calendar.date(bySettingHour: startComponents.hour ?? 20,
                                         minute: startComponents.minute ?? 0,
                                         second: 0, of: today)!
         var todayEnd = calendar.date(bySettingHour: endComponents.hour ?? 7,
@@ -373,17 +369,3 @@ enum ScheduleMode: String {
     }
 }
 
-// ====================================================================
-// MARK: - Location Service Placeholder
-// ====================================================================
-
-/**
- Placeholder for LocationService (to be implemented in Phase 3.4).
- 
- This stub allows ScheduleManager to compile without the full
- location service implementation.
- */
-class LocationService {
-    var sunriseTime: Date?
-    var sunsetTime: Date?
-}

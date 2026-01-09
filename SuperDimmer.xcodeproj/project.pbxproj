@@ -28,6 +28,7 @@
 		DE327EB0680EEFB0EFD48236 /* WindowTrackerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */; };
 		E2749825BB4A46ACA89FD676 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC43ECCDBC1C09B92EB293B5 /* MenuBarView.swift */; };
 		E5E6653F4228B5FE2B0D5C28 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C48704075B408B0F4A21CA /* PermissionManager.swift */; };
+		E748258583468783DCA7726A /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99D465058B8A750951B2B515 /* LocationService.swift */; };
 		E8EF0C3464404E46E80A158F /* SuperDimmerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA7A645622AB3F65E274F /* SuperDimmerTests.swift */; };
 		F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */; };
 /* End PBXBuildFile section */
@@ -61,6 +62,7 @@
 		761339A7D21F3EC383AFDC4E /* DimmingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimmingCoordinator.swift; sourceTree = "<group>"; };
 		76856B00C83C0C88F34C0E5E /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		8BF3F80B0547D5C1A498D277 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		99D465058B8A750951B2B515 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
 		A18AD95BFAF7198E0481573C /* SuperDimmer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SuperDimmer.entitlements; sourceTree = "<group>"; };
 		A846E425944D8F0661CB8819 /* SuperDimmerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperDimmerApp.swift; sourceTree = "<group>"; };
 		AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrightRegionDetector.swift; sourceTree = "<group>"; };
@@ -241,6 +243,7 @@
 			children = (
 				4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */,
 				AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */,
+				99D465058B8A750951B2B515 /* LocationService.swift */,
 				27586C5BE0F771581C033B4C /* ScheduleManager.swift */,
 				005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */,
 				494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */,
@@ -375,6 +378,7 @@
 				18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */,
 				A8116E433AA8D37103819457 /* DimmingCoordinator.swift in Sources */,
 				29BD586ACDE68974C13A7BF1 /* LaunchAtLoginManager.swift in Sources */,
+				E748258583468783DCA7726A /* LocationService.swift in Sources */,
 				9D18C007DBA3A819CE0E66AD /* MenuBarController.swift in Sources */,
 				E2749825BB4A46ACA89FD676 /* MenuBarView.swift in Sources */,
 				A0711D2CF87CDD82DFEAD1B8 /* OverlayManager.swift in Sources */,
