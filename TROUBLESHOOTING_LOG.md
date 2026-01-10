@@ -577,3 +577,115 @@ if let existing = self.decayOverlays[decision.windowID] {
 3. Only DESTROY when window actually CLOSES (stale window IDs)
 4. Increased safeCloseOverlay delay from 0.3s to 0.5s
 5. Remove animations before hiding to stop CA from accessing layer
+
+---
+
+## [Jan 9, 2026] EXC_BAD_ACCESS Crash Deep Investigation
+
+### Crash Details
+- Crash in `objc_release` at address `0x22de0` (small offset = field access on deallocated object)
+- Thread 1 (main thread) crash
+- Address Sanitizer was enabled but Message said "Memory graph debugging is not compatible with the address sanitizer"
+
+### Debugging Strategy Implemented
+
+**1. Enabled Zombie Objects (Better for objc_release crashes):**
+
+Modified `SuperDimmer.xcscheme` to:
+- Disable Address Sanitizer (`enableAddressSanitizer = "NO"`)
+- Enable NSZombieEnabled environment variable
+- Enable MallocStackLogging for heap tracking
+
+```xml
+<EnvironmentVariables>
+   <EnvironmentVariable
+      key = "NSZombieEnabled"
+      value = "YES"
+      isEnabled = "YES">
+   </EnvironmentVariable>
+   <EnvironmentVariable
+      key = "MallocStackLogging"
+      value = "1"
+      isEnabled = "YES">
+   </EnvironmentVariable>
+</EnvironmentVariables>
+```
+
+**WHY Zombie Objects:** Address Sanitizer catches buffer overflows, but Zombie Objects specifically catches "message sent to deallocated instance" which is what `objc_release` crash indicates.
+
+**2. Added Thread-Safety with NSRecursiveLock:**
+
+The crash was likely caused by race conditions - multiple threads accessing overlay dictionaries simultaneously.
+
+Added `overlayLock` (NSRecursiveLock) to OverlayManager with locking in:
+- `applyDecayDimming()` - core decay overlay logic
+- `applyRegionDimmingDecisions()` - region overlay logic
+- `hideOverlaysForSpaceChange()` - Space change handling
+- `restoreOverlaysAfterSpaceChange()` - Space change handling
+- `removeOverlaysForApp()` - app hide handling
+- `removeOverlaysForWindow()` - window close handling
+- `reorderAllRegionOverlays()` - z-order updates
+- `updateOverlayLevelsForFrontmostApp()` - focus change handling
+- `safeCloseOverlay()` - async close completion
+
+**3. Added Zombie Detection in applyDecayDimming:**
+
+```swift
+if let existing = self.decayOverlays[windowID] {
+    // DEBUG: Verify overlay is still valid before accessing
+    guard existing.contentView != nil else {
+        print("💀 ZOMBIE DETECTED! Overlay \(existing.overlayID) has nil contentView!")
+        self.decayOverlays.removeValue(forKey: windowID)
+        continue
+    }
+    // ... rest of logic
+}
+```
+
+**4. Added Detailed Logging:**
+
+- Thread identification (MAIN vs BG-xxxxx)
+- Entry/exit logging for critical methods
+- Overlay count logging after operations
+
+### How to Debug with Zombies
+
+When you run with Zombies enabled, if the crash is an over-release:
+1. Instead of `EXC_BAD_ACCESS`, you'll see: `*** -[DimOverlayWindow retain]: message sent to deallocated instance 0x7f8...`
+2. The message tells you EXACTLY which class was over-released
+3. Use malloc_history tool: `malloc_history <pid> <address>` to see allocation/deallocation stack traces
+
+### LLDB Commands for Debugging
+
+When paused at crash in Xcode:
+```lldb
+# Print current thread backtrace
+bt
+
+# Print all threads
+bt all
+
+# Memory info for crashed pointer
+memory read 0x22de0
+
+# Check if address is valid
+image lookup --address 0x22de0
+
+# Print object at address (if valid)
+po *(id*)0x22de0
+
+# Show malloc history (requires MallocStackLogging)
+malloc_history <pid> 0x22de0
+```
+
+### Next Steps if Crash Persists
+
+1. Run with Zombie Objects enabled - get the actual class name
+2. Look at console for "ZOMBIE DETECTED" messages
+3. Check thread info in logs to identify race condition patterns
+4. Use Instruments > Zombies template for visual debugging
+5. Consider switching to Instruments > Allocations with "Record reference counts"
+
+### Files Modified
+- `SuperDimmer.xcscheme` - Added NSZombieEnabled, MallocStackLogging, disabled ASan
+- `OverlayManager.swift` - Added overlayLock, thread-safe methods, zombie detection, detailed logging

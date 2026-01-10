@@ -253,6 +253,12 @@ final class DimOverlayWindow: NSWindow {
      FIX (Jan 8, 2026): Added to solve the "overlay covers windows above target" bug
      */
     func orderAboveWindow(_ windowID: CGWindowID) {
+        // CRASH FIX (Jan 9, 2026): Protect against accessing closed window
+        guard !isClosing else {
+            print("⚠️ DimOverlayWindow: Ignoring orderAboveWindow on closing window: \(overlayID)")
+            return
+        }
+        
         // Position this window directly above the target window
         // The Int(windowID) is the window number that macOS uses
         self.order(.above, relativeTo: Int(windowID))
@@ -298,6 +304,14 @@ final class DimOverlayWindow: NSWindow {
      Uses .easeInEaseOut timing for natural, non-linear animation.
      */
     func setDimLevel(_ level: CGFloat, animated: Bool = true, duration: TimeInterval = 0.35) {
+        // CRASH FIX (Jan 9, 2026): Protect against accessing closed window
+        // The EXC_BAD_ACCESS was happening in autorelease pool drain after CA operations.
+        // This guard prevents operating on windows that are being/have been closed.
+        guard !isClosing else {
+            print("⚠️ DimOverlayWindow: Ignoring setDimLevel on closing window: \(overlayID)")
+            return
+        }
+        
         guard let layer = dimView?.layer else {
             print("⚠️ DimOverlayWindow: No layer available for dim level change")
             return
@@ -308,19 +322,24 @@ final class DimOverlayWindow: NSWindow {
         
         let newColor = NSColor.black.withAlphaComponent(clampedLevel).cgColor
         
-        if animated {
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(duration)
-            CATransaction.setAnimationTimingFunction(
-                CAMediaTimingFunction(name: .easeInEaseOut)
-            )
-            layer.backgroundColor = newColor
-            CATransaction.commit()
-        } else {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layer.backgroundColor = newColor
-            CATransaction.commit()
+        // CRASH FIX (Jan 9, 2026): Wrap CA operations in autoreleasepool
+        // This ensures any autoreleased objects from CA are drained immediately,
+        // not left for the run loop's pool which can crash if objects are freed early.
+        autoreleasepool {
+            if animated {
+                CATransaction.begin()
+                CATransaction.setAnimationDuration(duration)
+                CATransaction.setAnimationTimingFunction(
+                    CAMediaTimingFunction(name: .easeInEaseOut)
+                )
+                layer.backgroundColor = newColor
+                CATransaction.commit()
+            } else {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                layer.backgroundColor = newColor
+                CATransaction.commit()
+            }
         }
         
         self.dimLevel = clampedLevel
@@ -341,6 +360,12 @@ final class DimOverlayWindow: NSWindow {
      animated: false to avoid "lag behind" effect.
      */
     func updatePosition(to rect: CGRect, animated: Bool = true, duration: TimeInterval = 0.3) {
+        // CRASH FIX (Jan 9, 2026): Protect against accessing closed window
+        guard !isClosing else {
+            print("⚠️ DimOverlayWindow: Ignoring updatePosition on closing window: \(overlayID)")
+            return
+        }
+        
         // Skip animation if frame hasn't changed significantly (avoids micro-jitter)
         let currentFrame = self.frame
         let tolerance: CGFloat = 1.0
@@ -351,14 +376,17 @@ final class DimOverlayWindow: NSWindow {
         
         guard significantChange else { return }
         
-        if animated {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = duration
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                self.animator().setFrame(rect, display: true)
+        // CRASH FIX (Jan 9, 2026): Wrap animation in autoreleasepool
+        autoreleasepool {
+            if animated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = duration
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    self.animator().setFrame(rect, display: true)
+                }
+            } else {
+                self.setFrame(rect, display: true)
             }
-        } else {
-            self.setFrame(rect, display: true)
         }
     }
     
