@@ -58,10 +58,27 @@ struct MenuBarView: View {
     @EnvironmentObject var settings: SettingsManager
     
     /**
+     Temporary disable manager - observed for countdown updates.
+     
+     WHY @ObservedObject:
+     We need the view to update every second when the countdown timer ticks.
+     Using @ObservedObject ensures SwiftUI redraws when remainingSeconds changes.
+     */
+    @ObservedObject private var temporaryDisableManager = TemporaryDisableManager.shared
+    
+    /**
      Whether to show the permission needed banner.
      Updated based on actual permission status.
      */
     @State private var showPermissionBanner = false
+    
+    /**
+     Whether the disable duration options are expanded/visible.
+     
+     When user clicks "Disable" button, this expands to show 10s/5m/30m/1h options.
+     Collapsed after a selection is made.
+     */
+    @State private var showDisableOptions = false
     
     // ================================================================
     // MARK: - Body
@@ -197,6 +214,16 @@ struct MenuBarView: View {
      */
     private var brightnessSection: some View {
         VStack(spacing: 16) {
+            // ========================================================
+            // Temporary Disable Section
+            // ========================================================
+            // Show this prominently when dimming is enabled OR when temporarily disabled
+            // This allows users to quickly pause without digging through settings
+            if settings.isDimmingEnabled || temporaryDisableManager.isTemporarilyDisabled {
+                temporaryDisableSection
+                    .padding(.bottom, 4)
+            }
+            
             // Master toggle
             HStack {
                 Image(systemName: "eye")
@@ -613,6 +640,162 @@ struct MenuBarView: View {
                 Text("Shows red borders on overlays for positioning debug")
                     .font(.caption2)
                     .foregroundColor(.secondary)
+            }
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Temporary Disable Section
+    // ================================================================
+    
+    /**
+     UI for temporarily disabling dimming with countdown timer.
+     
+     DESIGN DECISIONS (based on user feedback):
+     - Uses clickable buttons, NOT a dial or typed value
+     - 4 preset options: 10 sec (screenshot), 5 min, 30 min, 1 hour
+     - When disabled: Shows remaining time with "Enable Now" button
+     - Visually prominent to be easy to find
+     
+     STATES:
+     1. Not disabled: Shows "Pause" button that expands to options
+     2. Disabled: Shows countdown timer and "Enable Now" button
+     
+     WHY THIS APPROACH:
+     - f.lux and similar apps use predefined intervals
+     - Click-based is faster than typing or dial
+     - Countdown creates clear expectation of when dimming returns
+     - "Enable Now" gives control back to user
+     */
+    private var temporaryDisableSection: some View {
+        VStack(spacing: 8) {
+            if temporaryDisableManager.isTemporarilyDisabled {
+                // ========================================================
+                // Currently Disabled - Show countdown and enable button
+                // ========================================================
+                HStack(spacing: 12) {
+                    // Pause icon to indicate state
+                    Image(systemName: "pause.circle.fill")
+                        .foregroundColor(.orange)
+                        .font(.title2)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Status text
+                        Text("Dimming Paused")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        // Countdown timer
+                        // Using monospaced digits so the layout doesn't jump as time changes
+                        Text("\(temporaryDisableManager.remainingTimeFormatted) remaining")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    
+                    Spacer()
+                    
+                    // Enable Now button
+                    Button(action: {
+                        temporaryDisableManager.enableNow()
+                    }) {
+                        Text("Resume")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .controlSize(.small)
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+            } else {
+                // ========================================================
+                // Not Disabled - Show pause button or options
+                // ========================================================
+                if showDisableOptions {
+                    // Expanded state: Show time duration buttons
+                    VStack(spacing: 8) {
+                        HStack {
+                            Image(systemName: "pause.circle")
+                                .foregroundColor(.orange)
+                            
+                            Text("Pause dimming for:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            // Close button to collapse
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showDisableOptions = false
+                                }
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        // Duration buttons in a horizontal row
+                        // 4 buttons: 10 sec, 5 min, 30 min, 1 hour
+                        HStack(spacing: 6) {
+                            ForEach(DisableDuration.allCases) { duration in
+                                Button(action: {
+                                    // Start temporary disable
+                                    temporaryDisableManager.disableFor(duration)
+                                    // Collapse the options
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showDisableOptions = false
+                                    }
+                                }) {
+                                    VStack(spacing: 2) {
+                                        Image(systemName: duration.icon)
+                                            .font(.caption)
+                                        Text(duration.displayName)
+                                            .font(.caption2)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .background(Color.orange.opacity(0.15))
+                                    .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                                .help(duration.description) // Tooltip on hover
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(8)
+                } else {
+                    // Collapsed state: Show simple pause button
+                    HStack {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showDisableOptions = true
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pause.circle")
+                                    .foregroundColor(.orange)
+                                Text("Pause Dimming")
+                                    .font(.caption)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Spacer()
+                        
+                        Text("For screenshots, etc.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
         }
     }

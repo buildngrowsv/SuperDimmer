@@ -727,7 +727,77 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-### 2.13 Phase 2 Integration Testing
+### 2.13 Temporary Disable / Pause Feature ✅ COMPLETED
+
+> **USER FEATURE REQUEST** - Temporarily pause dimming for a set duration
+> Users need to temporarily disable dimming for activities like:
+> - Taking screenshots (10 seconds)
+> - Quick color-sensitive tasks (5 minutes)
+> - Meetings/presentations (30 minutes to 1 hour)
+>
+> **Why this matters:** Instead of manually toggling dimming on/off (and possibly
+> forgetting to re-enable), users can select a preset duration and the app
+> automatically resumes dimming when the timer expires.
+>
+> **Design decisions (based on user feedback):**
+> - Click-based selection (not dial or typed value) for simplicity
+> - 4 preset options covering common use cases
+> - Countdown timer shows remaining time
+> - "Resume" button allows early reactivation
+> - Menu bar icon changes to "pause" symbol during disable
+
+**COMPLETED: January 9, 2026**
+
+#### 2.13.1 Temporary Disable Manager ✅
+- [x] Create `TemporaryDisableManager.swift` singleton service
+- [x] Define `DisableDuration` enum with presets: 10sec, 5min, 30min, 1hr
+- [x] Implement `disableFor(_ duration:)` method
+- [x] Implement `enableNow()` method for early reactivation
+- [x] Track `isTemporarilyDisabled` state with @Published
+- [x] Track `remainingSeconds` with countdown timer
+- [x] Persist state to UserDefaults for app restart scenarios
+- [x] Restore active disable on app relaunch if timer hasn't expired
+
+#### 2.13.2 Timer and Countdown Logic ✅
+- [x] Use Combine Timer publisher for main thread updates
+- [x] Decrement `remainingSeconds` every second
+- [x] Auto-reactivate dimming when timer reaches 0
+- [x] Store dimming state BEFORE disable (to restore correctly)
+- [x] Cancel timer on early reactivation
+
+#### 2.13.3 Menu Bar View Integration ✅
+- [x] Add `temporaryDisableSection` to MenuBarView
+- [x] Show "Pause Dimming" button when dimming is enabled
+- [x] Expand to show 4 duration buttons on click
+- [x] When disabled: Show "Dimming Paused" with countdown and "Resume" button
+- [x] Use monospaced digits for countdown display
+
+#### 2.13.4 Menu Bar Icon State ✅
+- [x] Update `MenuBarController.updateIconForCurrentState()` for pause state
+- [x] Show "pause.circle" SF Symbol when temporarily disabled
+- [x] Update tooltip to show remaining time
+- [x] Priority: temporary disable > dimming enabled > color temp > disabled
+
+#### 🔨 BUILD CHECK 2.13 ✅
+```bash
+xcodebuild -scheme SuperDimmer -configuration Release build
+```
+- [x] Build succeeds
+- [x] No new warnings introduced
+
+#### 🧪 TEST CHECK 2.13
+- [ ] Click "Pause Dimming" shows 4 duration options
+- [ ] Selecting duration starts countdown
+- [ ] Countdown updates every second
+- [ ] Dimming resumes automatically when timer expires
+- [ ] "Resume" button ends pause early
+- [ ] Menu bar icon shows pause symbol during disable
+- [ ] Tooltip shows remaining time
+- [ ] State persists across app restart (if timer still active)
+
+---
+
+### 2.14 Phase 2 Integration Testing
 
 #### 🔨 BUILD CHECK - PHASE 2 FINAL
 ```bash
@@ -742,6 +812,7 @@ xcodebuild -scheme SuperDimmer -configuration Release build
 - [ ] Resize window → overlay tracks
 - [ ] Close window → overlay removed
 - [ ] Open new window → overlay created if bright
+- [ ] Pause dimming feature works (all 4 durations)
 - [ ] Performance: CPU < 5% during active analysis
 - [ ] Performance: Memory < 50 MB with many overlays
 
@@ -749,6 +820,7 @@ xcodebuild -scheme SuperDimmer -configuration Release build
 - [ ] Dimming coordinator logic is clean
 - [ ] No memory leaks with overlay creation/destruction
 - [ ] Error handling for edge cases (hidden windows, etc.)
+- [ ] Temporary disable state management is clean
 
 ---
 

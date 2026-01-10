@@ -339,6 +339,14 @@ final class MenuBarController: NSObject {
                 self?.updateIconForCurrentState()
             }
             .store(in: &cancellables)
+        
+        // Observe temporary disable state changes
+        // When user pauses dimming, the icon should change to indicate paused state
+        TemporaryDisableManager.shared.$isTemporarilyDisabled
+            .sink { [weak self] _ in
+                self?.updateIconForCurrentState()
+            }
+            .store(in: &cancellables)
     }
     
     /**
@@ -347,20 +355,31 @@ final class MenuBarController: NSObject {
      ICON STATES:
      - Disabled: Outline sun (dimming off)
      - Active: Filled sun (dimming on)
+     - Paused: Pause circle (temporary disable active)
      - Color temp: Sun with warm tint (color temperature active)
      
-     For MVP, we use simple filled/outline states.
+     DESIGN DECISION (Jan 9, 2026):
+     When temporarily disabled, we show a distinct "pause" icon so users
+     can see at a glance that dimming is paused and will resume.
+     This is more informative than just showing the "off" state.
      */
     func updateIconForCurrentState() {
         guard let button = statusItem?.button else { return }
         
         let isDimmingEnabled = SettingsManager.shared.isDimmingEnabled
         let isColorTempEnabled = SettingsManager.shared.colorTemperatureEnabled
+        let isTemporarilyDisabled = TemporaryDisableManager.shared.isTemporarilyDisabled
         
         // Choose icon based on state
         // Using SF Symbols for crisp rendering
         let iconName: String
-        if isDimmingEnabled || isColorTempEnabled {
+        
+        // Priority: Temporary disable state takes precedence for icon display
+        // This shows users that dimming is PAUSED (not off) and will resume
+        if isTemporarilyDisabled {
+            // Paused state - shows pause symbol so user knows dimming will resume
+            iconName = "pause.circle"
+        } else if isDimmingEnabled || isColorTempEnabled {
             // Active state - filled icon
             iconName = "sun.max.fill"
         } else {
@@ -372,7 +391,11 @@ final class MenuBarController: NSObject {
         button.image?.isTemplate = true // Adapt to menu bar appearance
         
         // Update tooltip with current state
-        if isDimmingEnabled && isColorTempEnabled {
+        // Include remaining time if temporarily disabled
+        if isTemporarilyDisabled {
+            let remainingTime = TemporaryDisableManager.shared.remainingTimeFormatted
+            button.toolTip = "SuperDimmer - Paused (\(remainingTime) remaining)"
+        } else if isDimmingEnabled && isColorTempEnabled {
             button.toolTip = "SuperDimmer - Dimming and color temperature active"
         } else if isDimmingEnabled {
             button.toolTip = "SuperDimmer - Dimming active"
@@ -423,17 +446,25 @@ final class MenuBarIconStateManager {
      
      - Returns: SF Symbol name for the current state
      
-     ICON STATES:
-     - "sun.max": Default/disabled state
-     - "sun.max.fill": Active dimming
-     - "sun.min.fill": Color temperature active (warmer)
-     - Custom: Could add more states in future
+     ICON STATES (in priority order):
+     - "pause.circle": Temporary disable active - dimming paused
+     - "sun.max.fill": Active dimming or color temp
+     - "sun.min.fill": Color temperature active only (warmer)
+     - "sun.max": Default/disabled state - nothing active
+     
+     DESIGN DECISION (Jan 9, 2026):
+     Temporary disable takes highest priority so users can see at a glance
+     that the app is paused and will resume automatically.
      */
     func currentIconName() -> String {
         let isDimmingEnabled = SettingsManager.shared.isDimmingEnabled
         let isColorTempEnabled = SettingsManager.shared.colorTemperatureEnabled
+        let isTemporarilyDisabled = TemporaryDisableManager.shared.isTemporarilyDisabled
         
-        if isDimmingEnabled && isColorTempEnabled {
+        // Temporary disable has highest priority
+        if isTemporarilyDisabled {
+            return "pause.circle" // Paused state
+        } else if isDimmingEnabled && isColorTempEnabled {
             return "sun.max.fill" // Both active
         } else if isDimmingEnabled {
             return "sun.max.fill" // Just dimming

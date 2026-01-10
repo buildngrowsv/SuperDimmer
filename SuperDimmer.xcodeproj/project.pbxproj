@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1786CD87303B63162133E819 /* DimOverlayWindow.swift */; };
+		19A8B3C4D5E6F7A8B9C0D1E2 /* TemporaryDisableManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B8C7D6E5F4A3B2C1D0E9F8 /* TemporaryDisableManager.swift */; };
 		1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */; };
 		1DE410E49A5AC8F149E219C0 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */; };
 		2432D011DB19FE64F29AE6C1 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 007F0A55A64BEF81B7363D45 /* PreferencesView.swift */; };
@@ -65,6 +66,7 @@
 		4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrightnessAnalysisEngine.swift; sourceTree = "<group>"; };
 		568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowInactivityTracker.swift; sourceTree = "<group>"; };
 		608B44F65F59A9F4646E6B74 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A9B8C7D6E5F4A3B2C1D0E9F8 /* TemporaryDisableManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryDisableManager.swift; sourceTree = "<group>"; };
 		73D0D7E7FF2F4335B2B8EABD /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
 		761339A7D21F3EC383AFDC4E /* DimmingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimmingCoordinator.swift; sourceTree = "<group>"; };
 		76856B00C83C0C88F34C0E5E /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
@@ -260,6 +262,7 @@
 				99D465058B8A750951B2B515 /* LocationService.swift */,
 				27586C5BE0F771581C033B4C /* ScheduleManager.swift */,
 				005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */,
+				A9B8C7D6E5F4A3B2C1D0E9F8 /* TemporaryDisableManager.swift */,
 				568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */,
 				494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */,
 			);
@@ -407,6 +410,7 @@
 				2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */,
 				9DF14CF8F541D544FC005E3B /* SettingsManager.swift in Sources */,
 				7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */,
+				19A8B3C4D5E6F7A8B9C0D1E2 /* TemporaryDisableManager.swift in Sources */,
 				C21173BD4C3C9897E9867077 /* WindowInactivityTracker.swift in Sources */,
 				DE327EB0680EEFB0EFD48236 /* WindowTrackerService.swift in Sources */,
 			);
