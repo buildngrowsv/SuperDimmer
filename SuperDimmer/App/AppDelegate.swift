@@ -109,6 +109,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var autoHideManager: AutoHideManager?
     
     /**
+     Manager for auto-minimizing inactive windows.
+     
+     When an app has too many windows open (above threshold), automatically
+     minimizes the oldest inactive ones. OFF by default - opt-in feature.
+     
+     ADDED (Jan 9, 2026): Integrates with ActiveUsageTracker to only count
+     time when user is actively using the computer.
+     */
+    var autoMinimizeManager: AutoMinimizeManager?
+    
+    /**
      The preferences window.
      
      FIX (Jan 8, 2026): SwiftUI Settings scene doesn't work reliably for menu bar apps.
@@ -195,6 +206,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         // ============================================================
+        // Step 2.7: Initialize Auto-Minimize Manager
+        // ============================================================
+        // Auto-minimize inactive windows when app has too many open
+        // OFF by default - opt-in feature for power users
+        autoMinimizeManager = AutoMinimizeManager.shared
+        if SettingsManager.shared.autoMinimizeEnabled {
+            autoMinimizeManager?.start()
+            print("✓ AutoMinimizeManager started (auto-minimize is ON)")
+        } else {
+            print("✓ AutoMinimizeManager ready (auto-minimize is OFF)")
+        }
+        
+        // ============================================================
         // Step 3: Create Menu Bar Controller
         // ============================================================
         // This creates the NSStatusItem and popover
@@ -264,6 +288,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // ============================================================
         autoHideManager?.stop()
         print("✓ Auto-hide manager stopped")
+        
+        // ============================================================
+        // Stop auto-minimize manager
+        // ============================================================
+        autoMinimizeManager?.stop()
+        print("✓ Auto-minimize manager stopped")
         
         // ============================================================
         // Restore color temperature to default
@@ -394,6 +424,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     self?.autoHideManager?.stop()
                     print("✓ Auto-hide stopped")
+                }
+            }
+            .store(in: &cancellables)
+        
+        // Observe autoMinimizeEnabled changes from the UI
+        SettingsManager.shared.$autoMinimizeEnabled
+            .dropFirst()
+            .sink { [weak self] enabled in
+                if enabled {
+                    self?.autoMinimizeManager?.start()
+                    print("✓ Auto-minimize started")
+                } else {
+                    self?.autoMinimizeManager?.stop()
+                    print("✓ Auto-minimize stopped")
                 }
             }
             .store(in: &cancellables)
