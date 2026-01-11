@@ -163,6 +163,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         storeSharedInstance()
         
         // ============================================================
+        // Initialize Crash Reporting EARLY
+        // ============================================================
+        // Sentry should be initialized as early as possible to catch crashes
+        // during app startup. We do this before any other initialization
+        // because crashes during setup are the hardest to debug without
+        // crash reports.
+        //
+        // NOTE: Requires Sentry SDK to be added via SPM:
+        // File → Add Package Dependencies → https://github.com/getsentry/sentry-cocoa
+        //
+        // The manager handles the case where DSN is not configured (dev builds)
+        // and respects user's privacy preference (crashReportingEnabled).
+        #if DEBUG
+        CrashReportingManager.shared.initialize(enableDebugLogging: true)
+        #else
+        CrashReportingManager.shared.initialize(enableDebugLogging: false)
+        #endif
+        
+        // ============================================================
         // Log startup for debugging
         // ============================================================
         print("🌟 SuperDimmer launching...")

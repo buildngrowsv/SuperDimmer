@@ -37,6 +37,7 @@
 		E748258583468783DCA7726A /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99D465058B8A750951B2B515 /* LocationService.swift */; };
 		E8EF0C3464404E46E80A158F /* SuperDimmerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA7A645622AB3F65E274F /* SuperDimmerTests.swift */; };
 		F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */; };
+		CRASH1234567890ABCDEF12 /* CrashReportingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRASH9876543210FEDCBA98 /* CrashReportingManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -84,6 +85,7 @@
 		F17205C30B76A224ED5805C1 /* SuperDimmer.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SuperDimmer.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F66E8844DCCCD25531199A7D /* AutoHideManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoHideManager.swift; sourceTree = "<group>"; };
 		FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
+		CRASH9876543210FEDCBA98 /* CrashReportingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportingManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -259,6 +261,7 @@
 				BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */,
 				4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */,
 				AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */,
+				CRASH9876543210FEDCBA98 /* CrashReportingManager.swift */,
 				99D465058B8A750951B2B515 /* LocationService.swift */,
 				27586C5BE0F771581C033B4C /* ScheduleManager.swift */,
 				005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */,
@@ -396,6 +399,7 @@
 				1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */,
 				F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */,
 				B15709EDC740B83EB0DE16E3 /* BrightnessAnalysisEngine.swift in Sources */,
+				CRASH1234567890ABCDEF12 /* CrashReportingManager.swift in Sources */,
 				2D56097619E851E2CC830DF9 /* ColorTemperatureManager.swift in Sources */,
 				18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */,
 				A8116E433AA8D37103819457 /* DimmingCoordinator.swift in Sources */,
