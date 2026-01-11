@@ -603,49 +603,55 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 > that you opened briefly but forgot about. Auto-hiding them keeps your workspace clean
 > without requiring manual intervention.
 
-#### 2.11.1 Auto-Hide Settings
-- [ ] Add `autoHideEnabled` setting to SettingsManager
-- [ ] Add `autoHideDelay` setting (minutes before hiding, default 30 minutes)
-- [ ] Add `autoHideExcludedApps` setting (Set<String> of bundle IDs)
-- [ ] Add `autoHideExcludeSystemApps` setting (default true - Finder, etc.)
-- [ ] Persist auto-hide settings to UserDefaults
+#### 2.11.1 Auto-Hide Settings ✅
+- [x] Add `autoHideEnabled` setting to SettingsManager
+- [x] Add `autoHideDelay` setting (minutes before hiding, default 30 minutes)
+- [x] Add `autoHideExcludedApps` setting (Set<String> of bundle IDs)
+- [x] Add `autoHideExcludeSystemApps` setting (default true - Finder, etc.)
+- [x] Persist auto-hide settings to UserDefaults
 
-#### 2.11.2 App Inactivity Tracker
-- [ ] Create `AppInactivityTracker.swift` service
-- [ ] Track `lastForegroundTimestamp` per bundle ID
-- [ ] Update timestamp when app becomes frontmost (NSWorkspace observer)
-- [ ] Calculate `timeSinceLastForeground` for each running app
-- [ ] Maintain list of apps that should be auto-hidden
+#### 2.11.2 App Inactivity Tracker ✅
+- [x] Create `AppInactivityTracker.swift` service
+- [x] Track `lastForegroundTimestamp` per bundle ID
+- [x] Update timestamp when app becomes frontmost (NSWorkspace observer)
+- [x] Calculate `timeSinceLastForeground` for each running app
+- [x] Maintain list of apps that should be auto-hidden
 
-#### 2.11.3 Auto-Hide Logic
-- [ ] Create `AutoHideManager.swift` service
-- [ ] Implement `hideApp(bundleID:)` using NSRunningApplication.hide()
-- [ ] Check inactivity timer periodically (every 60 seconds)
-- [ ] Skip excluded apps (user-defined + system apps if setting enabled)
-- [ ] Skip apps with unsaved changes (if detectable via Accessibility)
-- [ ] Log auto-hide actions for user transparency
+#### 2.11.3 Auto-Hide Logic ✅
+- [x] Create `AutoHideManager.swift` service
+- [x] Implement `hideApp(bundleID:)` using NSRunningApplication.hide()
+- [x] Check inactivity timer periodically (every 60 seconds)
+- [x] Skip excluded apps (user-defined + system apps if setting enabled)
+- [ ] Skip apps with unsaved changes (if detectable via Accessibility) - DEFERRED
+- [x] Log auto-hide actions for user transparency
 
-#### 2.11.4 Auto-Hide UI
-- [ ] Add "Auto-Hide Inactive Apps" toggle to Preferences
-- [ ] Add auto-hide delay slider (5 min - 120 min)
-- [ ] Add excluded apps list editor (reuse ExcludedAppsPreferencesTab pattern)
-- [ ] Add "Exclude system apps" checkbox
-- [ ] Show notification when app is auto-hidden (optional)
-- [ ] Add "Recently Auto-Hidden" list with "Unhide" buttons
+#### 2.11.4 Auto-Hide UI ✅
+- [x] Add "Auto-Hide Inactive Apps" toggle to Preferences
+- [x] Add auto-hide delay slider (5 min - 120 min)
+- [x] Add excluded apps list editor (reuse ExcludedAppsPreferencesTab pattern)
+- [x] Add "Exclude system apps" checkbox
+- [ ] Show notification when app is auto-hidden (optional) - DEFERRED
+- [ ] Add "Recently Auto-Hidden" list with "Unhide" buttons - DEFERRED
 
-#### 🔨 BUILD CHECK 2.11
+#### 2.11.5 App Delegate Integration ✅ (Jan 9, 2026)
+- [x] Initialize AutoHideManager in AppDelegate
+- [x] Start on launch if autoHideEnabled is true
+- [x] Settings observer to start/stop when toggle changes
+- [x] Stop on app termination
+
+#### 🔨 BUILD CHECK 2.11 ✅
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Debug build
 ```
-- [ ] Build succeeds
+- [x] Build succeeds
 
 #### 🧪 TEST CHECK 2.11
-- [ ] Apps are hidden after inactivity delay
-- [ ] Excluded apps are never auto-hidden
-- [ ] Using app resets its inactivity timer
-- [ ] Auto-hide settings persist across restart
-- [ ] Notification shown when app hidden (if enabled)
-- [ ] Hidden apps can be unhidden from list
+- [ ] Apps are hidden after inactivity delay - NEEDS TESTING
+- [ ] Excluded apps are never auto-hidden - NEEDS TESTING
+- [x] Using app resets its inactivity timer (fixed Jan 9)
+- [ ] Auto-hide settings persist across restart - NEEDS TESTING
+- [ ] Notification shown when app hidden (if enabled) - DEFERRED
+- [ ] Hidden apps can be unhidden from list - DEFERRED
 
 ---
 
@@ -666,64 +672,70 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 > or 8 Cursor windows. Instead of manual cleanup, SuperDimmer minimizes the oldest
 > ones while keeping your most recent windows accessible.
 
-#### 2.12.1 Auto-Minimize Settings
-- [ ] Add `autoMinimizeEnabled` setting to SettingsManager
-- [ ] Add `autoMinimizeDelay` setting (minutes of ACTIVE use before minimize, default 15)
-- [ ] Add `autoMinimizeIdleResetTime` setting (minutes of idle to reset counters, default 5)
-- [ ] Add `autoMinimizeWindowThreshold` setting (min windows per app before minimizing, default 3)
-- [ ] Add `autoMinimizeExcludedApps` setting (Set<String> of bundle IDs)
-- [ ] Persist all settings to UserDefaults
+#### 2.12.1 Auto-Minimize Settings ✅
+- [x] Add `autoMinimizeEnabled` setting to SettingsManager
+- [x] Add `autoMinimizeDelay` setting (minutes of ACTIVE use before minimize, default 15)
+- [x] Add `autoMinimizeIdleResetTime` setting (minutes of idle to reset counters, default 5)
+- [x] Add `autoMinimizeWindowThreshold` setting (min windows per app before minimizing, default 3)
+- [x] Add `autoMinimizeExcludedApps` setting (Set<String> of bundle IDs)
+- [x] Persist all settings to UserDefaults
 
-#### 2.12.2 Active Usage Tracker
-- [ ] Create `ActiveUsageTracker.swift` service
-- [ ] Detect user activity (mouse movement, key presses) via CGEventTap or IOKit
-- [ ] Track `isUserActive` state (true if activity within last 30 seconds)
-- [ ] Track `totalActiveTime` per window (only increments when user is active)
-- [ ] Reset all window timers when idle exceeds `autoMinimizeIdleResetTime`
-- [ ] Handle wake from sleep (reset timers)
+#### 2.12.2 Active Usage Tracker ✅
+- [x] Create `ActiveUsageTracker.swift` service
+- [x] Detect user activity (mouse movement, key presses) via NSEvent.addGlobalMonitorForEvents
+- [x] Track `isUserActive` state (true if activity within last 30 seconds)
+- [x] Track `totalActiveTime` per window (only increments when user is active)
+- [x] Reset all window timers when idle exceeds `autoMinimizeIdleResetTime`
+- [x] Handle wake from sleep (reset timers)
 
-#### 2.12.3 Window Inactivity Counter
-- [ ] Extend `WindowInactivityTracker` or create dedicated tracker
-- [ ] Track `activeUsageAccumulator` per window ID (seconds of active usage while inactive)
-- [ ] Only increment when `isUserActive == true` AND window is not frontmost
-- [ ] Reset accumulator when window becomes frontmost
-- [ ] Reset ALL accumulators when user returns from extended idle
+#### 2.12.3 Window Inactivity Counter ✅
+- [x] Uses existing `WindowInactivityTracker` for per-window timestamps
+- [x] Track `activeUsageAccumulator` per window ID (seconds of active usage while inactive)
+- [x] Only increment when `isUserActive == true` AND window is not frontmost
+- [x] Reset accumulator when window becomes frontmost
+- [x] Reset ALL accumulators when user returns from extended idle
 
-#### 2.12.4 Auto-Minimize Logic
-- [ ] Create `AutoMinimizeManager.swift` service
-- [ ] Group windows by owner app (bundle ID)
-- [ ] For each app: count visible windows on current Space
-- [ ] If count > `autoMinimizeWindowThreshold`:
-  - [ ] Sort windows by `activeUsageAccumulator` (highest = oldest inactive)
-  - [ ] Minimize oldest until count == threshold
-- [ ] Use `NSWindow.miniaturize()` via Accessibility API or AppleScript
-- [ ] Skip excluded apps
-- [ ] Log minimize actions for user transparency
+#### 2.12.4 Auto-Minimize Logic ✅
+- [x] Create `AutoMinimizeManager.swift` service
+- [x] Group windows by owner app (bundle ID)
+- [x] For each app: count visible windows on current Space
+- [x] If count > `autoMinimizeWindowThreshold`:
+  - [x] Sort windows by inactivity (longest inactive first)
+  - [x] Minimize oldest until count == threshold
+- [x] Use AppleScript to minimize windows (most reliable method)
+- [x] Skip excluded apps
+- [x] Log minimize actions for user transparency
 
-#### 2.12.5 Auto-Minimize UI
-- [ ] Add "Auto-Minimize Windows" section to Preferences
-- [ ] Add enable/disable toggle
-- [ ] Add "Minimize After" slider (5-60 minutes of active use)
-- [ ] Add "Reset After Idle" slider (2-30 minutes)
-- [ ] Add "Keep At Least" stepper (1-10 windows per app)
-- [ ] Add excluded apps list editor
-- [ ] Add "Recently Minimized" section with restore option
-- [ ] Show status indicator: "Tracking: 5 windows across 3 apps"
+#### 2.12.5 Auto-Minimize UI ✅
+- [x] Add "Auto-Minimize Windows" section to Preferences
+- [x] Add enable/disable toggle
+- [x] Add "Minimize After" slider (5-60 minutes of active use)
+- [x] Add "Reset After Idle" slider (2-30 minutes)
+- [x] Add "Keep At Least" stepper (1-10 windows per app)
+- [x] Add excluded apps list editor
+- [ ] Add "Recently Minimized" section with restore option - DEFERRED
+- [ ] Show status indicator: "Tracking: 5 windows across 3 apps" - DEFERRED
 
-#### 🔨 BUILD CHECK 2.12
+#### 2.12.6 App Delegate Integration ✅ (Jan 9, 2026)
+- [x] Initialize AutoMinimizeManager in AppDelegate
+- [x] Start on launch if autoMinimizeEnabled is true (default: OFF)
+- [x] Settings observer to start/stop when toggle changes
+- [x] Stop on app termination
+
+#### 🔨 BUILD CHECK 2.12 ✅
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Debug build
 ```
-- [ ] Build succeeds
+- [x] Build succeeds
 
 #### 🧪 TEST CHECK 2.12
-- [ ] Windows minimize after configured active-use time
-- [ ] Timer pauses when user is idle (no mouse/keyboard)
-- [ ] Timers reset after extended idle period
-- [ ] Threshold respected (keeps N windows per app)
-- [ ] Excluded apps never auto-minimized
-- [ ] Walking away overnight doesn't minimize everything
-- [ ] Settings persist across restart
+- [ ] Windows minimize after configured active-use time - NEEDS TESTING
+- [ ] Timer pauses when user is idle (no mouse/keyboard) - NEEDS TESTING
+- [ ] Timers reset after extended idle period - NEEDS TESTING
+- [ ] Threshold respected (keeps N windows per app) - NEEDS TESTING
+- [ ] Excluded apps never auto-minimized - NEEDS TESTING
+- [ ] Walking away overnight doesn't minimize everything - NEEDS TESTING
+- [ ] Settings persist across restart - NEEDS TESTING
 
 ---
 
