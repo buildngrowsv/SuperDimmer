@@ -342,7 +342,7 @@ This breaks the cycle by allowing the current view update to complete before mod
 
 ### Next Steps
 - [ ] Deploy to Cloudflare Pages
-- [ ] Purchase and configure superdimmer.app domain
+- [ ] Purchase and configure superdimmer.com domain
 - [ ] Integrate Paddle checkout
 - [ ] Add download links once app is signed/notarized
 

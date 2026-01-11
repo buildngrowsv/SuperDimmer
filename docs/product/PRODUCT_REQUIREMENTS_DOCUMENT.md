@@ -730,7 +730,7 @@ final class ColorTemperatureEngine {
     
     <!-- Sparkle Auto-Updates (like BetterDisplay, f.lux, Umbra) -->
     <key>SUFeedURL</key>
-    <string>https://superdimmer.app/sparkle/appcast.xml</string>
+    <string>https://superdimmer.com/sparkle/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>[EdDSA public key goes here]</string>
     <key>SUEnableAutomaticChecks</key>

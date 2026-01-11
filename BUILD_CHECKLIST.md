@@ -1267,7 +1267,7 @@ Add the public key from generate_keys:
 <string>YOUR_PUBLIC_KEY_HERE</string>
 ```
 - [ ] Added `SUPublicEDKey` to Info.plist
-- [x] `SUFeedURL` already set to `https://superdimmer.app/sparkle/appcast.xml`
+- [x] `SUFeedURL` already set to `https://superdimmer.com/sparkle/appcast.xml`
 
 **5.7.4 Create UpdateManager.swift (One-Time)**
 ```swift
@@ -1457,15 +1457,15 @@ cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
 **DMG Files:** `SuperDimmer-Website/releases/`
 
 #### 🧪 TEST CHECK 6.2
-- [ ] Visit https://superdimmer.app/sparkle/appcast.xml - XML loads
-- [ ] Visit https://superdimmer.app/releases/ - DMG downloadable
+- [ ] Visit https://superdimmer.com/sparkle/appcast.xml - XML loads
+- [ ] Visit https://superdimmer.com/releases/ - DMG downloadable
 - [ ] Install old version → Check for Updates → New version found
 - [ ] EdDSA signature verification passes (no error in update dialog)
 
 ---
 
 #### 6.3 Website & Purchase Flow
-- [x] Create landing page for superdimmer.app ✅ (Jan 8, 2026)
+- [x] Create landing page for superdimmer.com ✅ (Jan 8, 2026)
 - [x] Deploy website to Cloudflare Pages ✅ (connected to GitHub)
 - [ ] Integrate Paddle checkout
 - [ ] Set up license key delivery
@@ -1492,7 +1492,7 @@ SuperDimmer-Website/
 ```
 
 #### 🧪 TEST CHECK 6.3
-- [ ] Website loads at https://superdimmer.app
+- [ ] Website loads at https://superdimmer.com
 - [ ] Download button works
 - [ ] Paddle checkout works (sandbox first, then production)
 - [ ] License delivered after purchase

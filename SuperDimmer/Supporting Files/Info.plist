@@ -43,6 +43,6 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://superdimmer.app/sparkle/appcast.xml</string>
+	<string>https://superdimmer.com/sparkle/appcast.xml</string>
 </dict>
 </plist>

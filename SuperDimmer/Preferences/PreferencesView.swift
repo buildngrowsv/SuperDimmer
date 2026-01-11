@@ -1138,10 +1138,10 @@ struct AboutPreferencesTab: View {
             
             // Links
             VStack(spacing: 8) {
-                Link("Visit Website", destination: URL(string: "https://superdimmer.app")!)
+                Link("Visit Website", destination: URL(string: "https://superdimmer.com")!)
                     .font(.body)
                 
-                Link("Report an Issue", destination: URL(string: "mailto:support@superdimmer.app")!)
+                Link("Report an Issue", destination: URL(string: "mailto:support@superdimmer.com")!)
                     .font(.body)
             }
             

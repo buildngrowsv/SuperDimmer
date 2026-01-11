@@ -97,7 +97,7 @@ Add these keys to `SuperDimmer/Supporting Files/Info.plist`:
 ```xml
 <!-- Sparkle Update Configuration -->
 <key>SUFeedURL</key>
-<string>https://superdimmer.app/sparkle/appcast.xml</string>
+<string>https://superdimmer.com/sparkle/appcast.xml</string>
 
 <key>SUPublicEDKey</key>
 <string>YOUR_PUBLIC_KEY_FROM_GENERATE_KEYS</string>
@@ -315,7 +315,7 @@ Create `appcast.xml`:
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>SuperDimmer Updates</title>
-        <link>https://superdimmer.app/</link>
+        <link>https://superdimmer.com/</link>
         <description>Most recent changes for SuperDimmer</description>
         <language>en</language>
         
@@ -326,7 +326,7 @@ Create `appcast.xml`:
             
             <!-- Release notes - can be inline or linked -->
             <sparkle:releaseNotesLink>
-                https://superdimmer.app/release-notes/v1.1.0.html
+                https://superdimmer.com/release-notes/v1.1.0.html
             </sparkle:releaseNotesLink>
             
             <!-- Version info (MUST match Info.plist exactly!) -->
@@ -338,7 +338,7 @@ Create `appcast.xml`:
             
             <!-- Download enclosure with EdDSA signature -->
             <enclosure 
-                url="https://superdimmer.app/releases/SuperDimmer-v1.1.0.dmg" 
+                url="https://superdimmer.com/releases/SuperDimmer-v1.1.0.dmg" 
                 length="18856188"
                 type="application/octet-stream"
                 sparkle:edSignature="YOUR_ED_SIGNATURE_FROM_SIGN_UPDATE=="/>
@@ -349,13 +349,13 @@ Create `appcast.xml`:
             <title>Version 1.0.0</title>
             <pubDate>Wed, 08 Jan 2026 12:00:00 -0800</pubDate>
             <sparkle:releaseNotesLink>
-                https://superdimmer.app/release-notes/v1.0.0.html
+                https://superdimmer.com/release-notes/v1.0.0.html
             </sparkle:releaseNotesLink>
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure 
-                url="https://superdimmer.app/releases/SuperDimmer-v1.0.0.dmg" 
+                url="https://superdimmer.com/releases/SuperDimmer-v1.0.0.dmg" 
                 length="15000000"
                 type="application/octet-stream"
                 sparkle:edSignature="PREVIOUS_SIGNATURE=="/>
