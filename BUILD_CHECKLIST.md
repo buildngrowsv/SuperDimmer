@@ -330,6 +330,249 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
+### 2.2.1 UI/UX Overhaul & Feature Reorganization
+**Priority: HIGH | Added: January 9, 2026**
+
+> **MAJOR CHANGE** - Reorganizing the app's feature hierarchy for better UX
+>
+> Current issues:
+> - First-time users don't see immediate value (dimming is OFF by default)
+> - Feature naming is confusing (what is "Intelligent Mode"?)
+> - Too many toggles without clear explanations
+> - No distinction between Light/Dark mode preferences
+> - Debug features visible to end users
+>
+> Goal: Make the app immediately useful while offering advanced features for power users
+
+---
+
+#### 2.2.1.1 Appearance Mode System (Light/Dark/System)
+> Settings should adapt to user's preferred appearance. Dark mode users want dimming features ON.
+> Light mode users typically don't need aggressive dimming.
+
+- [ ] Add `appearanceMode` setting: `.system`, `.dark`, `.light`
+- [ ] Add `AppearanceManager.swift` to observe system appearance
+- [ ] Store separate settings profiles for light vs dark mode:
+  - [ ] `darkModeSettings: DimmingProfile`
+  - [ ] `lightModeSettings: DimmingProfile`
+- [ ] Create `DimmingProfile` struct with all dimming-related settings
+- [ ] Auto-switch profiles when system appearance changes (if mode = .system)
+- [ ] Add appearance picker at TOP of Preferences window
+- [ ] Default dark mode: Super Dimming ON, features enabled
+- [ ] Default light mode: Super Dimming OFF or minimal
+
+#### 🧪 TEST CHECK 2.2.1.1
+- [ ] Switching to Dark mode loads dark profile
+- [ ] Switching to Light mode loads light profile
+- [ ] System mode follows macOS appearance
+- [ ] Profile changes persist correctly
+
+---
+
+#### 2.2.1.2 "Super Dimming" - Simplified Full-Screen Mode (DEFAULT)
+> The main feature that works immediately out of the box.
+> Uses full-screen brightness analysis to adjust dim level automatically.
+
+- [ ] Rename current full-screen dimming to "Super Dimming"
+- [ ] Enable by default on first install
+- [ ] Add "Auto" mode (default) that adjusts based on screen brightness:
+  - [ ] Capture full-screen screenshot periodically
+  - [ ] Calculate average brightness
+  - [ ] Adjust dim level ±15% (configurable) around base setting
+  - [ ] Bright screen → increase dimming, Dark screen → decrease dimming
+- [ ] Add manual override option (fixed dim level)
+- [ ] Settings for Auto mode:
+  - [ ] `autoAdjustRange: Double` (default 0.15 = ±15%)
+  - [ ] `autoAdjustSensitivity: Double` (how quickly to respond)
+  - [ ] Base dim level slider
+- [ ] Clear explanatory text in UI:
+  > "Super Dimming applies a gentle overlay to reduce screen brightness.
+  > Auto mode adjusts based on what's on your screen."
+
+#### 🔨 BUILD CHECK 2.2.1.2
+```bash
+xcodebuild -scheme SuperDimmer -configuration Debug build
+```
+- [ ] Build succeeds
+
+#### 🧪 TEST CHECK 2.2.1.2
+- [ ] First launch shows Super Dimming ON
+- [ ] Auto mode responds to bright/dark content
+- [ ] Manual mode maintains fixed level
+- [ ] Range slider affects adjustment amount
+- [ ] Explanatory text is clear and helpful
+
+---
+
+#### 2.2.1.3 "Dim Windows Individually" - Beta Feature
+> Advanced mode that dims specific windows. Marked as Beta because it's more complex.
+
+- [ ] Add "Dim Windows Individually (Beta)" toggle
+- [ ] OFF by default
+- [ ] Show beta badge/label in UI
+- [ ] Only visible when Super Dimming is ON
+- [ ] When enabled, disables full-screen overlay and switches to per-window
+- [ ] Clear explanation:
+  > "Analyzes each window and applies individual dimming based on content brightness.
+  > Beta: May have higher CPU usage."
+
+#### 🧪 TEST CHECK 2.2.1.3
+- [ ] Toggle shows "(Beta)" label
+- [ ] Only appears when Super Dimming is ON
+- [ ] Enabling switches from full-screen to per-window overlays
+- [ ] Disabling returns to Super Dimming behavior
+
+---
+
+#### 2.2.1.4 "Dim Bright Areas" - Nested Feature
+> Per-region dimming within windows. Only available when per-window is enabled.
+
+- [ ] Add "Dim Bright Areas" toggle
+- [ ] OFF by default
+- [ ] Only appears when "Dim Windows Individually" is ON
+- [ ] When enabled, detects bright regions within each window
+- [ ] Clear explanation:
+  > "Finds bright areas within windows (like white backgrounds in emails)
+  > and dims only those regions. Uses more resources."
+
+#### 🧪 TEST CHECK 2.2.1.4
+- [ ] Toggle only visible when "Dim Windows Individually" is ON
+- [ ] Enabling shows per-region overlays
+- [ ] Disabling returns to per-window overlays
+
+---
+
+#### 2.2.1.5 "SuperFocus" - Productivity Features
+> Groups all the inactivity-based features under a single umbrella concept.
+
+- [ ] Create "SuperFocus" section in Preferences
+- [ ] Add master "SuperFocus" toggle
+- [ ] When enabled, shows sub-features:
+  - [ ] **Window Fade**: Inactive windows gradually dim (current decay dimming)
+  - [ ] **Auto-Hide Apps**: Apps not used for X minutes get hidden
+  - [ ] **Auto-Minimize Windows**: Excess windows get minimized
+- [ ] Clear explanation for each:
+  > "SuperFocus helps you concentrate by de-emphasizing unused windows and apps."
+  >
+  > **Window Fade**: "Gradually dims windows you haven't clicked on recently"
+  > **Auto-Hide Apps**: "Hides entire apps after they've been in the background"
+  > **Auto-Minimize Windows**: "Minimizes excess windows when you have too many open"
+- [ ] Settings for each sub-feature accessible via disclosure/expand
+
+#### 🧪 TEST CHECK 2.2.1.5
+- [ ] SuperFocus master toggle enables/disables all sub-features
+- [ ] Each sub-feature can be individually configured
+- [ ] Explanatory text is present and helpful
+- [ ] Settings persist correctly
+
+---
+
+#### 2.2.1.6 Debug/Developer Tools
+> Remove debug features from regular users, add Dev Tools section for developers.
+
+- [ ] Remove "Debug Borders" from main UI
+- [ ] Add `isDevMode` computed property (check for debug build or dev flag)
+- [ ] Create "Developer Tools" section in Preferences (only visible in dev mode)
+  - [ ] Debug Borders toggle
+  - [ ] Analysis timing logs
+  - [ ] Overlay count display
+  - [ ] Force refresh button
+- [ ] Alternative: Add hidden gesture/shortcut to enable Dev Tools
+  - [ ] e.g., Option+Click on version number 5 times
+
+#### 🧪 TEST CHECK 2.2.1.6
+- [ ] Debug Borders NOT visible in release build
+- [ ] Dev Tools visible in debug build
+- [ ] Hidden activation works (if implemented)
+
+---
+
+#### 2.2.1.7 Reset to Defaults
+> Users should be able to easily return to factory settings.
+
+- [ ] Add "Reset to Defaults" button in Preferences
+- [ ] Confirmation dialog before reset
+- [ ] Reset behavior:
+  - [ ] Clears all UserDefaults for app
+  - [ ] Reloads default DimmingProfile for current appearance mode
+  - [ ] Restores first-launch state
+- [ ] Clear explanation:
+  > "Resets all settings to their original values. This cannot be undone."
+
+#### 🧪 TEST CHECK 2.2.1.7
+- [ ] Reset button shows confirmation
+- [ ] After reset, settings match first-launch defaults
+- [ ] App continues working normally after reset
+
+---
+
+#### 2.2.1.8 Preferences UI Improvements
+> Better explanations and organization throughout.
+
+- [ ] Add section headers with brief descriptions
+- [ ] Add tooltip/help icons for complex settings
+- [ ] Use consistent terminology throughout:
+  - "Super Dimming" (not "Global Dimming" or "Full Screen")
+  - "Dim Amount" (not "Opacity" or "Level")
+  - "Brightness Threshold" with explanation
+- [ ] Add "Learn More" links to documentation/website
+- [ ] Ensure all sliders have clear labels and value displays
+- [ ] Group related settings visually
+- [ ] Add keyboard shortcuts where appropriate
+
+#### 🧪 TEST CHECK 2.2.1.8
+- [ ] All sections have explanatory text
+- [ ] Tooltips appear on hover
+- [ ] Terminology is consistent
+- [ ] UI is intuitive for first-time users
+
+---
+
+#### 2.2.1.9 First Launch Experience
+> Make the app immediately useful and guide users.
+
+- [ ] On first launch:
+  - [ ] Enable Super Dimming automatically
+  - [ ] Set appearance mode to `.system`
+  - [ ] Apply appropriate profile based on current system appearance
+  - [ ] Show brief welcome/onboarding (optional)
+- [ ] Menu bar popover shows:
+  - [ ] "Super Dimming: ON" prominently
+  - [ ] Quick dim level slider
+  - [ ] Link to Preferences for more options
+
+#### 🧪 TEST CHECK 2.2.1.9
+- [ ] Fresh install shows dimming immediately
+- [ ] Menu bar shows clear status
+- [ ] User can quickly adjust or disable
+
+---
+
+#### 🔨 BUILD CHECK 2.2.1 FINAL
+```bash
+xcodebuild -scheme SuperDimmer -configuration Debug build
+```
+- [ ] Build succeeds
+- [ ] No SwiftUI preview errors
+
+#### 🧪 TEST CHECK 2.2.1 FINAL
+- [ ] Fresh install: Super Dimming ON, visible effect immediately
+- [ ] Appearance mode switching works
+- [ ] Feature hierarchy is clear (Super Dimming → Dim Windows → Dim Areas)
+- [ ] SuperFocus features accessible and explained
+- [ ] Debug features hidden in release
+- [ ] Reset to defaults works
+- [ ] All explanatory text is present and helpful
+- [ ] Performance acceptable with new features
+
+#### 👀 REVIEW POINT 2.2.1
+- [ ] UI follows macOS Human Interface Guidelines
+- [ ] Terminology is user-friendly (no developer jargon)
+- [ ] Feature discoverability is good
+- [ ] Complexity is progressive (simple by default, advanced available)
+
+---
+
 ### Week 6: Window Tracking
 
 #### 2.3 Window Tracker Service
