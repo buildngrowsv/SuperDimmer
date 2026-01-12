@@ -1467,78 +1467,47 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 5.7 Sparkle Auto-Updates
+#### 5.7 Simple Update Checking (No Sparkle)
 
-> **📚 Full Documentation:** See `SuperDimmer-Website/UPDATE_SYSTEM_CHECKLIST.md` for comprehensive
-> setup guide and release workflow.
+> **Approach:** Simple version check via JSON file hosted on HTTPS website.
+> No third-party frameworks needed. Website is already secure (HTTPS + Cloudflare).
+> App is already notarized by Apple, so downloads are trusted.
 
-> **What is Sparkle?**
-> Open-source framework for macOS app auto-updates. Used by BetterDisplay, f.lux, etc.
-> App checks appcast.xml → finds new version → downloads DMG → installs automatically.
-
-**5.7.1 Add Sparkle Framework (One-Time)**
+**How It Works:**
 ```
-In Xcode:
-1. File → Add Package Dependencies
-2. Enter: https://github.com/sparkle-project/Sparkle
-3. Select version 2.6.0 or later
-4. Add to SuperDimmer target
+1. App launches → checks https://superdimmer.app/version.json
+2. Compares with current version
+3. If newer → shows alert "Update Available"
+4. User clicks "Download" → opens download URL in browser
+5. User installs new DMG manually (standard macOS flow)
 ```
-- [ ] Sparkle package added to Xcode
-- [ ] Build succeeds with Sparkle imported
 
-**5.7.2 Generate EdDSA Keys (One-Time)**
-```bash
-# After adding Sparkle, find the tools:
-cd ~/Library/Developer/Xcode/DerivedData/SuperDimmer-*/SourcePackages/artifacts/sparkle/Sparkle/bin
-
-# Generate keys (saves private to Keychain, prints public)
-./generate_keys
-
-# CRITICAL: Backup private key!
-./generate_keys -x ~/Desktop/superdimmer-sparkle-private.key
-# Store backup somewhere SAFE (not in Git!)
-```
-- [ ] Ran `generate_keys`
-- [ ] Copied the public key output
-- [ ] **Backed up private key** to secure location
-
-**5.7.3 Update Info.plist (One-Time)**
-Add the public key from generate_keys:
-```xml
-<key>SUPublicEDKey</key>
-<string>YOUR_PUBLIC_KEY_HERE</string>
-```
-- [ ] Added `SUPublicEDKey` to Info.plist
-- [x] `SUFeedURL` already set to `https://superdimmer.com/sparkle/appcast.xml`
-
-**5.7.4 Create UpdateManager.swift (One-Time)**
-```swift
-import Foundation
-import Sparkle
-
-final class UpdateManager {
-    static let shared = UpdateManager()
-    private var updaterController: SPUStandardUpdaterController!
-    
-    private init() {
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
-    }
-    
-    func checkForUpdates() {
-        updaterController.checkForUpdates(nil)
-    }
+**5.7.1 Create version.json on Website**
+File: `SuperDimmer-Website/version.json`
+```json
+{
+  "version": "1.0.0",
+  "build": 1,
+  "downloadURL": "https://superdimmer.app/releases/SuperDimmer-v1.0.0.dmg",
+  "releaseNotesURL": "https://superdimmer.app/release-notes/v1.0.0.html",
+  "minSystemVersion": "13.0"
 }
 ```
-- [ ] Created `UpdateManager.swift`
-- [ ] Added to Xcode project
-- [ ] Added "Check for Updates..." menu item calling `UpdateManager.shared.checkForUpdates()`
+- [x] version.json created on website ✅
 
-**5.7.5 Release Workflow (Each Release)**
+**5.7.2 Create UpdateChecker.swift**
+Simple Swift class that:
+- Fetches version.json on app launch
+- Compares versions
+- Shows alert if update available
+- Opens download URL when user clicks "Download"
+
+- [ ] Created `UpdateChecker.swift`
+- [ ] Added to Xcode project
+- [ ] Called on app launch (AppDelegate or SuperDimmerApp)
+- [ ] Added "Check for Updates..." menu item
+
+**5.7.3 Release Workflow (Each Release)**
 ```bash
 cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
 ./release.sh X.Y.Z
@@ -1547,7 +1516,7 @@ cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
 cd ..
 git add . && git commit -m "Release vX.Y.Z" && git push
 ```
-The script handles: build → sign → DMG → notarize → EdDSA sign → update appcast.xml
+The script handles: build → sign → DMG → notarize → update version.json
 
 #### 🔨 BUILD CHECK 5.7
 ```bash
@@ -1688,22 +1657,21 @@ cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
 
 ---
 
-#### 6.2 Sparkle Appcast Setup
-- [x] Create appcast.xml template ✅ (Jan 8, 2026)
-- [x] Set up hosting for appcast on Cloudflare Pages ✅
+#### 6.2 Update System Setup (Simple JSON-based)
+- [x] Create version.json on website ✅
+- [x] Set up hosting on Cloudflare Pages ✅
 - [x] Create release notes HTML format ✅
-- [ ] Generate delta updates (optional - reduces download size)
 - [ ] Test update flow end-to-end
 
-**Appcast Location:** `SuperDimmer-Website/sparkle/appcast.xml`
+**Version Info:** `SuperDimmer-Website/version.json`
 **Release Notes:** `SuperDimmer-Website/release-notes/vX.Y.Z.html`
 **DMG Files:** `SuperDimmer-Website/releases/`
 
 #### 🧪 TEST CHECK 6.2
-- [ ] Visit https://superdimmer.com/sparkle/appcast.xml - XML loads
-- [ ] Visit https://superdimmer.com/releases/ - DMG downloadable
-- [ ] Install old version → Check for Updates → New version found
-- [ ] EdDSA signature verification passes (no error in update dialog)
+- [ ] Visit https://superdimmer.app/version.json - JSON loads with correct version
+- [ ] Visit https://superdimmer.app/releases/ - DMG downloadable
+- [ ] Install old version → "Check for Updates" → Alert shows new version
+- [ ] Click "Download" → Browser opens download URL
 
 ---
 

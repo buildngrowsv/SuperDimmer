@@ -40,9 +40,10 @@
 	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://superdimmer.com/sparkle/appcast.xml</string>
+	<!-- 
+	Update checking uses simple JSON fetch from website.
+	No Sparkle framework needed - see UpdateChecker.swift
+	URL: https://superdimmer.app/version.json
+	-->
 </dict>
 </plist>
