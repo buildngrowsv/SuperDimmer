@@ -481,8 +481,10 @@ final class DimmingCoordinator: ObservableObject {
             // Phase 2: Intelligent per-window dimming
             performIntelligentAnalysis()
         } else {
-            // Phase 1: Simple mode - just update dim level from current settings
-            let currentDimLevel = CGFloat(SettingsManager.shared.globalDimLevel)
+            // Phase 1: Simple mode (full-screen dimming)
+            // If Auto mode is enabled, dim level adjusts based on screen brightness
+            // Otherwise uses static globalDimLevel from settings
+            let currentDimLevel = getEffectiveDimLevel()
             DispatchQueue.main.async { [weak self] in
                 self?.overlayManager.updateAllOverlayLevels(currentDimLevel)
             }
@@ -836,6 +838,93 @@ final class DimmingCoordinator: ObservableObject {
         dimLevel = max(dimLevel, minimumDimLevel)
         
         return dimLevel
+    }
+    
+    // ================================================================
+    // MARK: - Super Dimming Auto Mode (2.2.1.2)
+    // ================================================================
+    
+    /**
+     Calculates the auto-adjusted dim level based on overall screen brightness.
+     
+     SUPER DIMMING AUTO MODE:
+     Instead of using a fixed dim level, Auto mode dynamically adjusts based
+     on how bright your screen content is. This provides a more comfortable
+     experience without needing manual adjustments.
+     
+     CALCULATION:
+     The dim level swings ±autoAdjustRange around the base globalDimLevel
+     depending on screen brightness:
+     
+     adjustedDim = baseDim + (screenBrightness - 0.5) × range × 2
+     
+     - screenBrightness 1.0 (very bright) → baseDim + range
+     - screenBrightness 0.5 (neutral) → baseDim (no change)
+     - screenBrightness 0.0 (very dark) → baseDim - range
+     
+     For example, with baseDim=0.25 and range=0.15:
+     - Bright screen (1.0) → 0.25 + 0.15 = 0.40 (40% dim)
+     - Neutral (0.5) → 0.25 (25% dim)
+     - Dark screen (0.0) → 0.25 - 0.15 = 0.10 (10% dim)
+     
+     - Parameter screenBrightness: Overall average brightness (0.0-1.0)
+     - Returns: Auto-adjusted dim level
+     */
+    private func calculateAutoDimLevel(screenBrightness: Float) -> CGFloat {
+        let settings = SettingsManager.shared
+        let baseDimLevel = CGFloat(settings.globalDimLevel)
+        let adjustRange = CGFloat(settings.autoAdjustRange)
+        
+        // Calculate adjustment: (brightness - 0.5) gives range [-0.5, 0.5]
+        // Multiply by 2 to get [-1.0, 1.0], then by adjustRange
+        let brightnessOffset = CGFloat(screenBrightness) - 0.5
+        let adjustment = brightnessOffset * adjustRange * 2.0
+        
+        // Apply adjustment to base level
+        var adjustedDimLevel = baseDimLevel + adjustment
+        
+        // Clamp to valid range [0.0, 1.0]
+        adjustedDimLevel = max(0.0, min(1.0, adjustedDimLevel))
+        
+        debugLog("🌟 Auto dim: screen=\(String(format: "%.2f", screenBrightness)), base=\(String(format: "%.2f", baseDimLevel)), adj=\(String(format: "%.2f", adjustment)), final=\(String(format: "%.2f", adjustedDimLevel))")
+        
+        return adjustedDimLevel
+    }
+    
+    /**
+     Gets the effective dim level, considering Auto mode.
+     
+     If Super Dimming Auto mode is enabled:
+     - Captures a small screen sample to measure brightness
+     - Calculates auto-adjusted dim level
+     
+     Otherwise:
+     - Returns the static globalDimLevel from settings
+     
+     - Returns: The dim level to use for full-screen/simple dimming
+     */
+    private func getEffectiveDimLevel() -> CGFloat {
+        let settings = SettingsManager.shared
+        
+        // If Auto mode is disabled, just return the static level
+        guard settings.superDimmingAutoEnabled else {
+            return CGFloat(settings.globalDimLevel)
+        }
+        
+        // Auto mode: Capture and analyze screen brightness
+        // Use a small, fast capture for efficiency
+        guard let screenImage = ScreenCaptureService.shared.captureMainDisplay() else {
+            debugLog("⚠️ Auto mode: Could not capture screen, using static level")
+            return CGFloat(settings.globalDimLevel)
+        }
+        
+        // Analyze brightness of the capture
+        guard let brightness = BrightnessAnalysisEngine.shared.averageLuminance(of: screenImage) else {
+            debugLog("⚠️ Auto mode: Could not analyze brightness, using static level")
+            return CGFloat(settings.globalDimLevel)
+        }
+        
+        return calculateAutoDimLevel(screenBrightness: brightness)
     }
     
     // ================================================================

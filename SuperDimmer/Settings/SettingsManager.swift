@@ -94,6 +94,11 @@ final class SettingsManager: ObservableObject {
         case regionGridSize = "superdimmer.regionGridSize"
         case scanInterval = "superdimmer.scanInterval"
         
+        // Super Dimming Auto Mode (2.2.1.2)
+        // Auto mode adjusts dim level based on overall screen brightness
+        case superDimmingAutoEnabled = "superdimmer.superDimmingAutoEnabled"
+        case autoAdjustRange = "superdimmer.autoAdjustRange"  // ±X% adjustment (default 0.15 = ±15%)
+        
         // Debug mode (shows colored borders on overlays)
         case debugOverlayBorders = "superdimmer.debugOverlayBorders"
         
@@ -340,6 +345,60 @@ final class SettingsManager: ObservableObject {
     @Published var scanInterval: Double {
         didSet {
             defaults.set(scanInterval, forKey: Keys.scanInterval.rawValue)
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Super Dimming Auto Mode (2.2.1.2)
+    // ================================================================
+    
+    /**
+     Whether Super Dimming Auto mode is enabled.
+     
+     AUTO MODE BEHAVIOR:
+     When enabled, the dim level automatically adjusts based on the overall
+     brightness of your screen content. This is different from the basic
+     ON/OFF mode which applies a fixed dim level.
+     
+     - Bright screen content → dimming increases (up to +autoAdjustRange)
+     - Dark screen content → dimming decreases (down to -autoAdjustRange)
+     
+     This creates an adaptive experience where the dimming matches what
+     you're viewing. E.g., if you open a bright website, dimming increases
+     automatically; if you switch to a dark IDE, dimming backs off.
+     
+     CALCULATION:
+     currentDim = baseDimLevel + (screenBrightness - 0.5) * autoAdjustRange * 2
+     
+     So with baseDimLevel=0.25, autoAdjustRange=0.15:
+     - Screen brightness 1.0 (very bright) → 0.25 + 0.5*0.3 = 0.40 (40% dim)
+     - Screen brightness 0.5 (neutral) → 0.25 (25% dim - base)
+     - Screen brightness 0.0 (dark) → 0.25 - 0.5*0.3 = 0.10 (10% dim)
+     
+     Default: true (Auto mode is the default experience)
+     */
+    @Published var superDimmingAutoEnabled: Bool {
+        didSet {
+            defaults.set(superDimmingAutoEnabled, forKey: Keys.superDimmingAutoEnabled.rawValue)
+        }
+    }
+    
+    /**
+     The adjustment range for Auto mode (±X%).
+     
+     Range: 0.05 to 0.30 (5% to 30%)
+     Default: 0.15 (±15%)
+     
+     Higher values = more dramatic adjustment based on screen brightness
+     Lower values = subtler adjustment, closer to fixed dimming
+     
+     At 0.15, dim level can swing ±15% from the base globalDimLevel.
+     So if globalDimLevel is 25%, actual dimming ranges from 10% to 40%
+     depending on screen content.
+     */
+    @Published var autoAdjustRange: Double {
+        didSet {
+            defaults.set(autoAdjustRange, forKey: Keys.autoAdjustRange.rawValue)
         }
     }
     
@@ -793,9 +852,12 @@ final class SettingsManager: ObservableObject {
         // ============================================================
         // Load Dimming Settings
         // ============================================================
-        // For isDimmingEnabled, default to false so app doesn't immediately dim
-        // User should consciously enable after understanding the feature
-        self.isDimmingEnabled = defaults.bool(forKey: Keys.isDimmingEnabled.rawValue)
+        // FIRST LAUNCH EXPERIENCE (2.2.1.9):
+        // Super Dimming should be ON by default on first launch.
+        // This provides immediate value and demonstrates the core feature.
+        // Users can turn it off if they don't want it.
+        self.isDimmingEnabled = defaults.object(forKey: Keys.isDimmingEnabled.rawValue) != nil ?
+            defaults.bool(forKey: Keys.isDimmingEnabled.rawValue) : true  // ON by default
         
         self.globalDimLevel = defaults.object(forKey: Keys.globalDimLevel.rawValue) != nil ?
             defaults.double(forKey: Keys.globalDimLevel.rawValue) : 0.25
@@ -832,6 +894,18 @@ final class SettingsManager: ObservableObject {
         // Can be reduced to 1.0 or 0.5 for per-window mode which is faster
         self.scanInterval = defaults.object(forKey: Keys.scanInterval.rawValue) != nil ?
             defaults.double(forKey: Keys.scanInterval.rawValue) : 2.0
+        
+        // ============================================================
+        // Load Super Dimming Auto Mode Settings (2.2.1.2)
+        // ============================================================
+        // Super Dimming Auto is the DEFAULT experience - automatically adjusts
+        // dim level based on screen brightness for seamless comfort
+        self.superDimmingAutoEnabled = defaults.object(forKey: Keys.superDimmingAutoEnabled.rawValue) != nil ?
+            defaults.bool(forKey: Keys.superDimmingAutoEnabled.rawValue) : true  // ON by default
+        
+        // ±15% adjustment range - dim level swings 15% above/below base based on screen brightness
+        self.autoAdjustRange = defaults.object(forKey: Keys.autoAdjustRange.rawValue) != nil ?
+            defaults.double(forKey: Keys.autoAdjustRange.rawValue) : 0.15
         
         // Debug mode - shows red borders on overlays for positioning verification
         self.debugOverlayBorders = defaults.bool(forKey: Keys.debugOverlayBorders.rawValue)

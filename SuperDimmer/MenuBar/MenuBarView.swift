@@ -260,6 +260,48 @@ struct MenuBarView: View {
                     Slider(value: $settings.globalDimLevel, in: 0...0.8)
                         .tint(.orange)
                     
+                    // Auto Mode toggle - adjusts dim level based on screen brightness
+                    HStack {
+                        Image(systemName: "sparkles")
+                            .foregroundColor(.cyan)
+                            .font(.caption)
+                        
+                        Text("Auto")
+                            .font(.caption)
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: $settings.superDimmingAutoEnabled)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                    }
+                    .padding(.top, 4)
+                    
+                    if settings.superDimmingAutoEnabled {
+                        // Auto adjust range slider
+                        HStack {
+                            Text("Range")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            Text("±\(Int(settings.autoAdjustRange * 100))%")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                        }
+                        
+                        Slider(value: $settings.autoAdjustRange, in: 0.05...0.30)
+                            .tint(.cyan)
+                        
+                        Text("Dim level adjusts ±\(Int(settings.autoAdjustRange * 100))% based on screen brightness")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    
                     // Threshold slider
                     HStack {
                         Text("Brightness Threshold")
