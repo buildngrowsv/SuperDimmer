@@ -3,15 +3,15 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1786CD87303B63162133E819 /* DimOverlayWindow.swift */; };
-		19A8B3C4D5E6F7A8B9C0D1E2 /* TemporaryDisableManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B8C7D6E5F4A3B2C1D0E9F8 /* TemporaryDisableManager.swift */; };
 		1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */; };
 		1DE410E49A5AC8F149E219C0 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */; };
 		2432D011DB19FE64F29AE6C1 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 007F0A55A64BEF81B7363D45 /* PreferencesView.swift */; };
+		27EDD4ED37D0239B17656845 /* AccessibilityFocusObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36458EAE71B42F3362FD0B0 /* AccessibilityFocusObserver.swift */; };
 		29BD586ACDE68974C13A7BF1 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EE0BF2647E666C8DE787FC /* LaunchAtLoginManager.swift */; };
 		2D56097619E851E2CC830DF9 /* ColorTemperatureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0BFACA94CF0754453B87312 /* ColorTemperatureManager.swift */; };
 		2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */; };
@@ -19,7 +19,9 @@
 		34184663D93157DBBB3F3EC7 /* ActiveUsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */; };
 		353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */; };
 		4DD0AECDF80AE9516DB78ABB /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73D0D7E7FF2F4335B2B8EABD /* CoreLocation.framework */; };
+		52FD8C0A6C3C46BA4BB37103 /* CrashReportingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */; };
 		7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A846E425944D8F0661CB8819 /* SuperDimmerApp.swift */; };
+		7DF9E65F077D8883C984AD7F /* TemporaryDisableManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8713DCA6D1B43914E997B7 /* TemporaryDisableManager.swift */; };
 		9C327178B91606D6643F60EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0CA522F75EAE80D96E8E88F /* Assets.xcassets */; };
 		9D18C007DBA3A819CE0E66AD /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76856B00C83C0C88F34C0E5E /* MenuBarController.swift */; };
 		9DF14CF8F541D544FC005E3B /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B4E7AF858AB9888AA55A487 /* SettingsManager.swift */; };
@@ -37,7 +39,6 @@
 		E748258583468783DCA7726A /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99D465058B8A750951B2B515 /* LocationService.swift */; };
 		E8EF0C3464404E46E80A158F /* SuperDimmerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA7A645622AB3F65E274F /* SuperDimmerTests.swift */; };
 		F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */; };
-		CRASH1234567890ABCDEF12 /* CrashReportingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRASH9876543210FEDCBA98 /* CrashReportingManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,7 @@
 		1786CD87303B63162133E819 /* DimOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimOverlayWindow.swift; sourceTree = "<group>"; };
 		1BB93951703F6D09744CAB95 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		27586C5BE0F771581C033B4C /* ScheduleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleManager.swift; sourceTree = "<group>"; };
+		2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportingManager.swift; sourceTree = "<group>"; };
 		31EE0BF2647E666C8DE787FC /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
 		3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInactivityTracker.swift; sourceTree = "<group>"; };
 		3B4E7AF858AB9888AA55A487 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
@@ -75,17 +77,17 @@
 		99D465058B8A750951B2B515 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
 		A18AD95BFAF7198E0481573C /* SuperDimmer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SuperDimmer.entitlements; sourceTree = "<group>"; };
 		A846E425944D8F0661CB8819 /* SuperDimmerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperDimmerApp.swift; sourceTree = "<group>"; };
-		A9B8C7D6E5F4A3B2C1D0E9F8 /* TemporaryDisableManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryDisableManager.swift; sourceTree = "<group>"; };
 		AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrightRegionDetector.swift; sourceTree = "<group>"; };
 		B0BFACA94CF0754453B87312 /* ColorTemperatureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTemperatureManager.swift; sourceTree = "<group>"; };
+		BE8713DCA6D1B43914E997B7 /* TemporaryDisableManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryDisableManager.swift; sourceTree = "<group>"; };
 		BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoMinimizeManager.swift; sourceTree = "<group>"; };
+		C36458EAE71B42F3362FD0B0 /* AccessibilityFocusObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityFocusObserver.swift; sourceTree = "<group>"; };
 		C5C48704075B408B0F4A21CA /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		D0CA522F75EAE80D96E8E88F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		EC43ECCDBC1C09B92EB293B5 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
-		F17205C30B76A224ED5805C1 /* SuperDimmer.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SuperDimmer.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F17205C30B76A224ED5805C1 /* SuperDimmerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SuperDimmerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F66E8844DCCCD25531199A7D /* AutoHideManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoHideManager.swift; sourceTree = "<group>"; };
 		FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
-		CRASH9876543210FEDCBA98 /* CrashReportingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportingManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -238,7 +240,7 @@
 			isa = PBXGroup;
 			children = (
 				15182B36183FA683F3EF6E20 /* SuperDimmer.app */,
-				F17205C30B76A224ED5805C1 /* SuperDimmer.xctest */,
+				F17205C30B76A224ED5805C1 /* SuperDimmerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -255,17 +257,18 @@
 		D1EB4FF3BCEC41A74119B510 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				C36458EAE71B42F3362FD0B0 /* AccessibilityFocusObserver.swift */,
 				94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */,
 				3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */,
 				F66E8844DCCCD25531199A7D /* AutoHideManager.swift */,
 				BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */,
 				4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */,
 				AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */,
-				CRASH9876543210FEDCBA98 /* CrashReportingManager.swift */,
+				2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */,
 				99D465058B8A750951B2B515 /* LocationService.swift */,
 				27586C5BE0F771581C033B4C /* ScheduleManager.swift */,
 				005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */,
-				A9B8C7D6E5F4A3B2C1D0E9F8 /* TemporaryDisableManager.swift */,
+				BE8713DCA6D1B43914E997B7 /* TemporaryDisableManager.swift */,
 				568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */,
 				494E2ED655E5AD35259CC6CE /* WindowTrackerService.swift */,
 			);
@@ -288,7 +291,7 @@
 			);
 			name = SuperDimmerTests;
 			productName = SuperDimmerTests;
-			productReference = F17205C30B76A224ED5805C1 /* SuperDimmer.xctest */;
+			productReference = F17205C30B76A224ED5805C1 /* SuperDimmerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		B2BFEBD90267659B308877C6 /* SuperDimmer */ = {
@@ -316,7 +319,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					8D146C4FC0F6374CF1681EEC = {
 						DevelopmentTeam = "";
@@ -392,6 +395,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				27EDD4ED37D0239B17656845 /* AccessibilityFocusObserver.swift in Sources */,
 				34184663D93157DBBB3F3EC7 /* ActiveUsageTracker.swift in Sources */,
 				305FA57277603D003500DA9C /* AppDelegate.swift in Sources */,
 				353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */,
@@ -399,8 +403,8 @@
 				1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */,
 				F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */,
 				B15709EDC740B83EB0DE16E3 /* BrightnessAnalysisEngine.swift in Sources */,
-				CRASH1234567890ABCDEF12 /* CrashReportingManager.swift in Sources */,
 				2D56097619E851E2CC830DF9 /* ColorTemperatureManager.swift in Sources */,
+				52FD8C0A6C3C46BA4BB37103 /* CrashReportingManager.swift in Sources */,
 				18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */,
 				A8116E433AA8D37103819457 /* DimmingCoordinator.swift in Sources */,
 				29BD586ACDE68974C13A7BF1 /* LaunchAtLoginManager.swift in Sources */,
@@ -414,7 +418,7 @@
 				2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */,
 				9DF14CF8F541D544FC005E3B /* SettingsManager.swift in Sources */,
 				7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */,
-				19A8B3C4D5E6F7A8B9C0D1E2 /* TemporaryDisableManager.swift in Sources */,
+				7DF9E65F077D8883C984AD7F /* TemporaryDisableManager.swift in Sources */,
 				C21173BD4C3C9897E9867077 /* WindowInactivityTracker.swift in Sources */,
 				DE327EB0680EEFB0EFD48236 /* WindowTrackerService.swift in Sources */,
 			);
@@ -435,15 +439,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = "SuperDimmer/Supporting Files/SuperDimmer.entitlements";
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				ENABLE_APP_SANDBOX = YES;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
-				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				INFOPLIST_FILE = "SuperDimmer/Supporting Files/Info.plist";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
@@ -491,13 +492,11 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -521,7 +520,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.9;
@@ -533,8 +531,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				ENABLE_APP_SANDBOX = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -549,15 +545,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = "SuperDimmer/Supporting Files/SuperDimmer.entitlements";
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				ENABLE_APP_SANDBOX = YES;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
-				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				INFOPLIST_FILE = "SuperDimmer/Supporting Files/Info.plist";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
@@ -605,13 +598,11 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -628,7 +619,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.9;
@@ -640,8 +630,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
-				ENABLE_APP_SANDBOX = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

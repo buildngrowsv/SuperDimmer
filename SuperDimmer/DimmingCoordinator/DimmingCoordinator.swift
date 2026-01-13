@@ -326,14 +326,42 @@ final class DimmingCoordinator: ObservableObject {
             RunLoop.current.add(analysisTimer!, forMode: .common)
         }
         
-        // FIX (Jan 8, 2026): Set up global mouse click monitor with DEBOUNCING
-        // This catches ALL mouse clicks (not just app switches) to immediately
-        // reorder overlays when window z-order might have changed.
-        // Without this, overlays fall behind windows when user clicks.
+        // ================================================================
+        // INSTANT FOCUS DETECTION via Accessibility API (Jan 13, 2026)
+        // ================================================================
+        // Uses AXObserver to get INSTANT (<10ms) notification when window focus changes.
+        // Much faster than the mouse click monitor which had 20-60ms delay.
         //
-        // UPDATE (Jan 8, 2026): Added debouncing to prevent EXC_BAD_ACCESS crash.
-        // Rapid mouse clicks were causing overlapping analysis cycles, which led
-        // to race conditions in overlay close() calls.
+        // The AccessibilityFocusObserver watches kAXFocusedWindowChangedNotification
+        // on all running apps, which fires immediately when any window gains focus.
+        if useIntelligentMode {
+            let focusObserver = AccessibilityFocusObserver.shared
+            focusObserver.onFocusChanged = { [weak self] _ in
+                guard let self = self, self.isRunning else { return }
+                
+                // INSTANT z-order update - no async dispatch needed, already on main thread
+                self.overlayManager.updateOverlayLevelsForFrontmostApp()
+                
+                // Debounced analysis (don't need to re-screenshot on every click)
+                self.pendingClickAnalysis?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.isRunning else { return }
+                    let now = CFAbsoluteTimeGetCurrent()
+                    guard now - self.lastAnalysisTime >= self.minAnalysisInterval else { return }
+                    self.analysisQueue.async {
+                        self.performPerRegionAnalysis()
+                    }
+                }
+                self.pendingClickAnalysis = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+            }
+            focusObserver.startObserving()
+            print("🔍 Accessibility focus observer started (instant window focus detection)")
+        }
+        
+        // FALLBACK: Global mouse click monitor for apps that don't support AX
+        // This is a backup - most focus changes will be caught by AccessibilityFocusObserver
+        // but some edge cases (clicking within same window, etc.) might need this.
         if mouseClickMonitor == nil && useIntelligentMode {
             mouseClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 guard let self = self, self.isRunning else { return }
@@ -341,32 +369,22 @@ final class DimmingCoordinator: ObservableObject {
                 // DEBOUNCE: Cancel any pending analysis from previous click
                 self.pendingClickAnalysis?.cancel()
                 
-                // HYBRID Z-ORDERING: Update overlay levels IMMEDIATELY (no delay needed)
-                // This is a fast operation - just changes window levels
-                DispatchQueue.main.async {
-                    self.overlayManager.updateOverlayLevelsForFrontmostApp()
-                }
+                // Z-order update (may be redundant with AX observer, but fast operation)
+                self.overlayManager.updateOverlayLevelsForFrontmostApp()
                 
-                // DEBOUNCE: Schedule analysis with delay, so rapid clicks only trigger ONE analysis
+                // DEBOUNCE: Schedule analysis with delay
                 let workItem = DispatchWorkItem { [weak self] in
                     guard let self = self, self.isRunning else { return }
-                    
-                    // THROTTLE: Don't run analysis if we ran very recently
                     let now = CFAbsoluteTimeGetCurrent()
-                    guard now - self.lastAnalysisTime >= self.minAnalysisInterval else {
-                        return
-                    }
-                    
+                    guard now - self.lastAnalysisTime >= self.minAnalysisInterval else { return }
                     self.analysisQueue.async {
                         self.performPerRegionAnalysis()
                     }
                 }
                 self.pendingClickAnalysis = workItem
-                
-                // Small delay to let the window come to front first
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
             }
-            print("🖱️ Global mouse click monitor installed (debounced + throttled)")
+            print("🖱️ Global mouse click monitor installed (fallback)")
         }
         
         print("▶️ DimmingCoordinator started (interval: \(configuration.scanInterval)s)")
@@ -400,6 +418,11 @@ final class DimmingCoordinator: ObservableObject {
         analysisTimer?.invalidate()
         analysisTimer = nil
         
+        // Stop accessibility focus observer
+        AccessibilityFocusObserver.shared.stopObserving()
+        AccessibilityFocusObserver.shared.onFocusChanged = nil
+        print("🔍 Accessibility focus observer stopped")
+        
         // Remove mouse click monitor
         if let monitor = mouseClickMonitor {
             NSEvent.removeMonitor(monitor)
@@ -426,6 +449,10 @@ final class DimmingCoordinator: ObservableObject {
         isRunning = false
         analysisTimer?.invalidate()
         analysisTimer = nil
+        
+        // Stop accessibility focus observer
+        AccessibilityFocusObserver.shared.stopObserving()
+        AccessibilityFocusObserver.shared.onFocusChanged = nil
         
         // Remove mouse click monitor
         if let monitor = mouseClickMonitor {
