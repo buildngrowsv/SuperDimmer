@@ -144,11 +144,11 @@ struct MenuBarView: View {
      */
     private var headerSection: some View {
         HStack {
-            // App icon and name
+            // App icon and name - Updated for 2.2.1.13 with moon icon
             HStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
+                Image(systemName: "moon.fill")
                     .font(.title2)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.indigo)
                 
                 Text("SuperDimmer")
                     .font(.headline)
@@ -206,32 +206,42 @@ struct MenuBarView: View {
     }
     
     // ================================================================
-    // MARK: - Brightness Section
+    // MARK: - Brightness Section (Simplified for 2.2.1.13)
     // ================================================================
     
     /**
-     Controls for brightness detection and dimming.
+     SIMPLIFIED CONTROLS for menu bar (2.2.1.13)
+     
+     Most detailed settings have been moved to Preferences.
+     The menu bar now shows only essential quick-access controls:
+     - Super Dimming on/off toggle
+     - Dim level slider
+     - Auto mode toggle
+     - Quick link to more settings
+     
+     This keeps the UI clean and accessible while still providing
+     full control through Preferences.
      */
     private var brightnessSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             // ========================================================
-            // Temporary Disable Section
+            // Temporary Disable (Pause) - Keep this prominent
             // ========================================================
-            // Show this prominently when dimming is enabled OR when temporarily disabled
-            // This allows users to quickly pause without digging through settings
             if settings.isDimmingEnabled || temporaryDisableManager.isTemporarilyDisabled {
                 temporaryDisableSection
-                    .padding(.bottom, 4)
             }
             
-            // Master toggle
+            // ========================================================
+            // Main Toggle - Super Dimming
+            // ========================================================
             HStack {
-                Image(systemName: "eye")
-                    .foregroundColor(.secondary)
+                Image(systemName: "sun.max.fill")
+                    .foregroundColor(.orange)
                     .frame(width: 20)
                 
-                Text("Brightness Dimming")
+                Text("Super Dimming")
                     .font(.subheadline)
+                    .fontWeight(.medium)
                 
                 Spacer()
                 
@@ -240,27 +250,28 @@ struct MenuBarView: View {
                     .toggleStyle(.switch)
             }
             
-            // Dim level slider (only show when enabled)
+            // ========================================================
+            // Quick Controls (only when enabled)
+            // ========================================================
             if settings.isDimmingEnabled {
-                VStack(spacing: 8) {
-                    // Dim amount slider
+                VStack(spacing: 10) {
+                    // Dim level slider - simple and clean
                     HStack {
-                        Text("Dim Amount")
+                        Image(systemName: "circle.lefthalf.filled")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
-                        Spacer()
+                        Slider(value: $settings.globalDimLevel, in: 0...0.8)
+                            .tint(.orange)
                         
                         Text("\(Int(settings.globalDimLevel * 100))%")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .monospacedDigit()
+                            .frame(width: 32, alignment: .trailing)
                     }
                     
-                    Slider(value: $settings.globalDimLevel, in: 0...0.8)
-                        .tint(.orange)
-                    
-                    // Auto Mode toggle - adjusts dim level based on screen brightness
+                    // Auto mode toggle - compact
                     HStack {
                         Image(systemName: "sparkles")
                             .foregroundColor(.cyan)
@@ -269,6 +280,12 @@ struct MenuBarView: View {
                         Text("Auto")
                             .font(.caption)
                         
+                        if settings.superDimmingAutoEnabled {
+                            Text("(±\(Int(settings.autoAdjustRange * 100))%)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        
                         Spacer()
                         
                         Toggle("", isOn: $settings.superDimmingAutoEnabled)
@@ -276,80 +293,27 @@ struct MenuBarView: View {
                             .toggleStyle(.switch)
                             .controlSize(.small)
                     }
-                    .padding(.top, 4)
                     
-                    if settings.superDimmingAutoEnabled {
-                        // Auto adjust range slider
-                        HStack {
-                            Text("Range")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            Text("±\(Int(settings.autoAdjustRange * 100))%")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .monospacedDigit()
-                        }
-                        
-                        Slider(value: $settings.autoAdjustRange, in: 0.05...0.30)
-                            .tint(.cyan)
-                        
-                        Text("Dim level adjusts ±\(Int(settings.autoAdjustRange * 100))% based on screen brightness")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    
-                    // Threshold slider
-                    HStack {
-                        Text("Brightness Threshold")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Spacer()
-                        
-                        Text("\(Int(settings.brightnessThreshold * 100))%")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .monospacedDigit()
-                    }
-                    .padding(.top, 8)
-                    
-                    Slider(value: $settings.brightnessThreshold, in: 0.5...1.0)
-                        .tint(.yellow)
-                    
-                    // Explanation text
-                    Text("Areas brighter than \(Int(settings.brightnessThreshold * 100))% will be dimmed")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    // Intelligent dimming toggle
-                    Divider()
-                        .padding(.vertical, 4)
-                    
+                    // Intelligent mode toggle - compact
                     HStack {
                         Image(systemName: "wand.and.stars")
                             .foregroundColor(.purple)
                             .font(.caption)
                         
-                        Text("Intelligent Mode")
+                        Text("Intelligent")
                             .font(.caption)
+                        
+                        Text("(Beta)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
                         
                         Spacer()
                         
-                        // FIX: Use DispatchQueue.main.async to defer state changes
-                        // This prevents "AttributeGraph: cycle detected" warnings
-                        // which occur when @Published properties are modified during view updates
                         Toggle("", isOn: Binding(
                             get: { settings.intelligentDimmingEnabled },
                             set: { newValue in
-                                // Defer to next run loop to avoid cycle warnings
                                 DispatchQueue.main.async {
                                     if newValue {
-                                        // Request permission when enabling intelligent mode
                                         requestScreenRecordingAndEnable()
                                     } else {
                                         settings.intelligentDimmingEnabled = false
@@ -359,70 +323,63 @@ struct MenuBarView: View {
                         ))
                             .labelsHidden()
                             .toggleStyle(.switch)
-                            .controlSize(.mini)
+                            .controlSize(.small)
                     }
                     
+                    // Status indicator when intelligent mode is on
                     if settings.intelligentDimmingEnabled {
-                        // Detection status indicator
-                        detectionStatusIndicator
-                        
-                        // Active/inactive differentiation toggle and sliders
-                        activeInactiveSection
-                        
-                        // Inactivity decay section
-                        inactivityDecaySection
-                        
-                        // Debug toggle for developers/troubleshooting
-                        debugSection
-                        
-                        // Show permission status with clickable button
-                        // Check directly to avoid stale cache
-                        if !CGPreflightScreenCaptureAccess() {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Button(action: {
-                                    openScreenRecordingSettings()
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "exclamationmark.triangle.fill")
-                                            .foregroundColor(.orange)
-                                            .font(.caption2)
-                                        Text("Grant Screen Recording →")
-                                            .font(.caption2)
-                                            .foregroundColor(.orange)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                
-                                Text("After enabling, restart the app")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            HStack(spacing: 4) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(statusIndicatorColor)
+                                .frame(width: 6, height: 6)
+                            
+                            Text(detectionStatusText)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            // Permission status
+                            if CGPreflightScreenCaptureAccess() {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundColor(.green)
                                     .font(.caption2)
-                                Text("Screen Recording enabled")
+                            } else {
+                                Button(action: openScreenRecordingSettings) {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                        Text("Grant")
+                                            .foregroundColor(.orange)
+                                    }
                                     .font(.caption2)
-                                    .foregroundColor(.green)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                    } else {
-                        Text("Full-screen dimming mode")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 2)
                     }
                     
-                    // Excluded apps section - always visible when dimming enabled
+                    // Quick link to more settings
                     Divider()
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 2)
                     
-                    excludedAppsSection
+                    Button(action: openPreferences) {
+                        HStack {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.caption)
+                            Text("More Settings...")
+                                .font(.caption)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .foregroundColor(.primary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(.leading, 28) // Align with toggle text
+                .padding(.leading, 28)
             }
         }
         .padding(.horizontal, 16)

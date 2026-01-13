@@ -214,6 +214,9 @@ struct GeneralPreferencesTab: View {
 
 /**
  Brightness detection and dimming settings
+ 
+ Contains all the detailed dimming controls that were moved from
+ the menu bar popover as part of the UI simplification (2.2.1.13).
  */
 struct BrightnessPreferencesTab: View {
     
@@ -222,75 +225,175 @@ struct BrightnessPreferencesTab: View {
     var body: some View {
         Form {
             // ========================================================
+            // Super Dimming Section (2.2.1.2)
+            // ========================================================
+            Section {
+                Toggle(isOn: $settings.isDimmingEnabled) {
+                    VStack(alignment: .leading) {
+                        Text("Super Dimming")
+                            .font(.headline)
+                        Text("Apply a comfortable dimming overlay to your screen")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if settings.isDimmingEnabled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Base Dim Level")
+                            Spacer()
+                            Text("\(Int(settings.globalDimLevel * 100))%")
+                                .monospacedDigit()
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $settings.globalDimLevel, in: 0...0.8)
+                        Text("How much to dim your screen content")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.leading, 20)
+                }
+            } header: {
+                Label("Core Feature", systemImage: "sun.max.fill")
+            }
+            
+            // ========================================================
+            // Auto Mode Section (2.2.1.2)
+            // ========================================================
+            Section {
+                Toggle(isOn: $settings.superDimmingAutoEnabled) {
+                    VStack(alignment: .leading) {
+                        Text("Auto Mode")
+                        Text("Automatically adjust dimming based on screen brightness")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if settings.superDimmingAutoEnabled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Adjustment Range")
+                            Spacer()
+                            Text("±\(Int(settings.autoAdjustRange * 100))%")
+                                .monospacedDigit()
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $settings.autoAdjustRange, in: 0.05...0.30)
+                        Text("How much the dim level can swing based on content brightness")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.leading, 20)
+                }
+            } header: {
+                Label("Adaptive Dimming", systemImage: "sparkles")
+            }
+            
+            // ========================================================
             // Detection Section
             // ========================================================
-            Section("Brightness Detection") {
+            Section {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Threshold")
+                        Text("Brightness Threshold")
                         Spacer()
                         Text("\(Int(settings.brightnessThreshold * 100))%")
                             .monospacedDigit()
                             .foregroundColor(.secondary)
                     }
                     Slider(value: $settings.brightnessThreshold, in: 0.5...1.0)
-                    Text("Areas brighter than this will be dimmed")
+                    Text("Areas brighter than this percentage will trigger dimming")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+            } header: {
+                Label("Detection Sensitivity", systemImage: "lightbulb")
             }
             
             // ========================================================
-            // Dimming Levels Section
+            // Intelligent Mode Section
             // ========================================================
-            Section("Dimming Levels") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Global Dim Amount")
-                        Spacer()
-                        Text("\(Int(settings.globalDimLevel * 100))%")
-                            .monospacedDigit()
+            Section {
+                Toggle(isOn: $settings.intelligentDimmingEnabled) {
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text("Intelligent Mode")
+                            Text("(Beta)")
+                                .font(.caption)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.purple.opacity(0.2))
+                                .cornerRadius(4)
+                        }
+                        Text("Analyze and dim individual windows/areas instead of full screen")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    Slider(value: $settings.globalDimLevel, in: 0...0.8)
                 }
+                .help("Requires Screen Recording permission")
                 
-                Divider()
-                
-                Toggle("Different levels for active/inactive windows", isOn: $settings.differentiateActiveInactive)
-                    .help("Apply lighter dimming to the window you're working in")
-                
-                if settings.differentiateActiveInactive {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Active Window")
-                            Spacer()
-                            Text("\(Int(settings.activeDimLevel * 100))%")
-                                .monospacedDigit()
-                                .foregroundColor(.secondary)
-                        }
-                        Slider(value: $settings.activeDimLevel, in: 0...0.5)
+                if settings.intelligentDimmingEnabled {
+                    // Detection mode picker
+                    Picker("Detection Mode", selection: $settings.detectionMode) {
+                        Text("Per Window").tag(DetectionMode.perWindow)
+                        Text("Per Region").tag(DetectionMode.perRegion)
                     }
-                    .padding(.leading)
+                    .pickerStyle(.segmented)
+                    .padding(.leading, 20)
                     
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Inactive Windows")
-                            Spacer()
-                            Text("\(Int(settings.inactiveDimLevel * 100))%")
-                                .monospacedDigit()
+                    VStack(alignment: .leading, spacing: 4) {
+                        if settings.detectionMode == .perWindow {
+                            Text("Dims entire windows based on their average brightness")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("Finds and dims bright areas within windows (e.g., white email content)")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $settings.inactiveDimLevel, in: 0...0.8)
                     }
-                    .padding(.leading)
+                    .padding(.leading, 20)
+                    
+                    Toggle("Different levels for active/inactive windows", isOn: $settings.differentiateActiveInactive)
+                        .padding(.leading, 20)
+                        .help("Apply lighter dimming to the window you're working in")
+                    
+                    if settings.differentiateActiveInactive {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Active Window")
+                                Spacer()
+                                Text("\(Int(settings.activeDimLevel * 100))%")
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $settings.activeDimLevel, in: 0...0.5)
+                        }
+                        .padding(.leading, 40)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Inactive Windows")
+                                Spacer()
+                                Text("\(Int(settings.inactiveDimLevel * 100))%")
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $settings.inactiveDimLevel, in: 0...0.8)
+                        }
+                        .padding(.leading, 40)
+                    }
                 }
+            } header: {
+                Label("Advanced Detection", systemImage: "wand.and.stars")
             }
             
             // ========================================================
             // Performance Section
             // ========================================================
-            Section("Performance") {
+            Section {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Scan Interval")
@@ -300,10 +403,12 @@ struct BrightnessPreferencesTab: View {
                             .foregroundColor(.secondary)
                     }
                     Slider(value: $settings.scanInterval, in: 0.5...5.0, step: 0.5)
-                    Text("Lower = more responsive but uses more CPU")
+                    Text("How often to analyze screen content. Lower = more responsive but higher CPU usage")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+            } header: {
+                Label("Performance", systemImage: "gauge.medium")
             }
         }
         .formStyle(.grouped)

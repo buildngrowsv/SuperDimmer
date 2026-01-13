@@ -162,7 +162,8 @@ final class MenuBarController: NSObject {
         if let button = statusItem.button {
             // Set initial icon - sun symbol for a dimming app
             // Using SF Symbols for crisp rendering on all displays
-            button.image = NSImage(systemSymbolName: "sun.max", accessibilityDescription: "SuperDimmer")
+            // UPDATED (2.2.1.13): Changed from sun.max to moon for distinctive branding
+            button.image = NSImage(systemSymbolName: "moon", accessibilityDescription: "SuperDimmer")
             
             // Make it a template image so it adapts to light/dark menu bar
             button.image?.isTemplate = true
@@ -379,12 +380,18 @@ final class MenuBarController: NSObject {
         if isTemporarilyDisabled {
             // Paused state - shows pause symbol so user knows dimming will resume
             iconName = "pause.circle"
-        } else if isDimmingEnabled || isColorTempEnabled {
-            // Active state - filled icon
-            iconName = "sun.max.fill"
+        } else if isDimmingEnabled && isColorTempEnabled {
+            // Both dimming and color temp active - combined icon
+            iconName = "moon.stars.fill"
+        } else if isDimmingEnabled {
+            // Dimming active - moon represents "darkening"
+            iconName = "moon.fill"
+        } else if isColorTempEnabled {
+            // Color temp only - warmer tint indicator
+            iconName = "sun.min.fill"
         } else {
-            // Disabled state - outline icon
-            iconName = "sun.max"
+            // Disabled state - outline moon
+            iconName = "moon"
         }
         
         button.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "SuperDimmer")
@@ -448,13 +455,18 @@ final class MenuBarIconStateManager {
      
      ICON STATES (in priority order):
      - "pause.circle": Temporary disable active - dimming paused
-     - "sun.max.fill": Active dimming or color temp
+     - "moon.stars.fill": Both dimming and color temp active
+     - "moon.fill": Dimming active only
      - "sun.min.fill": Color temperature active only (warmer)
-     - "sun.max": Default/disabled state - nothing active
+     - "moon": Default/disabled state - nothing active
      
      DESIGN DECISION (Jan 9, 2026):
      Temporary disable takes highest priority so users can see at a glance
      that the app is paused and will resume automatically.
+     
+     UPDATED (2.2.1.13): Changed from sun.max to moon icon family.
+     Moon better represents "dimming" (darkness) conceptually and is more
+     distinctive compared to generic sun icons used by many other apps.
      */
     func currentIconName() -> String {
         let isDimmingEnabled = SettingsManager.shared.isDimmingEnabled
@@ -465,13 +477,13 @@ final class MenuBarIconStateManager {
         if isTemporarilyDisabled {
             return "pause.circle" // Paused state
         } else if isDimmingEnabled && isColorTempEnabled {
-            return "sun.max.fill" // Both active
+            return "moon.stars.fill" // Both active
         } else if isDimmingEnabled {
-            return "sun.max.fill" // Just dimming
+            return "moon.fill" // Just dimming
         } else if isColorTempEnabled {
             return "sun.min.fill" // Just color temp (smaller sun = warmer)
         } else {
-            return "sun.max" // Everything off
+            return "moon" // Everything off
         }
     }
 }
