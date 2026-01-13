@@ -318,6 +318,125 @@ won't minimize everything because timers reset after idle.
 
 ---
 
+### 🎨 UI/UX REQUIREMENTS (Added January 9, 2026)
+
+**Major UI reorganization for better user experience and discoverability.**
+
+#### Feature: Appearance Mode System
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Separate settings profiles for Light, Dark, and System appearance modes |
+| **Modes** | `.light`, `.dark`, `.system` (follows macOS) |
+| **Profile Storage** | Each mode has its own DimmingProfile with all dimming settings |
+| **Default Dark Mode** | Super Dimming ON, features enabled |
+| **Default Light Mode** | Super Dimming OFF or minimal |
+| **UI Location** | Top of Preferences window |
+
+#### Feature: Super Dimming (New Name for Full-Screen Mode)
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Simplified full-screen dimming that works immediately |
+| **Default State** | ON for first install |
+| **Auto Mode** | Adjusts dim level ±15% based on average screen brightness |
+| **Manual Mode** | Fixed dim level set by user |
+| **Settings** | Auto range (±5% to ±30%), sensitivity, base level |
+
+**User Controls:**
+- **Mode Toggle**: Auto / Manual
+- **Auto Range**: How much to adjust based on brightness (default: ±15%)
+- **Base Level**: Starting dim level (default: 20%)
+
+#### Feature: Per-Feature Exclusion Lists
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Granular control over which features exclude which apps |
+| **Structure** | Per-app checkboxes for: Dimming, Auto-Hide, Auto-Minimize |
+| **UI** | Table with app name and three checkbox columns |
+| **Migration** | Old single exclusion list converts to all-features-excluded |
+
+**Example UI:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Excluded Apps                                                │
+├──────────────────────┬─────────┬─────────┬─────────────────┤
+│ App                  │ Dimming │ Hide    │ Minimize        │
+├──────────────────────┼─────────┼─────────┼─────────────────┤
+│ Safari               │ ☑       │ ☐       │ ☑               │
+│ Finder               │ ☐       │ ☑       │ ☑               │
+│ Terminal             │ ☑       │ ☑       │ ☐               │
+└──────────────────────┴─────────┴─────────┴─────────────────┘
+```
+
+#### Feature: Simplified Menu Bar UI
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Minimal menu bar popover with essential controls only |
+| **Contents** | On/Off toggle, dim level slider, status, Preferences button, Quit |
+| **Moved to Preferences** | All thresholds, mode switches, timing, color temp details |
+| **New Icon** | Distinct icon design (eye, glasses, or custom dimmer symbol) |
+| **Icon States** | Visually distinct for ON, OFF, PAUSED |
+
+#### Feature: SuperFocus (Productivity Features Grouping)
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Groups all inactivity features under one concept |
+| **Master Toggle** | Enable/disable all SuperFocus features at once |
+| **Sub-features** | Window Fade (decay), Auto-Hide Apps, Auto-Minimize Windows |
+| **UI Location** | Dedicated section in Preferences |
+
+---
+
+### ⚡ PERFORMANCE REQUIREMENTS (Added January 9, 2026)
+
+**Ensure responsive overlay behavior without excessive resource usage.**
+
+#### Feature: Dynamic Overlay Tracking
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Overlays follow window movement/resize in real-time |
+| **Tracking Rate** | 10-20 Hz (independent of 2-second analysis cycle) |
+| **Implementation** | High-frequency window position polling via CGWindowList or Accessibility API |
+| **Behavior** | Update overlay frame immediately; keep same dim level until next analysis |
+| **Resource Impact** | Lightweight - only frame updates, no screenshots |
+
+**Why This Matters:**
+- Users drag windows and expect overlays to follow smoothly
+- 2-second delay during window movement is jarring
+- Position tracking is much cheaper than screenshot analysis
+
+#### Feature: Continuous Z-Order Maintenance
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Overlays stay above their windows without waiting for analysis cycle |
+| **Current Issue** | Clicking a window may show overlay behind it for up to 2 seconds |
+| **Solution** | Independent z-order monitoring + hybrid window levels |
+| **Triggers** | App activation notification, global mouse click, polling fallback |
+| **Implementation** | Active app overlays at `.floating`, background at `.normal` with relative positioning |
+
+**Approach:**
+1. Active app's overlays: Use `.floating` level (always on top within reason)
+2. Background app's overlays: Use `.normal` + `orderAboveWindow()` relative positioning
+3. On click: Immediately reorder overlays, no screenshot needed
+4. Polling fallback: Check z-order every 100-200ms as safety net
+
+#### Feature: Overlay Cleanup on App Hide
+
+| Attribute | Specification |
+|-----------|---------------|
+| **Description** | Remove overlays before hiding apps (not after) |
+| **Current Bug** | Apps hidden by auto-hide may leave orphaned overlays |
+| **Fix** | Call `removeOverlaysForApp()` THEN `hide()` in AutoHideManager |
+| **Also Handles** | User-initiated Cmd+H (via notification observer) |
+
+---
+
 ## 🏗️ Technical Architecture
 
 ### High-Level System Design

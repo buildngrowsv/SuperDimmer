@@ -548,6 +548,149 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
+#### 2.2.1.10 Overlay Refresh on App Hide (BUG FIX)
+> Apps hidden by SuperDimmer's auto-hide still show orphaned overlays.
+> Need to trigger overlay cleanup when hiding apps.
+
+- [ ] Call `OverlayManager.removeOverlaysForApp(pid:)` BEFORE hiding the app
+- [ ] Verify AutoHideManager triggers cleanup first, then hides
+- [ ] Test: Hidden app should have NO visible overlays
+- [ ] Also handle user-initiated hide (Cmd+H) - already implemented via notification
+
+#### 🧪 TEST CHECK 2.2.1.10
+- [ ] Auto-hide removes overlays before hiding
+- [ ] No orphaned overlays after app is hidden
+- [ ] Overlays restored when app is unhidden
+
+---
+
+#### 2.2.1.11 Wallpaper Dimming
+> Dim the desktop wallpaper independently from window dimming.
+> Useful for users who want a subtle background without changing wallpaper.
+
+- [ ] Add `wallpaperDimmingEnabled: Bool` setting
+- [ ] Add `wallpaperDimLevel: Double` setting (0.0-1.0)
+- [ ] Create wallpaper overlay that sits below all windows but above desktop
+- [ ] Use `NSWindow.Level.desktopIconWindow - 1` or similar
+- [ ] Handle multi-monitor (one overlay per display)
+- [ ] Add UI toggle and slider in Preferences
+- [ ] Respect appearance mode (different settings for light/dark)
+
+#### 🧪 TEST CHECK 2.2.1.11
+- [ ] Wallpaper dimming works independently
+- [ ] Doesn't affect window overlays
+- [ ] Works on multi-monitor setups
+- [ ] Respects light/dark mode settings
+
+---
+
+#### 2.2.1.12 Per-Feature Exclusion Lists
+> Instead of one exclusion list, allow users to specify which features
+> each app is excluded from (dimming, auto-hide, auto-minimize).
+
+- [ ] Refactor `excludedApps: [String]` to:
+  ```swift
+  struct AppExclusion: Codable {
+      var bundleID: String
+      var excludeFromDimming: Bool
+      var excludeFromAutoHide: Bool  
+      var excludeFromAutoMinimize: Bool
+  }
+  var appExclusions: [AppExclusion]
+  ```
+- [ ] Update ExcludedAppsListView to show checkboxes:
+  ```
+  ┌─────────────────────────────────────────────────┐
+  │ App Name          │ Dim │ Hide │ Minimize │
+  │ Safari            │ ☑   │ ☐    │ ☑        │
+  │ Finder            │ ☐   │ ☑    │ ☑        │
+  │ Terminal          │ ☑   │ ☑    │ ☐        │
+  └─────────────────────────────────────────────────┘
+  ```
+- [ ] Update DimmingCoordinator to check `excludeFromDimming`
+- [ ] Update AutoHideManager to check `excludeFromAutoHide`
+- [ ] Update AutoMinimizeManager to check `excludeFromAutoMinimize`
+- [ ] Migrate existing exclusion settings on first launch
+
+#### 🧪 TEST CHECK 2.2.1.12
+- [ ] Can exclude app from specific features
+- [ ] Checkboxes persist correctly
+- [ ] Each feature respects its exclusion flag
+- [ ] Migration from old format works
+
+---
+
+#### 2.2.1.13 Simplified Menu Bar UI
+> Move detailed adjustments to Preferences, keep menu bar simple.
+
+- [ ] Menu bar popover shows ONLY:
+  - [ ] On/Off toggle for Super Dimming
+  - [ ] Quick dim level slider
+  - [ ] Current status (e.g., "Auto: dimming at 25%")
+  - [ ] "SuperFocus: Active" indicator (if enabled)
+  - [ ] "Preferences..." button
+  - [ ] "Quit" button
+- [ ] Move to Preferences:
+  - [ ] All threshold settings
+  - [ ] All mode switches (per-window, per-region)
+  - [ ] All timing settings
+  - [ ] Color temperature controls
+- [ ] Change menu bar icon:
+  - [ ] Current: Sun symbol
+  - [ ] New: Consider: eye icon, glasses icon, or custom dimmer icon
+  - [ ] Different states: ON/OFF/PAUSED visually distinct
+
+#### 🧪 TEST CHECK 2.2.1.13
+- [ ] Menu bar is uncluttered
+- [ ] All advanced settings in Preferences
+- [ ] Icon clearly indicates state
+- [ ] Quick access to common actions
+
+---
+
+#### 2.2.1.14 Dynamic Overlay Tracking (Performance)
+> Overlays should follow window movement/resize in real-time without
+> waiting for the 2-second analysis cycle.
+
+- [ ] Create `WindowChangeObserver` service using Accessibility API or CGWindowList polling
+- [ ] Track window position changes at high frequency (10-20 Hz)
+- [ ] When window moves/resizes:
+  - [ ] Update overlay frame immediately (no re-analysis)
+  - [ ] Keep same dim level until next analysis cycle
+- [ ] Lightweight operation: only frame updates, no screenshot
+- [ ] Fallback: If window tracking fails, rely on analysis cycle
+
+#### 🧪 TEST CHECK 2.2.1.14
+- [ ] Overlays follow windows smoothly during drag
+- [ ] Overlays resize with windows
+- [ ] No visible lag during movement
+- [ ] CPU usage acceptable during tracking
+
+---
+
+#### 2.2.1.15 Continuous Z-Order Maintenance
+> Keep overlays properly layered without waiting for analysis cycle.
+> Prevents the 2-second delay when clicking windows.
+
+- [ ] Create `ZOrderMaintainer` that runs independently from analysis
+- [ ] Use `NSWorkspace.didActivateApplicationNotification` - already done
+- [ ] Add global mouse click monitor for immediate response - already done
+- [ ] Polling fallback: Check window order every 100-200ms (lightweight)
+- [ ] When z-order change detected:
+  - [ ] Call `overlay.orderAboveWindow(windowID)` immediately
+  - [ ] No screenshot needed - just z-order fix
+- [ ] Hybrid approach: 
+  - [ ] Active app overlays at `.floating` level (instant, no layering issues)
+  - [ ] Background app overlays at `.normal` with relative positioning
+
+#### 🧪 TEST CHECK 2.2.1.15
+- [ ] Clicking window shows overlay immediately above
+- [ ] No 2-second delay before overlay appears correctly
+- [ ] Works when rapidly switching windows
+- [ ] Minimal CPU overhead
+
+---
+
 #### 🔨 BUILD CHECK 2.2.1 FINAL
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Debug build
