@@ -124,6 +124,9 @@ final class SettingsManager: ObservableObject {
         case autoMinimizeWindowThreshold = "superdimmer.autoMinimizeWindowThreshold"
         case autoMinimizeExcludedApps = "superdimmer.autoMinimizeExcludedApps"
         
+        // SuperFocus (2.2.1.5) - Groups productivity features
+        case superFocusEnabled = "superdimmer.superFocusEnabled"
+        
         // Color Temperature
         case colorTemperatureEnabled = "superdimmer.colorTemperatureEnabled"
         case colorTemperature = "superdimmer.colorTemperature"
@@ -641,6 +644,47 @@ final class SettingsManager: ObservableObject {
     }
     
     // ================================================================
+    // MARK: - SuperFocus (2.2.1.5)
+    // ================================================================
+    
+    /**
+     Master toggle for SuperFocus productivity mode.
+     
+     SUPERFOCUS CONCEPT:
+     SuperFocus groups all productivity-focused features together,
+     making it easy to enable/disable the entire "focus mode" with one toggle.
+     
+     FEATURES GROUPED:
+     - Inactivity Decay Dimming: Dims inactive windows to emphasize active work
+     - Auto-Hide Inactive Apps: Hides apps not used recently
+     - Auto-Minimize Windows: Reduces window clutter per app
+     
+     BEHAVIOR:
+     - When SuperFocus is enabled: All grouped features are enabled
+     - When SuperFocus is disabled: Individual features remain at their settings
+       (user can still enable them individually)
+     
+     This allows two workflows:
+     1. Quick: Toggle SuperFocus to enable/disable all productivity features
+     2. Custom: Disable SuperFocus and configure features individually
+     
+     Default: false (off by default, user opts-in)
+     */
+    @Published var superFocusEnabled: Bool {
+        didSet {
+            defaults.set(superFocusEnabled, forKey: Keys.superFocusEnabled.rawValue)
+            
+            // When SuperFocus is turned ON, enable all grouped features
+            // When turned OFF, leave individual settings as-is
+            if superFocusEnabled {
+                inactivityDecayEnabled = true
+                autoHideEnabled = true
+                autoMinimizeEnabled = true
+            }
+        }
+    }
+    
+    // ================================================================
     // MARK: - Color Temperature Settings
     // ================================================================
     
@@ -960,6 +1004,12 @@ final class SettingsManager: ObservableObject {
             defaults.integer(forKey: Keys.autoMinimizeWindowThreshold.rawValue) : 3  // Keep at least 3 windows
         
         self.autoMinimizeExcludedApps = defaults.object(forKey: Keys.autoMinimizeExcludedApps.rawValue) as? [String] ?? []
+        
+        // ============================================================
+        // Load SuperFocus Settings (2.2.1.5)
+        // ============================================================
+        // SuperFocus is OFF by default - user opts-in to productivity mode
+        self.superFocusEnabled = defaults.bool(forKey: Keys.superFocusEnabled.rawValue)
         
         // ============================================================
         // Load Color Temperature Settings

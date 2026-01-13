@@ -421,9 +421,11 @@ struct BrightnessPreferencesTab: View {
 // ====================================================================
 
 /**
- Window Management settings: Auto-Hide and Auto-Minimize features
+ Window Management settings: SuperFocus, Auto-Hide, and Auto-Minimize
  
- These features help manage window clutter:
+ These features help manage window clutter and improve focus:
+ - SuperFocus: One toggle to enable all productivity features
+ - Inactivity Decay: Dims inactive windows to emphasize active work
  - Auto-Hide: Hides entire apps after inactivity (like Cmd+H)
  - Auto-Minimize: Minimizes excess windows per app to Dock
  */
@@ -436,13 +438,120 @@ struct WindowManagementPreferencesTab: View {
     var body: some View {
         Form {
             // ========================================================
+            // SuperFocus Section (2.2.1.5)
+            // ========================================================
+            Section {
+                Toggle(isOn: $settings.superFocusEnabled) {
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text("SuperFocus")
+                                .font(.headline)
+                            Image(systemName: "bolt.fill")
+                                .foregroundColor(.yellow)
+                        }
+                        Text("Enable all productivity features with one toggle")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if settings.superFocusEnabled {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Active features:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        HStack(spacing: 8) {
+                            Label("Decay Dimming", systemImage: "circle.lefthalf.filled")
+                            Label("Auto-Hide", systemImage: "eye.slash")
+                            Label("Auto-Minimize", systemImage: "minus.rectangle")
+                        }
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    }
+                    .padding(.leading, 20)
+                }
+                
+                if !settings.superFocusEnabled {
+                    Text("Or configure individual features below")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+                }
+            } header: {
+                Label("Quick Setup", systemImage: "sparkles")
+            }
+            
+            Divider()
+                .padding(.vertical, 8)
+            
+            // ========================================================
+            // Inactivity Decay Dimming Section
+            // ========================================================
+            Section {
+                Toggle(isOn: $settings.inactivityDecayEnabled) {
+                    VStack(alignment: .leading) {
+                        Text("Inactivity Decay Dimming")
+                        Text("Progressively dim windows you haven't used recently")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .disabled(settings.superFocusEnabled)  // Controlled by SuperFocus when enabled
+                
+                if settings.inactivityDecayEnabled || settings.superFocusEnabled {
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Start dimming after:")
+                                Spacer()
+                                Text("\(Int(settings.decayStartDelay)) sec")
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $settings.decayStartDelay, in: 5...120, step: 5)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Decay rate:")
+                                Spacer()
+                                Text("\(Int(settings.decayRate * 100))% per sec")
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $settings.decayRate, in: 0.005...0.05, step: 0.005)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Maximum dim level:")
+                                Spacer()
+                                Text("\(Int(settings.maxDecayDimLevel * 100))%")
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $settings.maxDecayDimLevel, in: 0.3...1.0)
+                        }
+                    }
+                    .padding(.leading, 20)
+                }
+            } header: {
+                Label("Decay Dimming", systemImage: "circle.lefthalf.filled")
+            }
+            
+            // ========================================================
             // Auto-Hide Inactive Apps Section
             // ========================================================
             Section {
-                Toggle("Enable Auto-Hide", isOn: $settings.autoHideEnabled)
-                    .help("Automatically hide apps that haven't been used for a while")
+                Toggle(isOn: $settings.autoHideEnabled) {
+                    VStack(alignment: .leading) {
+                        Text("Auto-Hide Inactive Apps")
+                        Text("Hide apps that haven't been used for a while")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .disabled(settings.superFocusEnabled)  // Controlled by SuperFocus when enabled
                 
-                if settings.autoHideEnabled {
+                if settings.autoHideEnabled || settings.superFocusEnabled {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Hide apps after:")
@@ -497,10 +606,17 @@ struct WindowManagementPreferencesTab: View {
             // Auto-Minimize Inactive Windows Section
             // ========================================================
             Section {
-                Toggle("Enable Auto-Minimize", isOn: $settings.autoMinimizeEnabled)
-                    .help("Automatically minimize oldest windows when an app has too many")
+                Toggle(isOn: $settings.autoMinimizeEnabled) {
+                    VStack(alignment: .leading) {
+                        Text("Auto-Minimize Inactive Windows")
+                        Text("Minimize oldest windows when an app has too many")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .disabled(settings.superFocusEnabled)  // Controlled by SuperFocus when enabled
                 
-                if settings.autoMinimizeEnabled {
+                if settings.autoMinimizeEnabled || settings.superFocusEnabled {
                     // Minimize delay (active time only)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
