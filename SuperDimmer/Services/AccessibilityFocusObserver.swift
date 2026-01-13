@@ -111,15 +111,30 @@ final class AccessibilityFocusObserver {
      Once started, `onFocusChanged` will be called immediately whenever
      the user clicks on a different window or switches apps.
      
+     REQUIRES Accessibility permission (AXIsProcessTrusted).
+     If permission is not granted, this will log a warning and return false.
+     The DimmingCoordinator will fall back to the mouse click monitor.
+     
      THREAD-SAFE: Can be called from any thread.
+     
+     - Returns: true if successfully started, false if permission not granted
      */
-    func startObserving() {
+    @discardableResult
+    func startObserving() -> Bool {
         observerLock.lock()
         defer { observerLock.unlock() }
         
         guard !isObserving else {
             print("🔍 AccessibilityFocusObserver already observing")
-            return
+            return true
+        }
+        
+        // Check if Accessibility permission is granted
+        guard AXIsProcessTrusted() else {
+            print("⚠️ AccessibilityFocusObserver: Accessibility permission not granted")
+            print("   → Instant focus detection disabled, falling back to mouse click monitor")
+            print("   → Grant Accessibility permission in System Settings for better performance")
+            return false
         }
         
         isObserving = true
@@ -132,6 +147,7 @@ final class AccessibilityFocusObserver {
         }
         
         print("🔍 AccessibilityFocusObserver started (tracking \(appObservers.count) apps)")
+        return true
     }
     
     /**

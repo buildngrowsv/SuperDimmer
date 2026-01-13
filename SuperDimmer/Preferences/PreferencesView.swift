@@ -174,6 +174,27 @@ struct GeneralPreferencesTab: View {
                 }
                 
                 HStack {
+                    Image(systemName: permissionManager.accessibilityGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(permissionManager.accessibilityGranted ? .green : .orange)
+                    
+                    VStack(alignment: .leading) {
+                        Text("Accessibility")
+                            .font(.body)
+                        Text(permissionManager.accessibilityGranted ? "Permission granted" : "Required for instant focus detection")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    if !permissionManager.accessibilityGranted {
+                        Button("Grant") {
+                            permissionManager.requestAccessibilityPermission()
+                        }
+                    }
+                }
+                
+                HStack {
                     Image(systemName: permissionManager.locationGranted ? "checkmark.circle.fill" : "circle")
                         .foregroundColor(permissionManager.locationGranted ? .green : .secondary)
                     

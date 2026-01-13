@@ -14,8 +14,9 @@
  
  PERMISSIONS NEEDED:
  1. Screen Recording - CRITICAL for brightness detection
- 2. Location - Optional for sunrise/sunset automation
- 3. Automation - Optional for wallpaper/appearance switching
+ 2. Accessibility - CRITICAL for instant focus detection (AXObserver)
+ 3. Location - Optional for sunrise/sunset automation
+ 4. Automation - Optional for wallpaper/appearance switching
  
  STRATEGY:
  - Request permissions just-in-time, not at launch
@@ -79,6 +80,17 @@ final class PermissionManager: NSObject, ObservableObject {
     @Published private(set) var locationGranted: Bool = false
     
     /**
+     Whether Accessibility permission is granted.
+     
+     CRITICAL for instant focus detection (AXObserver).
+     Without this, window focus notifications won't fire and overlays
+     may have delayed z-order updates when switching windows.
+     
+     Checked via AXIsProcessTrusted()
+     */
+    @Published private(set) var accessibilityGranted: Bool = false
+    
+    /**
      Whether Automation/AppleEvents permission is granted.
      
      OPTIONAL: Only needed for wallpaper switching and appearance toggle.
@@ -118,13 +130,61 @@ final class PermissionManager: NSObject, ObservableObject {
      */
     func checkAllPermissions() {
         screenRecordingGranted = checkScreenRecordingPermission()
+        accessibilityGranted = checkAccessibilityPermission()
         locationGranted = checkLocationPermission()
         automationGranted = checkAutomationPermission()
         
         print("📋 Permission Status:")
         print("   Screen Recording: \(screenRecordingGranted ? "✓" : "✗")")
+        print("   Accessibility: \(accessibilityGranted ? "✓" : "✗")")
         print("   Location: \(locationGranted ? "✓" : "✗")")
         print("   Automation: \(automationGranted ? "✓" : "✗")")
+    }
+    
+    // ================================================================
+    // MARK: - Accessibility Permission
+    // ================================================================
+    
+    /**
+     Checks if Accessibility permission is granted.
+     
+     REQUIRED FOR:
+     - AXObserver to receive focus change notifications
+     - Instant window focus detection (<10ms vs 20-60ms without)
+     
+     Without this permission, the app falls back to the mouse click
+     monitor which has higher latency.
+     */
+    func checkAccessibilityPermission() -> Bool {
+        return AXIsProcessTrusted()
+    }
+    
+    /**
+     Requests Accessibility permission.
+     
+     BEHAVIOR:
+     AXIsProcessTrustedWithOptions can show a system prompt. However,
+     like Screen Recording, the user must manually enable it in System Settings.
+     
+     The `kAXTrustedCheckOptionPrompt` option will show a dialog directing
+     the user to System Settings.
+     */
+    func requestAccessibilityPermission() {
+        // Show system prompt and open settings
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
+        
+        // Also open settings directly for convenience
+        openAccessibilitySettings()
+    }
+    
+    /**
+     Opens System Settings to the Accessibility privacy pane.
+     */
+    func openAccessibilitySettings() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+        NSWorkspace.shared.open(url)
+        print("🔗 Opened Accessibility settings")
     }
     
     // ================================================================
