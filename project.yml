@@ -62,6 +62,7 @@ targets:
       - path: SuperDimmer
         excludes:
           - "**/*.md"
+          - "**/SuperDimmerTests/**"  # Explicitly exclude test files
     settings:
       base:
         PRODUCT_NAME: SuperDimmer
@@ -69,6 +70,7 @@ targets:
         INFOPLIST_FILE: SuperDimmer/Supporting Files/Info.plist
         CODE_SIGN_ENTITLEMENTS: SuperDimmer/Supporting Files/SuperDimmer.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_TESTABILITY: YES  # Allow @testable import in tests
         LD_RUNPATH_SEARCH_PATHS:
           - "@executable_path/../Frameworks"
     
