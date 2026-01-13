@@ -565,22 +565,11 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 ---
 
 #### 2.2.1.11 Wallpaper Dimming
-> Dim the desktop wallpaper independently from window dimming.
-> Useful for users who want a subtle background without changing wallpaper.
+> **NOTE: Already covered in Phase 4.4** - See section 4.4 Wallpaper Dimming
+> Added here for reference: should respect appearance mode profiles.
 
-- [ ] Add `wallpaperDimmingEnabled: Bool` setting
-- [ ] Add `wallpaperDimLevel: Double` setting (0.0-1.0)
-- [ ] Create wallpaper overlay that sits below all windows but above desktop
-- [ ] Use `NSWindow.Level.desktopIconWindow - 1` or similar
-- [ ] Handle multi-monitor (one overlay per display)
-- [ ] Add UI toggle and slider in Preferences
-- [ ] Respect appearance mode (different settings for light/dark)
-
-#### 🧪 TEST CHECK 2.2.1.11
-- [ ] Wallpaper dimming works independently
-- [ ] Doesn't affect window overlays
-- [ ] Works on multi-monitor setups
-- [ ] Respects light/dark mode settings
+- [ ] (See Phase 4.4 for implementation details)
+- [ ] Add: Respect appearance mode (different dim levels for light/dark profiles)
 
 ---
 
