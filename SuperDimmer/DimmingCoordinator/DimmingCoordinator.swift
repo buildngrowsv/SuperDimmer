@@ -299,7 +299,8 @@ final class DimmingCoordinator: ObservableObject {
             // SIMPLE MODE: Full-screen dimming
             print("▶️ Simple mode - creating full-screen overlays")
             
-            let dimLevel = configuration.globalDimLevel
+            // FIX (Jan 9, 2026): Read directly from SettingsManager for live updates
+            let dimLevel = CGFloat(SettingsManager.shared.globalDimLevel)
             print("📺 Dim level: \(dimLevel)")
             
             // FIX: Check if overlays already exist (from previous toggle)
@@ -574,7 +575,9 @@ final class DimmingCoordinator: ObservableObject {
         var decisions: [DimmingDecision] = []
         let screenCapture = ScreenCaptureService.shared
         let analysisEngine = BrightnessAnalysisEngine.shared
-        let threshold = Float(self.configuration.brightnessThreshold)
+        // FIX (Jan 9, 2026): Read directly from SettingsManager for live updates
+        // Previously used cached self.configuration which didn't update when settings changed
+        let threshold = Float(SettingsManager.shared.brightnessThreshold)
         debugLog("🔍 Using threshold: \(threshold)")
         
         for var window in windows {
@@ -655,7 +658,8 @@ final class DimmingCoordinator: ObservableObject {
         // 4. Detect bright regions within each window (with caching!)
         let screenCapture = ScreenCaptureService.shared
         let regionDetector = BrightRegionDetector.shared
-        let threshold = Float(self.configuration.brightnessThreshold)
+        // FIX (Jan 9, 2026): Read directly from SettingsManager for live updates
+        let threshold = Float(SettingsManager.shared.brightnessThreshold)
         let gridSize = SettingsManager.shared.regionGridSize
         
         var allRegionDecisions: [RegionDimmingDecision] = []
@@ -809,18 +813,21 @@ final class DimmingCoordinator: ObservableObject {
         threshold: Float,
         isActiveWindow: Bool
     ) -> CGFloat {
+        // FIX (Jan 9, 2026): Read directly from SettingsManager for live updates
+        let settings = SettingsManager.shared
+        
         // How much above threshold
         let overage = brightness - threshold
         let overageRatio = overage / (1.0 - threshold)
         
         // Scale dim level based on overage
         // Use the user's global dim level as the base
-        let baseDimLevel = configuration.globalDimLevel
+        let baseDimLevel = CGFloat(settings.globalDimLevel)
         var dimLevel = baseDimLevel * CGFloat(0.5 + overageRatio * 0.5)
         
         // Apply active window reduction if enabled
-        if isActiveWindow && configuration.differentiateActiveInactive {
-            dimLevel = min(dimLevel, configuration.activeDimLevel)
+        if isActiveWindow && settings.differentiateActiveInactive {
+            dimLevel = min(dimLevel, CGFloat(settings.activeDimLevel))
         }
         
         // Ensure minimum visibility - if user set dim level > 10%, 
@@ -929,21 +936,24 @@ final class DimmingCoordinator: ObservableObject {
         var reason: DimmingDecision.DimmingReason
         
         if shouldDim {
+            // FIX (Jan 9, 2026): Read directly from SettingsManager for live updates
+            let settings = SettingsManager.shared
+            
             // How much above threshold determines intensity
             // Brightness of 1.0 with threshold 0.85 = 15% over = higher dim
             let overage = brightness - threshold
             let overageRatio = overage / (1.0 - threshold)  // 0.0-1.0
             
             // Scale dim level based on overage and settings
-            let baseDimLevel = configuration.globalDimLevel
+            let baseDimLevel = CGFloat(settings.globalDimLevel)
             dimLevel = baseDimLevel * CGFloat(0.5 + overageRatio * 0.5)
             
             // Reduce dimming for active window if that setting is enabled
-            if window.isActive && configuration.differentiateActiveInactive {
-                dimLevel = configuration.activeDimLevel
+            if window.isActive && settings.differentiateActiveInactive {
+                dimLevel = CGFloat(settings.activeDimLevel)
                 reason = .activeWindowReduced
-            } else if !window.isActive && configuration.differentiateActiveInactive {
-                dimLevel = configuration.inactiveDimLevel
+            } else if !window.isActive && settings.differentiateActiveInactive {
+                dimLevel = CGFloat(settings.inactiveDimLevel)
                 reason = .inactiveWindowIncreased
             } else {
                 reason = .aboveThreshold
