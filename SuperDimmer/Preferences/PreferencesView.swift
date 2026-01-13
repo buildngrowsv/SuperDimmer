@@ -120,7 +120,9 @@ struct PreferencesView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
         }
-        .frame(width: 650, height: 450)
+        // Make window resizable with min/max constraints
+        .frame(minWidth: 550, idealWidth: 700, maxWidth: 900,
+               minHeight: 400, idealHeight: 500, maxHeight: 700)
     }
 }
 

@@ -555,6 +555,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.setFrameAutosaveName("SuperDimmerPreferences")
         
+        // Set min/max size constraints for resizable window
+        window.minSize = NSSize(width: 550, height: 400)
+        window.maxSize = NSSize(width: 900, height: 700)
+        
         // Make it a proper preferences window
         window.isReleasedWhenClosed = false
         window.level = .normal
