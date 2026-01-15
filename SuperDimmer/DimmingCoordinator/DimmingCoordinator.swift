@@ -672,12 +672,18 @@ final class DimmingCoordinator: ObservableObject {
         
         guard !windows.isEmpty else {
             debugLog("⚠️ No visible windows found")
+            DispatchQueue.main.async { [weak self] in
+                self?.detectionStatus.isAnalyzing = false
+            }
             return
         }
         
         // 2. Check screen capture permission
         guard ScreenCaptureService.shared.hasPermission else {
             debugLog("⚠️ No screen capture permission - using simple mode")
+            DispatchQueue.main.async { [weak self] in
+                self?.detectionStatus.isAnalyzing = false
+            }
             return
         }
         
@@ -1270,14 +1276,15 @@ struct DetectionStatus {
         // Get actual current overlay count (not cached)
         let liveCount = OverlayManager.shared.currentRegionOverlayCount
         
-        if isAnalyzing {
-            return "Scanning..."
-        } else if liveCount > 0 {
+        // NOTE: We don't use isAnalyzing here because:
+        // 1. DetectionStatus is a struct, so @Published doesn't detect internal changes
+        // 2. The "Scanning..." state is fleeting (< 100ms) anyway
+        // 3. The live overlay count is more useful feedback
+        
+        if liveCount > 0 {
             return "\(liveCount) region\(liveCount == 1 ? "" : "s") dimmed"
-        } else if !isAnalyzing && windowCount == 0 {
-            return "Idle"
         } else {
-            return "No bright areas detected"
+            return "No bright areas"
         }
     }
 }
