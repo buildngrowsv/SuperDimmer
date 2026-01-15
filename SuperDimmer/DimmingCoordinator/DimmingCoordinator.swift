@@ -76,9 +76,23 @@ final class DimmingCoordinator: ObservableObject {
     // ================================================================
     
     /**
-     Timer that fires the analysis loop at regular intervals.
+     Timer that fires the brightness analysis loop at regular intervals.
+     This is the "heavy" operation - screenshots and brightness detection.
+     Runs at `scanInterval` (default 2.0 seconds).
      */
     private var analysisTimer: Timer?
+    
+    /**
+     Timer that fires window tracking updates at regular intervals.
+     This is "lightweight" - just window enumeration and overlay position updates.
+     Runs at `windowTrackingInterval` (default 0.5 seconds).
+     
+     Handles:
+     - Updating overlay positions as windows move
+     - Z-order updates when focus changes
+     - Removing overlays for hidden/minimized windows
+     */
+    private var windowTrackingTimer: Timer?
     
     /**
      Whether the coordinator is currently running.
@@ -316,6 +330,7 @@ final class DimmingCoordinator: ObservableObject {
         }
         
         // Schedule the analysis timer (only if not already scheduled)
+        // This is the "heavy" timer - screenshots and brightness analysis
         if analysisTimer == nil {
             analysisTimer = Timer.scheduledTimer(
                 withTimeInterval: configuration.scanInterval,
@@ -324,6 +339,20 @@ final class DimmingCoordinator: ObservableObject {
                 self?.performAnalysisCycle()
             }
             RunLoop.current.add(analysisTimer!, forMode: .common)
+        }
+        
+        // Schedule window tracking timer (lightweight, runs more frequently)
+        // This handles overlay position/z-order updates without expensive screenshots
+        if windowTrackingTimer == nil && useIntelligentMode {
+            let trackingInterval = SettingsManager.shared.windowTrackingInterval
+            windowTrackingTimer = Timer.scheduledTimer(
+                withTimeInterval: trackingInterval,
+                repeats: true
+            ) { [weak self] _ in
+                self?.performWindowTracking()
+            }
+            RunLoop.current.add(windowTrackingTimer!, forMode: .common)
+            print("📍 Window tracking timer started (interval: \(trackingInterval)s)")
         }
         
         // ================================================================
@@ -414,9 +443,12 @@ final class DimmingCoordinator: ObservableObject {
         print("⏹️ Stopping DimmingCoordinator...")
         isRunning = false
         
-        // Stop the timer
+        // Stop both timers
         analysisTimer?.invalidate()
         analysisTimer = nil
+        
+        windowTrackingTimer?.invalidate()
+        windowTrackingTimer = nil
         
         // Stop accessibility focus observer
         AccessibilityFocusObserver.shared.stopObserving()
@@ -1117,6 +1149,14 @@ final class DimmingCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
         
+        // Observe window tracking interval changes
+        SettingsManager.shared.$windowTrackingInterval
+            .dropFirst()
+            .sink { [weak self] newInterval in
+                self?.updateWindowTrackingInterval(newInterval)
+            }
+            .store(in: &cancellables)
+        
         // HYBRID Z-ORDERING (Jan 8, 2026): Listen for application activation changes
         // When the frontmost app changes, we switch overlay window levels:
         // - New frontmost app's overlays → .floating (no flash when clicking within)
@@ -1192,6 +1232,62 @@ final class DimmingCoordinator: ObservableObject {
         RunLoop.current.add(analysisTimer!, forMode: .common)
         
         print("⏱️ Scan interval updated to \(newInterval)s")
+    }
+    
+    /**
+     Updates the window tracking timer interval.
+     */
+    private func updateWindowTrackingInterval(_ newInterval: Double) {
+        guard isRunning, windowTrackingTimer != nil else { return }
+        
+        windowTrackingTimer?.invalidate()
+        windowTrackingTimer = Timer.scheduledTimer(
+            withTimeInterval: newInterval,
+            repeats: true
+        ) { [weak self] _ in
+            self?.performWindowTracking()
+        }
+        RunLoop.current.add(windowTrackingTimer!, forMode: .common)
+        
+        print("📍 Window tracking interval updated to \(newInterval)s")
+    }
+    
+    // ================================================================
+    // MARK: - Window Tracking (Lightweight)
+    // ================================================================
+    
+    /**
+     Lightweight window tracking cycle.
+     
+     This runs FASTER than brightness analysis (every 0.5s vs 2.0s) because it:
+     - Does NOT take screenshots (expensive)
+     - Does NOT analyze brightness (expensive)
+     - ONLY updates overlay positions and z-order
+     
+     Operations performed:
+     1. Get current window list (fast - just CGWindowListCopyWindowInfo)
+     2. Update overlay positions for moved windows
+     3. Update z-order for focus changes
+     4. Remove overlays for hidden/minimized windows
+     */
+    private func performWindowTracking() {
+        guard isRunning else { return }
+        
+        // Only track in intelligent mode (region overlays need tracking)
+        guard SettingsManager.shared.intelligentDimmingEnabled else { return }
+        
+        // Get current visible windows
+        let windows = WindowTrackerService.shared.getVisibleWindows()
+        let visibleWindowIDs = Set(windows.map { $0.id })
+        
+        // Update z-order for frontmost app
+        overlayManager.updateOverlayLevelsForFrontmostApp()
+        
+        // Update overlay positions (without re-analyzing brightness)
+        overlayManager.updateOverlayPositions(visibleWindowIDs: visibleWindowIDs, windows: windows)
+        
+        // Clean up overlays for windows that are no longer visible
+        overlayManager.cleanupOrphanedOverlays(visibleWindowIDs: visibleWindowIDs)
     }
 }
 

@@ -418,15 +418,31 @@ struct BrightnessPreferencesTab: View {
             // ========================================================
             Section {
                 VStack(alignment: .leading, spacing: 8) {
+                    // Brightness Analysis Interval (Heavy)
                     HStack {
-                        Text("Scan Interval")
+                        Text("Brightness Scan")
                         Spacer()
-                        Text(String(format: "%.1f seconds", settings.scanInterval))
+                        Text(String(format: "%.1f sec", settings.scanInterval))
                             .monospacedDigit()
                             .foregroundColor(.secondary)
                     }
                     Slider(value: $settings.scanInterval, in: 0.5...5.0, step: 0.5)
-                    Text("How often to analyze screen content. Lower = more responsive but higher CPU usage")
+                    Text("How often to analyze screen brightness. Uses screenshots - higher CPU.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    // Window Tracking Interval (Lightweight)
+                    HStack {
+                        Text("Window Tracking")
+                        Spacer()
+                        Text(String(format: "%.1f sec", settings.windowTrackingInterval))
+                            .monospacedDigit()
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $settings.windowTrackingInterval, in: 0.1...2.0, step: 0.1)
+                    Text("How often to update overlay positions. Lightweight - can run faster.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

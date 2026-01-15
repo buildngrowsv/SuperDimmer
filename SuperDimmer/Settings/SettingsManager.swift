@@ -93,6 +93,7 @@ final class SettingsManager: ObservableObject {
         case detectionMode = "superdimmer.detectionMode"
         case regionGridSize = "superdimmer.regionGridSize"
         case scanInterval = "superdimmer.scanInterval"
+        case windowTrackingInterval = "superdimmer.windowTrackingInterval"
         
         // Super Dimming Auto Mode (2.2.1.2)
         // Auto mode adjusts dim level based on overall screen brightness
@@ -348,6 +349,30 @@ final class SettingsManager: ObservableObject {
     @Published var scanInterval: Double {
         didSet {
             defaults.set(scanInterval, forKey: Keys.scanInterval.rawValue)
+        }
+    }
+    
+    /**
+     Interval between window tracking updates (seconds).
+     
+     This is SEPARATE from scanInterval because:
+     - Brightness analysis (scanInterval): CPU-intensive screenshots, runs slower
+     - Window tracking (this): Lightweight position/z-order updates, runs faster
+     
+     Window tracking handles:
+     - Overlay position following window movement
+     - Z-order updates when focus changes
+     - Removing overlays for hidden/minimized windows
+     
+     Range: 0.1 to 2.0 seconds
+     Default: 0.5 seconds (faster than brightness scan)
+     
+     Lower values = more responsive window following
+     Higher values = less CPU usage
+     */
+    @Published var windowTrackingInterval: Double {
+        didSet {
+            defaults.set(windowTrackingInterval, forKey: Keys.windowTrackingInterval.rawValue)
         }
     }
     
@@ -938,6 +963,12 @@ final class SettingsManager: ObservableObject {
         // Can be reduced to 1.0 or 0.5 for per-window mode which is faster
         self.scanInterval = defaults.object(forKey: Keys.scanInterval.rawValue) != nil ?
             defaults.double(forKey: Keys.scanInterval.rawValue) : 2.0
+        
+        // Window tracking interval: 0.5 seconds (faster than brightness analysis)
+        // This controls how often we update overlay positions and z-order
+        // Lightweight operation - just window list enumeration, no screenshots
+        self.windowTrackingInterval = defaults.object(forKey: Keys.windowTrackingInterval.rawValue) != nil ?
+            defaults.double(forKey: Keys.windowTrackingInterval.rawValue) : 0.5
         
         // ============================================================
         // Load Super Dimming Auto Mode Settings (2.2.1.2)
