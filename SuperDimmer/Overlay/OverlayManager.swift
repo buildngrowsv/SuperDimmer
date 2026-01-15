@@ -480,6 +480,21 @@ final class OverlayManager {
     /// Counter for generating unique region IDs
     private var regionCounter: Int = 0
     
+    /// Current count of active region overlays (for UI status display)
+    /// IMPORTANT: This is the ACTUAL count, not a cached analysis result
+    var currentRegionOverlayCount: Int {
+        overlayLock.lock()
+        defer { overlayLock.unlock() }
+        return regionOverlays.count
+    }
+    
+    /// Current count of all overlays (display + window + region + decay)
+    var totalOverlayCount: Int {
+        overlayLock.lock()
+        defer { overlayLock.unlock() }
+        return displayOverlays.count + windowOverlays.count + regionOverlays.count + decayOverlays.count
+    }
+    
     // NOTE (Jan 10, 2026): overlaysBeingClosed was REMOVED.
     // We no longer close overlays at all - just hide them and keep them alive.
     // This prevents EXC_BAD_ACCESS crashes from NSWindow.close() triggering

@@ -1265,13 +1265,17 @@ struct DetectionStatus {
     var isAnalyzing: Bool = false
     
     /// Human-readable status string
+    /// NOTE: Uses LIVE overlay count from OverlayManager, not cached analysis results
     var statusText: String {
-        if !isAnalyzing && overlayCount == 0 && windowCount == 0 {
-            return "Idle"
-        } else if isAnalyzing {
+        // Get actual current overlay count (not cached)
+        let liveCount = OverlayManager.shared.currentRegionOverlayCount
+        
+        if isAnalyzing {
             return "Scanning..."
-        } else if overlayCount > 0 {
-            return "\(overlayCount) region\(overlayCount == 1 ? "" : "s") dimmed"
+        } else if liveCount > 0 {
+            return "\(liveCount) region\(liveCount == 1 ? "" : "s") dimmed"
+        } else if !isAnalyzing && windowCount == 0 {
+            return "Idle"
         } else {
             return "No bright areas detected"
         }
