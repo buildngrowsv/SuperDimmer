@@ -93,12 +93,22 @@ final class WindowTrackerService {
     /**
      Gets the combined set of excluded bundle IDs (system + user-configured).
      This is computed each time to reflect the latest user settings.
+     
+     NOTE (2.2.1.12): Now uses the unified appExclusions with excludeFromDimming flag.
+     Also includes legacy excludedAppBundleIDs for backwards compatibility.
      */
     private var excludedBundleIDs: Set<String> {
         var excluded = systemExcludedBundleIDs
-        // Add user-configured exclusions from settings
-        let userExcluded = SettingsManager.shared.excludedAppBundleIDs
-        excluded.formUnion(userExcluded)
+        
+        // Add user-configured exclusions from new unified system (2.2.1.12)
+        let settings = SettingsManager.shared
+        for exclusion in settings.appExclusions where exclusion.excludeFromDimming {
+            excluded.insert(exclusion.bundleID)
+        }
+        
+        // Also include legacy exclusions for backwards compatibility
+        excluded.formUnion(settings.excludedAppBundleIDs)
+        
         return excluded
     }
     

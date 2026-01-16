@@ -714,16 +714,21 @@ struct WindowManagementPreferencesTab: View {
             }
             
             // ========================================================
-            // Excluded Apps Section (for both features)
+            // Per-Feature App Exclusions (2.2.1.12)
             // ========================================================
-            Section("Exclusions") {
+            Section {
                 Button {
-                    showAutoHideExclusions = true
+                    showAppExclusions = true
                 } label: {
                     HStack {
-                        Text("Auto-Hide Exclusions")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Manage App Exclusions")
+                            Text("Choose which features each app is excluded from")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                         Spacer()
-                        Text("\(settings.autoHideExcludedApps.count)")
+                        Text("\(settings.appExclusions.count) apps")
                             .foregroundColor(.secondary)
                         Image(systemName: "chevron.right")
                             .foregroundColor(.secondary)
@@ -731,171 +736,31 @@ struct WindowManagementPreferencesTab: View {
                     }
                 }
                 .buttonStyle(.plain)
-                
-                Button {
-                    showAutoMinimizeExclusions = true
-                } label: {
-                    HStack {
-                        Text("Auto-Minimize Exclusions")
-                        Spacer()
-                        Text("\(settings.autoMinimizeExcludedApps.count)")
-                            .foregroundColor(.secondary)
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
-                }
-                .buttonStyle(.plain)
+            } header: {
+                Label("App Exclusions", systemImage: "app.badge.checkmark")
+            } footer: {
+                Text("Excluded apps can be exempted from dimming, decay dimming, auto-hide, and/or auto-minimize individually.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
         .padding()
-        .sheet(isPresented: $showAutoHideExclusions) {
-            AutoHideExclusionsList(isPresented: $showAutoHideExclusions)
-        }
-        .sheet(isPresented: $showAutoMinimizeExclusions) {
-            AutoMinimizeExclusionsList(isPresented: $showAutoMinimizeExclusions)
+        .sheet(isPresented: $showAppExclusions) {
+            AppExclusionsView(isPresented: $showAppExclusions)
+                .environmentObject(settings)
         }
     }
     
     // State for sheets
-    @State private var showAutoHideExclusions = false
-    @State private var showAutoMinimizeExclusions = false
+    @State private var showAppExclusions = false
 }
 
 // ====================================================================
-// MARK: - Auto-Hide Exclusions List
+// MARK: - Legacy Exclusion Lists (REMOVED)
 // ====================================================================
-
-struct AutoHideExclusionsList: View {
-    @EnvironmentObject var settings: SettingsManager
-    @Binding var isPresented: Bool
-    @State private var newBundleID: String = ""
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header with close button
-            HStack {
-                Text("Apps excluded from Auto-Hide")
-                    .font(.headline)
-                Spacer()
-                Button("Done") {
-                    isPresented = false
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-            
-            Text("These apps will never be automatically hidden, regardless of inactivity.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            List {
-                ForEach(settings.autoHideExcludedApps, id: \.self) { bundleID in
-                    HStack {
-                        Text(bundleID)
-                        Spacer()
-                        Button(role: .destructive) {
-                            settings.autoHideExcludedApps.removeAll { $0 == bundleID }
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-            }
-            .frame(minHeight: 150)
-            
-            HStack {
-                TextField("Bundle ID (e.g., com.apple.mail)", text: $newBundleID)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit {
-                        addBundleID()
-                    }
-                
-                Button("Add") {
-                    addBundleID()
-                }
-                .disabled(newBundleID.isEmpty)
-            }
-        }
-        .padding()
-        .frame(width: 450, height: 350)
-    }
-    
-    private func addBundleID() {
-        if !newBundleID.isEmpty && !settings.autoHideExcludedApps.contains(newBundleID) {
-            settings.autoHideExcludedApps.append(newBundleID)
-            newBundleID = ""
-        }
-    }
-}
-
-// ====================================================================
-// MARK: - Auto-Minimize Exclusions List
-// ====================================================================
-
-struct AutoMinimizeExclusionsList: View {
-    @EnvironmentObject var settings: SettingsManager
-    @Binding var isPresented: Bool
-    @State private var newBundleID: String = ""
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header with close button
-            HStack {
-                Text("Apps excluded from Auto-Minimize")
-                    .font(.headline)
-                Spacer()
-                Button("Done") {
-                    isPresented = false
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-            
-            Text("These apps will never have their windows automatically minimized.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            List {
-                ForEach(settings.autoMinimizeExcludedApps, id: \.self) { bundleID in
-                    HStack {
-                        Text(bundleID)
-                        Spacer()
-                        Button(role: .destructive) {
-                            settings.autoMinimizeExcludedApps.removeAll { $0 == bundleID }
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-            }
-            .frame(minHeight: 150)
-            
-            HStack {
-                TextField("Bundle ID (e.g., com.apple.Safari)", text: $newBundleID)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit {
-                        addBundleID()
-                    }
-                
-                Button("Add") {
-                    addBundleID()
-                }
-                .disabled(newBundleID.isEmpty)
-            }
-        }
-        .padding()
-        .frame(width: 450, height: 350)
-    }
-    
-    private func addBundleID() {
-        if !newBundleID.isEmpty && !settings.autoMinimizeExcludedApps.contains(newBundleID) {
-            settings.autoMinimizeExcludedApps.append(newBundleID)
-            newBundleID = ""
-        }
-    }
-}
+// These have been replaced by the unified AppExclusionsView (2.2.1.12)
+// which provides per-feature checkboxes for each app.
 
 // ====================================================================
 // MARK: - Color Preferences Tab

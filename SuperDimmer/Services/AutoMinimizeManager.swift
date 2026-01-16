@@ -335,7 +335,14 @@ final class AutoMinimizeManager: ObservableObject {
     private func checkAndMinimizeWindows() {
         let threshold = settings.autoMinimizeWindowThreshold
         let delaySeconds = settings.autoMinimizeDelay * 60.0  // Convert minutes to seconds
-        let excludedApps = Set(settings.autoMinimizeExcludedApps)
+        
+        // Get excluded apps from unified exclusion system (2.2.1.12)
+        var excludedApps = Set<String>()
+        for exclusion in settings.appExclusions where exclusion.excludeFromAutoMinimize {
+            excludedApps.insert(exclusion.bundleID)
+        }
+        // Also include legacy exclusions for backwards compatibility
+        excludedApps.formUnion(settings.autoMinimizeExcludedApps)
         
         // Group windows by app
         lock.lock()

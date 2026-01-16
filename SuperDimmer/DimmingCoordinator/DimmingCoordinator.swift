@@ -1034,6 +1034,12 @@ final class DimmingCoordinator: ObservableObject {
         var decayDecisions: [OverlayManager.DecayDimmingDecision] = []
         
         for window in windows {
+            // Check if this app is excluded from decay dimming (2.2.1.12)
+            if let bundleID = window.bundleID,
+               settings.isAppExcluded(from: .decayDimming, bundleID: bundleID) {
+                continue
+            }
+            
             // Calculate decay dim level for this window
             let inactivityDuration = inactivityTracker.getInactivityDuration(for: window.id)
             let delayedInactivity = max(0, inactivityDuration - settings.decayStartDelay)

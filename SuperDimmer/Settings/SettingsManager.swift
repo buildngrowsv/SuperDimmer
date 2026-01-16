@@ -35,6 +35,97 @@
 
 import Foundation
 import Combine
+import AppKit
+
+// ====================================================================
+// MARK: - App Exclusion Model
+// ====================================================================
+
+/**
+ Represents an app's exclusion settings for various SuperDimmer features.
+ 
+ Instead of separate exclusion lists per feature, we have ONE unified list
+ where each app has checkboxes for which features it's excluded from.
+ 
+ FEATURES:
+ - Dimming: Brightness overlay dimming (intelligent mode)
+ - Decay Dimming: Inactivity-based progressive dimming
+ - Auto-Hide: Automatically hide inactive apps
+ - Auto-Minimize: Automatically minimize inactive windows
+ */
+struct AppExclusion: Codable, Identifiable, Equatable {
+    var id: String { bundleID }
+    
+    /// The app's bundle identifier (e.g., "com.apple.Safari")
+    var bundleID: String
+    
+    /// Display name resolved from bundle ID (cached for performance)
+    var appName: String
+    
+    /// Exclude from brightness dimming overlays
+    var excludeFromDimming: Bool = false
+    
+    /// Exclude from inactivity decay dimming
+    var excludeFromDecayDimming: Bool = false
+    
+    /// Exclude from auto-hide inactive apps
+    var excludeFromAutoHide: Bool = false
+    
+    /// Exclude from auto-minimize inactive windows
+    var excludeFromAutoMinimize: Bool = false
+    
+    /// Creates an exclusion entry with all flags set to a default value
+    init(bundleID: String, appName: String? = nil, allExcluded: Bool = false) {
+        self.bundleID = bundleID
+        self.appName = appName ?? AppExclusion.resolveAppName(from: bundleID)
+        if allExcluded {
+            self.excludeFromDimming = true
+            self.excludeFromDecayDimming = true
+            self.excludeFromAutoHide = true
+            self.excludeFromAutoMinimize = true
+        }
+    }
+    
+    /// Resolves the app name from a bundle identifier
+    static func resolveAppName(from bundleID: String) -> String {
+        // Try to find the app in running applications first
+        if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleID }) {
+            return app.localizedName ?? bundleID
+        }
+        
+        // Try to get it from the bundle
+        if let bundleURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
+           let bundle = Bundle(url: bundleURL),
+           let name = bundle.infoDictionary?["CFBundleName"] as? String ?? 
+                      bundle.infoDictionary?["CFBundleDisplayName"] as? String {
+            return name
+        }
+        
+        // Fallback: extract readable name from bundle ID
+        // e.g., "com.apple.Safari" -> "Safari"
+        let components = bundleID.split(separator: ".")
+        if let lastComponent = components.last {
+            return String(lastComponent)
+        }
+        
+        return bundleID
+    }
+    
+    /// Returns true if the app has any exclusion enabled
+    var hasAnyExclusion: Bool {
+        excludeFromDimming || excludeFromDecayDimming || excludeFromAutoHide || excludeFromAutoMinimize
+    }
+}
+
+/**
+ Enum for checking exclusion by feature type.
+ */
+enum ExclusionFeature {
+    case dimming
+    case decayDimming
+    case autoHide
+    case autoMinimize
+}
 
 // ====================================================================
 // MARK: - Settings Manager
@@ -109,8 +200,12 @@ final class SettingsManager: ObservableObject {
         case decayStartDelay = "superdimmer.decayStartDelay"
         case maxDecayDimLevel = "superdimmer.maxDecayDimLevel"
         
-        // Excluded Apps
+        // Excluded Apps (LEGACY - migrated to appExclusions)
         case excludedAppBundleIDs = "superdimmer.excludedAppBundleIDs"
+        
+        // Per-Feature App Exclusions (2.2.1.12) - UNIFIED exclusion list
+        case appExclusions = "superdimmer.appExclusions"
+        case exclusionsMigrated = "superdimmer.exclusionsMigrated"
         
         // Auto-Hide Inactive Apps (APP-LEVEL)
         case autoHideEnabled = "superdimmer.autoHideEnabled"
@@ -517,6 +612,8 @@ final class SettingsManager: ObservableObject {
     /**
      Bundle IDs of apps that should never have their windows dimmed.
      
+     LEGACY: This is kept for migration. Use `appExclusions` instead.
+     
      Users can add apps that:
      - Have their own dark mode or dimming
      - Need precise color accuracy (design tools)
@@ -527,6 +624,138 @@ final class SettingsManager: ObservableObject {
     @Published var excludedAppBundleIDs: [String] {
         didSet {
             defaults.set(excludedAppBundleIDs, forKey: Keys.excludedAppBundleIDs.rawValue)
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Per-Feature App Exclusions (2.2.1.12)
+    // ================================================================
+    
+    /**
+     Unified list of app exclusions with per-feature checkboxes.
+     
+     This replaces the old separate exclusion lists:
+     - excludedAppBundleIDs (dimming)
+     - autoHideExcludedApps (auto-hide)
+     - autoMinimizeExcludedApps (auto-minimize)
+     
+     Each app can be excluded from:
+     - Brightness dimming overlays
+     - Decay dimming (inactivity fade)
+     - Auto-hide (automatic app hiding)
+     - Auto-minimize (automatic window minimizing)
+     */
+    @Published var appExclusions: [AppExclusion] {
+        didSet {
+            saveAppExclusions()
+        }
+    }
+    
+    /// Saves app exclusions to UserDefaults as JSON
+    private func saveAppExclusions() {
+        if let data = try? JSONEncoder().encode(appExclusions) {
+            defaults.set(data, forKey: Keys.appExclusions.rawValue)
+        }
+    }
+    
+    /// Loads app exclusions from UserDefaults
+    private func loadAppExclusions() -> [AppExclusion] {
+        guard let data = defaults.data(forKey: Keys.appExclusions.rawValue),
+              let exclusions = try? JSONDecoder().decode([AppExclusion].self, from: data) else {
+            return []
+        }
+        return exclusions
+    }
+    
+    // ================================================================
+    // MARK: - Exclusion Helper Methods
+    // ================================================================
+    
+    /**
+     Checks if an app is excluded from a specific feature.
+     
+     - Parameters:
+       - feature: The feature to check
+       - bundleID: The app's bundle identifier
+     - Returns: true if the app should be excluded from that feature
+     */
+    func isAppExcluded(from feature: ExclusionFeature, bundleID: String) -> Bool {
+        guard let exclusion = appExclusions.first(where: { $0.bundleID == bundleID }) else {
+            return false
+        }
+        
+        switch feature {
+        case .dimming:
+            return exclusion.excludeFromDimming
+        case .decayDimming:
+            return exclusion.excludeFromDecayDimming
+        case .autoHide:
+            return exclusion.excludeFromAutoHide
+        case .autoMinimize:
+            return exclusion.excludeFromAutoMinimize
+        }
+    }
+    
+    /**
+     Gets the exclusion entry for an app, if it exists.
+     
+     - Parameter bundleID: The app's bundle identifier
+     - Returns: The AppExclusion if found, nil otherwise
+     */
+    func getExclusion(for bundleID: String) -> AppExclusion? {
+        return appExclusions.first { $0.bundleID == bundleID }
+    }
+    
+    /**
+     Adds or updates an app exclusion.
+     
+     - Parameter exclusion: The exclusion to add/update
+     */
+    func setExclusion(_ exclusion: AppExclusion) {
+        if let index = appExclusions.firstIndex(where: { $0.bundleID == exclusion.bundleID }) {
+            appExclusions[index] = exclusion
+        } else {
+            appExclusions.append(exclusion)
+        }
+    }
+    
+    /**
+     Removes an app from the exclusions list.
+     
+     - Parameter bundleID: The app's bundle identifier
+     */
+    func removeExclusion(for bundleID: String) {
+        appExclusions.removeAll { $0.bundleID == bundleID }
+    }
+    
+    /**
+     Toggles a specific feature exclusion for an app.
+     Creates the exclusion entry if it doesn't exist.
+     
+     - Parameters:
+       - feature: The feature to toggle
+       - bundleID: The app's bundle identifier
+       - appName: Optional app name (resolved from bundle ID if not provided)
+     */
+    func toggleExclusion(feature: ExclusionFeature, for bundleID: String, appName: String? = nil) {
+        var exclusion = getExclusion(for: bundleID) ?? AppExclusion(bundleID: bundleID, appName: appName)
+        
+        switch feature {
+        case .dimming:
+            exclusion.excludeFromDimming.toggle()
+        case .decayDimming:
+            exclusion.excludeFromDecayDimming.toggle()
+        case .autoHide:
+            exclusion.excludeFromAutoHide.toggle()
+        case .autoMinimize:
+            exclusion.excludeFromAutoMinimize.toggle()
+        }
+        
+        // If all flags are off, remove the entry
+        if !exclusion.hasAnyExclusion {
+            removeExclusion(for: bundleID)
+        } else {
+            setExclusion(exclusion)
         }
     }
     
@@ -1000,9 +1229,20 @@ final class SettingsManager: ObservableObject {
             defaults.double(forKey: Keys.maxDecayDimLevel.rawValue) : 0.8  // 80% max (can go to 100%)
         
         // ============================================================
-        // Load Excluded Apps
+        // Load Excluded Apps (Legacy)
         // ============================================================
         self.excludedAppBundleIDs = defaults.object(forKey: Keys.excludedAppBundleIDs.rawValue) as? [String] ?? []
+        
+        // ============================================================
+        // Load Per-Feature App Exclusions (2.2.1.12)
+        // ============================================================
+        // Initialize first (required before self is available)
+        self.appExclusions = []
+        // Then load from storage
+        if let data = defaults.data(forKey: Keys.appExclusions.rawValue),
+           let exclusions = try? JSONDecoder().decode([AppExclusion].self, from: data) {
+            self.appExclusions = exclusions
+        }
         
         // ============================================================
         // Load Auto-Hide Settings
@@ -1086,7 +1326,86 @@ final class SettingsManager: ObservableObject {
         self.wallpaperDimLevel = defaults.object(forKey: Keys.wallpaperDimLevel.rawValue) != nil ?
             defaults.double(forKey: Keys.wallpaperDimLevel.rawValue) : 0.3
         
+        // ============================================================
+        // Migrate Legacy Exclusion Lists (2.2.1.12)
+        // ============================================================
+        migrateExclusionsIfNeeded()
+        
         print("✓ SettingsManager loaded from UserDefaults")
+    }
+    
+    // ================================================================
+    // MARK: - Exclusion Migration
+    // ================================================================
+    
+    /**
+     Migrates old separate exclusion arrays to the new unified format.
+     
+     This runs once on first launch after the update. It:
+     1. Reads old excludedAppBundleIDs → sets excludeFromDimming = true
+     2. Reads old autoHideExcludedApps → sets excludeFromAutoHide = true
+     3. Reads old autoMinimizeExcludedApps → sets excludeFromAutoMinimize = true
+     4. Merges entries with the same bundle ID
+     5. Clears old arrays (but keeps keys for safety)
+     */
+    private func migrateExclusionsIfNeeded() {
+        // Check if already migrated
+        guard !defaults.bool(forKey: Keys.exclusionsMigrated.rawValue) else {
+            return
+        }
+        
+        print("🔄 Migrating legacy exclusion lists to unified format...")
+        
+        var migrated: [String: AppExclusion] = [:]
+        var migratedCount = 0
+        
+        // Migrate dimming exclusions
+        for bundleID in excludedAppBundleIDs {
+            if var exclusion = migrated[bundleID] {
+                exclusion.excludeFromDimming = true
+                migrated[bundleID] = exclusion
+            } else {
+                var newExclusion = AppExclusion(bundleID: bundleID)
+                newExclusion.excludeFromDimming = true
+                migrated[bundleID] = newExclusion
+                migratedCount += 1
+            }
+        }
+        
+        // Migrate auto-hide exclusions
+        for bundleID in autoHideExcludedApps {
+            if var exclusion = migrated[bundleID] {
+                exclusion.excludeFromAutoHide = true
+                migrated[bundleID] = exclusion
+            } else {
+                var newExclusion = AppExclusion(bundleID: bundleID)
+                newExclusion.excludeFromAutoHide = true
+                migrated[bundleID] = newExclusion
+                migratedCount += 1
+            }
+        }
+        
+        // Migrate auto-minimize exclusions
+        for bundleID in autoMinimizeExcludedApps {
+            if var exclusion = migrated[bundleID] {
+                exclusion.excludeFromAutoMinimize = true
+                migrated[bundleID] = exclusion
+            } else {
+                var newExclusion = AppExclusion(bundleID: bundleID)
+                newExclusion.excludeFromAutoMinimize = true
+                migrated[bundleID] = newExclusion
+                migratedCount += 1
+            }
+        }
+        
+        // Save migrated exclusions
+        if !migrated.isEmpty {
+            appExclusions = Array(migrated.values)
+            print("✅ Migrated \(migratedCount) apps to unified exclusion format")
+        }
+        
+        // Mark migration as complete
+        defaults.set(true, forKey: Keys.exclusionsMigrated.rawValue)
     }
     
     // ================================================================
@@ -1144,6 +1463,9 @@ final class SettingsManager: ObservableObject {
         autoMinimizeIdleResetTime = 5.0
         autoMinimizeWindowThreshold = 3
         autoMinimizeExcludedApps = []
+        
+        // Per-Feature Exclusions (clear all)
+        appExclusions = []
         
         // Color Temperature
         colorTemperatureEnabled = false

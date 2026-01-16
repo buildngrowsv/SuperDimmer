@@ -166,8 +166,13 @@ final class AutoHideManager: ObservableObject {
         // Convert delay from minutes to seconds
         let delaySeconds = settings.autoHideDelay * 60.0
         
-        // Get excluded apps
-        let excludedApps = Set(settings.autoHideExcludedApps)
+        // Get excluded apps from unified exclusion system (2.2.1.12)
+        var excludedApps = Set<String>()
+        for exclusion in settings.appExclusions where exclusion.excludeFromAutoHide {
+            excludedApps.insert(exclusion.bundleID)
+        }
+        // Also include legacy exclusions for backwards compatibility
+        excludedApps.formUnion(settings.autoHideExcludedApps)
         
         // Get inactive apps
         let inactiveApps = appTracker.getInactiveApps(

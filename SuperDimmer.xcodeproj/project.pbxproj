@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		086E7F050857EA5DD5456DE4 /* AppExclusionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1650EB9DF5649F71564D6C4D /* AppExclusionsView.swift */; };
 		18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1786CD87303B63162133E819 /* DimOverlayWindow.swift */; };
 		1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */; };
 		1DE410E49A5AC8F149E219C0 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */; };
@@ -57,6 +58,7 @@
 		037D115986E52FD0778CDF1C /* OverlayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayManager.swift; sourceTree = "<group>"; };
 		03E06F14D1A62C96A81A599C /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		15182B36183FA683F3EF6E20 /* SuperDimmer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SuperDimmer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1650EB9DF5649F71564D6C4D /* AppExclusionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExclusionsView.swift; sourceTree = "<group>"; };
 		1786CD87303B63162133E819 /* DimOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimOverlayWindow.swift; sourceTree = "<group>"; };
 		1BB93951703F6D09744CAB95 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		27586C5BE0F771581C033B4C /* ScheduleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleManager.swift; sourceTree = "<group>"; };
@@ -212,6 +214,7 @@
 		753FFDA169C17AA8D4FA0C74 /* Preferences */ = {
 			isa = PBXGroup;
 			children = (
+				1650EB9DF5649F71564D6C4D /* AppExclusionsView.swift */,
 				007F0A55A64BEF81B7363D45 /* PreferencesView.swift */,
 			);
 			path = Preferences;
@@ -398,6 +401,7 @@
 				27EDD4ED37D0239B17656845 /* AccessibilityFocusObserver.swift in Sources */,
 				34184663D93157DBBB3F3EC7 /* ActiveUsageTracker.swift in Sources */,
 				305FA57277603D003500DA9C /* AppDelegate.swift in Sources */,
+				086E7F050857EA5DD5456DE4 /* AppExclusionsView.swift in Sources */,
 				353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */,
 				D2603A35C27DD775210CE256 /* AutoHideManager.swift in Sources */,
 				1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */,

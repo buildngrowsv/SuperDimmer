@@ -573,7 +573,7 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.12 Per-Feature Exclusion Lists
+#### 2.2.1.12 Per-Feature Exclusion Lists ✅ COMPLETED (Jan 16, 2026)
 > Instead of separate exclusion lists per feature, have ONE unified list
 > where each app has checkboxes for which features it's excluded from.
 > This is cleaner UX and easier to manage.
@@ -585,57 +585,36 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 4. **Auto-Minimize** - automatically minimize inactive windows
 
 **Data Structure:**
-- [ ] Create `AppExclusion` struct:
-  ```swift
-  struct AppExclusion: Codable, Identifiable {
-      var id: String { bundleID }
-      var bundleID: String
-      var appName: String  // For display (resolved from bundle ID)
-      var excludeFromDimming: Bool = false
-      var excludeFromDecayDimming: Bool = false
-      var excludeFromAutoHide: Bool = false  
-      var excludeFromAutoMinimize: Bool = false
-  }
-  ```
-- [ ] Add `appExclusions: [AppExclusion]` to SettingsManager
-- [ ] Remove old separate exclusion arrays (with migration)
+- [x] Create `AppExclusion` struct in SettingsManager.swift
+- [x] Add `appExclusions: [AppExclusion]` to SettingsManager
+- [x] Keep old arrays for backwards compatibility (migrated on launch)
 
 **UI - Unified Exclusions View:**
-- [ ] Create `AppExclusionsView` with table layout:
-  ```
-  ┌──────────────────────────────────────────────────────────────┐
-  │ App Name       │ Dimming │ Decay │ Auto-Hide │ Auto-Min │   │
-  ├──────────────────────────────────────────────────────────────┤
-  │ Safari         │   ☑     │  ☐    │    ☐      │    ☑     │ 🗑 │
-  │ Finder         │   ☐     │  ☑    │    ☑      │    ☑     │ 🗑 │
-  │ Terminal       │   ☑     │  ☑    │    ☐      │    ☐     │ 🗑 │
-  │ Mail           │   ☐     │  ☐    │    ☑      │    ☐     │ 🗑 │
-  └──────────────────────────────────────────────────────────────┘
-  │ [+ Add App]                                                  │
-  └──────────────────────────────────────────────────────────────┘
-  ```
-- [ ] App picker (running apps + manual bundle ID entry)
-- [ ] Column headers with tooltips explaining each feature
-- [ ] Delete button per row
-- [ ] "Add App" button opens app picker sheet
+- [x] Create `AppExclusionsView.swift` with table layout
+- [x] App picker (running apps + manual bundle ID entry)
+- [x] Column headers (Dimming, Decay, Auto-Hide, Auto-Min)
+- [x] Delete button per row
+- [x] "Add App" button opens app picker sheet
+- [x] Integrated into Preferences → Window Management tab
 
 **Service Updates:**
-- [ ] Update DimmingCoordinator to check `excludeFromDimming`
-- [ ] Update decay dimming logic to check `excludeFromDecayDimming`
-- [ ] Update AutoHideManager to check `excludeFromAutoHide`
-- [ ] Update AutoMinimizeManager to check `excludeFromAutoMinimize`
+- [x] Update WindowTrackerService to check `excludeFromDimming`
+- [x] Update DimmingCoordinator decay logic to check `excludeFromDecayDimming`
+- [x] Update AutoHideManager to check `excludeFromAutoHide`
+- [x] Update AutoMinimizeManager to check `excludeFromAutoMinimize`
 
 **Migration:**
-- [ ] On first launch with new format:
-  - Read old `excludedAppBundleIDs` → create entries with `excludeFromDimming = true`
-  - Read old `autoHideExcludedApps` → merge/create entries with `excludeFromAutoHide = true`
-  - Read old `autoMinimizeExcludedApps` → merge/create entries with `excludeFromAutoMinimize = true`
-- [ ] Remove old keys after migration
+- [x] `migrateExclusionsIfNeeded()` in SettingsManager init
+- [x] Reads old arrays and merges into new unified format
+- [x] Sets `exclusionsMigrated` flag to prevent re-migration
 
 **Helper Functions:**
-- [ ] `isAppExcludedFrom(_ feature: ExclusionFeature, bundleID: String) -> Bool`
-- [ ] `getExclusionFlags(for bundleID: String) -> AppExclusion?`
-- [ ] `resolveAppName(from bundleID: String) -> String` (uses NSWorkspace)
+- [x] `isAppExcluded(from: ExclusionFeature, bundleID: String) -> Bool`
+- [x] `getExclusion(for bundleID: String) -> AppExclusion?`
+- [x] `setExclusion(_ exclusion: AppExclusion)`
+- [x] `removeExclusion(for bundleID: String)`
+- [x] `toggleExclusion(feature:for:appName:)`
+- [x] `AppExclusion.resolveAppName(from bundleID: String) -> String`
 
 #### 🧪 TEST CHECK 2.2.1.12
 - [ ] Can add app to exclusions list
