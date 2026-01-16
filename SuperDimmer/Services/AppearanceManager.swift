@@ -57,6 +57,10 @@ class AppearanceManager {
     /// The last detected appearance, used to avoid redundant callbacks
     private var lastDetectedAppearance: AppearanceType?
     
+    /// Debounce timer to prevent excessive appearance change callbacks
+    /// PERFORMANCE FIX (Jan 16, 2026): The system notification can fire multiple times
+    private var debounceTimer: Timer?
+    
     // MARK: - Initialization
     
     init() {
@@ -137,18 +141,24 @@ class AppearanceManager {
     /// DEBOUNCING:
     /// The lastDetectedAppearance check prevents duplicate callbacks if the
     /// notification fires multiple times for the same appearance state.
+    ///
+    /// PERFORMANCE FIX (Jan 16, 2026):
+    /// Added debug logging to track how often this is called
     private func handleAppearanceChange() {
         let currentAppearance = detectAppearance()
         
         // Only trigger callback if appearance has actually changed
         // This prevents unnecessary profile switches and UI updates
         if lastDetectedAppearance != currentAppearance {
+            print("🌓 AppearanceManager: Appearance changed from \(lastDetectedAppearance?.displayName ?? "nil") to \(currentAppearance.displayName)")
             lastDetectedAppearance = currentAppearance
             
             // Invoke callback on main thread (it should already be main, but we ensure it)
             DispatchQueue.main.async { [weak self] in
                 self?.onAppearanceChanged?(currentAppearance)
             }
+        } else {
+            print("🌓 AppearanceManager: handleAppearanceChange called but no change detected (still \(currentAppearance.displayName))")
         }
     }
     

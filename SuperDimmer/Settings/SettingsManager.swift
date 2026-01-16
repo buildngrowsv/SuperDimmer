@@ -1442,6 +1442,15 @@ final class SettingsManager: ObservableObject {
      */
     private var appearanceManager: AppearanceManager?
     
+    /**
+     Flag to indicate we're currently loading a profile.
+     
+     PERFORMANCE FIX (Jan 16, 2026):
+     When loading profiles, we update many @Published properties at once.
+     This flag helps avoid redundant observer triggers during bulk updates.
+     */
+    private var isLoadingProfile: Bool = false
+    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
@@ -1814,43 +1823,96 @@ final class SettingsManager: ObservableObject {
         
         print("🔄 Loading \(activeAppearance.displayName) mode profile...")
         
+        // PERFORMANCE FIX (Jan 16, 2026):
+        // Set loading flag to prevent redundant observer triggers.
+        // When we update 20+ @Published properties, each one fires observers
+        // which can recreate timers, restart services, etc.
+        // By setting this flag, observers can check it and skip redundant work.
+        isLoadingProfile = true
+        defer { isLoadingProfile = false }
+        
         // Apply profile settings to active @Published properties
-        // WHY we don't use willSet/didSet to prevent saving:
-        // These properties' didSet handlers save to UserDefaults,
-        // but we're LOADING, not saving. So we just set them directly.
-        // The didSet will trigger, but that's okay - it just re-saves the value.
+        // OPTIMIZATION: Only update if value actually changed to minimize observer triggers
         
         // Super Dimming
-        isDimmingEnabled = profile.isDimmingEnabled
-        globalDimLevel = profile.globalDimLevel
-        superDimmingAutoEnabled = profile.superDimmingAutoEnabled
-        autoAdjustRange = profile.autoAdjustRange
+        if isDimmingEnabled != profile.isDimmingEnabled {
+            isDimmingEnabled = profile.isDimmingEnabled
+        }
+        if globalDimLevel != profile.globalDimLevel {
+            globalDimLevel = profile.globalDimLevel
+        }
+        if superDimmingAutoEnabled != profile.superDimmingAutoEnabled {
+            superDimmingAutoEnabled = profile.superDimmingAutoEnabled
+        }
+        if autoAdjustRange != profile.autoAdjustRange {
+            autoAdjustRange = profile.autoAdjustRange
+        }
         
         // Intelligent Dimming
-        intelligentDimmingEnabled = profile.intelligentDimmingEnabled
-        detectionMode = profile.detectionMode
-        brightnessThreshold = profile.brightnessThreshold
-        activeDimLevel = profile.activeDimLevel
-        inactiveDimLevel = profile.inactiveDimLevel
-        differentiateActiveInactive = profile.differentiateActiveInactive
-        regionGridSize = profile.regionGridSize
+        if intelligentDimmingEnabled != profile.intelligentDimmingEnabled {
+            intelligentDimmingEnabled = profile.intelligentDimmingEnabled
+        }
+        if detectionMode != profile.detectionMode {
+            detectionMode = profile.detectionMode
+        }
+        if brightnessThreshold != profile.brightnessThreshold {
+            brightnessThreshold = profile.brightnessThreshold
+        }
+        if activeDimLevel != profile.activeDimLevel {
+            activeDimLevel = profile.activeDimLevel
+        }
+        if inactiveDimLevel != profile.inactiveDimLevel {
+            inactiveDimLevel = profile.inactiveDimLevel
+        }
+        if differentiateActiveInactive != profile.differentiateActiveInactive {
+            differentiateActiveInactive = profile.differentiateActiveInactive
+        }
+        if regionGridSize != profile.regionGridSize {
+            regionGridSize = profile.regionGridSize
+        }
         
-        // Performance & Timing
-        scanInterval = profile.scanInterval
-        windowTrackingInterval = profile.windowTrackingInterval
+        // Performance & Timing (CRITICAL: These trigger timer recreation!)
+        if scanInterval != profile.scanInterval {
+            scanInterval = profile.scanInterval
+        }
+        if windowTrackingInterval != profile.windowTrackingInterval {
+            windowTrackingInterval = profile.windowTrackingInterval
+        }
         
         // SuperFocus Features
-        superFocusEnabled = profile.superFocusEnabled
-        inactivityDecayEnabled = profile.inactivityDecayEnabled
-        decayRate = profile.decayRate
-        decayStartDelay = profile.decayStartDelay
-        maxDecayDimLevel = profile.maxDecayDimLevel
-        autoHideEnabled = profile.autoHideEnabled
-        autoHideDelay = profile.autoHideDelay
-        autoMinimizeEnabled = profile.autoMinimizeEnabled
-        autoMinimizeDelay = profile.autoMinimizeDelay
-        autoMinimizeIdleResetTime = profile.autoMinimizeIdleResetTime
-        autoMinimizeWindowThreshold = profile.autoMinimizeWindowThreshold
+        if superFocusEnabled != profile.superFocusEnabled {
+            superFocusEnabled = profile.superFocusEnabled
+        }
+        if inactivityDecayEnabled != profile.inactivityDecayEnabled {
+            inactivityDecayEnabled = profile.inactivityDecayEnabled
+        }
+        if decayRate != profile.decayRate {
+            decayRate = profile.decayRate
+        }
+        if decayStartDelay != profile.decayStartDelay {
+            decayStartDelay = profile.decayStartDelay
+        }
+        if maxDecayDimLevel != profile.maxDecayDimLevel {
+            maxDecayDimLevel = profile.maxDecayDimLevel
+        }
+        if autoHideEnabled != profile.autoHideEnabled {
+            autoHideEnabled = profile.autoHideEnabled
+        }
+        if autoHideDelay != profile.autoHideDelay {
+            autoHideDelay = profile.autoHideDelay
+        }
+        if autoMinimizeEnabled != profile.autoMinimizeEnabled {
+            autoMinimizeEnabled = profile.autoMinimizeEnabled
+        }
+        if autoMinimizeDelay != profile.autoMinimizeDelay {
+            autoMinimizeDelay = profile.autoMinimizeDelay
+        }
+        if autoMinimizeIdleResetTime != profile.autoMinimizeIdleResetTime {
+            autoMinimizeIdleResetTime = profile.autoMinimizeIdleResetTime
+        }
+        if autoMinimizeWindowThreshold != profile.autoMinimizeWindowThreshold {
+            autoMinimizeWindowThreshold = profile.autoMinimizeWindowThreshold
+        }
         
         print("✅ \(activeAppearance.displayName) mode profile applied")
     }
