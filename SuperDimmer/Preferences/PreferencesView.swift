@@ -321,7 +321,7 @@ struct BrightnessPreferencesTab: View {
             }
             
             // ========================================================
-            // Auto Mode Section (2.2.1.2)
+            // Auto Mode Section (2.2.1.2 + 2.2.1.8 polish)
             // ========================================================
             Section {
                 Toggle(isOn: $settings.superDimmingAutoEnabled) {
@@ -332,6 +332,7 @@ struct BrightnessPreferencesTab: View {
                             .foregroundColor(.secondary)
                     }
                 }
+                .help("When enabled, SuperDimmer adapts to your screen content - dimming more when displaying bright content, less when displaying dark content.")
                 
                 if settings.superDimmingAutoEnabled {
                     VStack(alignment: .leading, spacing: 8) {
@@ -343,7 +344,8 @@ struct BrightnessPreferencesTab: View {
                                 .foregroundColor(.secondary)
                         }
                         Slider(value: $settings.autoAdjustRange, in: 0.05...0.30)
-                        Text("How much the dim level can swing based on content brightness")
+                            .help("Controls how much Auto mode can increase or decrease the base dim level. Higher = more dynamic adjustment.")
+                        Text("How much the dim level can vary from the base setting. Default is ±15%.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -351,10 +353,14 @@ struct BrightnessPreferencesTab: View {
                 }
             } header: {
                 Label("Adaptive Dimming", systemImage: "sparkles")
+            } footer: {
+                if settings.superDimmingAutoEnabled {
+                    Text("Auto mode captures screenshots periodically to measure screen brightness and adjusts dimming dynamically for optimal comfort.")
+                }
             }
             
             // ========================================================
-            // Detection Section
+            // Detection Section (2.2.1.8 - Enhanced explanations)
             // ========================================================
             Section {
                 VStack(alignment: .leading, spacing: 8) {
@@ -366,12 +372,15 @@ struct BrightnessPreferencesTab: View {
                             .foregroundColor(.secondary)
                     }
                     Slider(value: $settings.brightnessThreshold, in: 0.5...1.0)
-                    Text("Areas brighter than this percentage will trigger dimming")
+                        .help("Lower = more areas dimmed (more sensitive). Higher = only brightest areas dimmed.")
+                    Text("Areas brighter than this threshold will trigger dimming. Default is 85%.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             } header: {
                 Label("Detection Sensitivity", systemImage: "lightbulb")
+            } footer: {
+                Text("Adjust how bright an area must be before dimming is applied. Lower values dim more content, higher values are more selective.")
             }
             
             // ========================================================
@@ -490,20 +499,21 @@ struct BrightnessPreferencesTab: View {
             }
             
             // ========================================================
-            // Performance Section
+            // Performance Section (2.2.1.8 - Enhanced explanations)
             // ========================================================
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     // Brightness Analysis Interval (Heavy)
                     HStack {
-                        Text("Brightness Scan")
+                        Text("Brightness Scan Interval")
                         Spacer()
                         Text(String(format: "%.1f sec", settings.scanInterval))
                             .monospacedDigit()
                             .foregroundColor(.secondary)
                     }
                     Slider(value: $settings.scanInterval, in: 0.5...5.0, step: 0.5)
-                    Text("How often to analyze screen brightness. Uses screenshots - higher CPU.")
+                        .help("Lower = more frequent updates but higher CPU usage. Higher = less responsive but more efficient. Default: 2.0 seconds.")
+                    Text("How often to capture screenshots and analyze brightness. Lower values are more responsive but use more CPU. Default: 2.0s")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -511,19 +521,22 @@ struct BrightnessPreferencesTab: View {
                 VStack(alignment: .leading, spacing: 8) {
                     // Window Tracking Interval (Lightweight)
                     HStack {
-                        Text("Window Tracking")
+                        Text("Window Tracking Interval")
                         Spacer()
                         Text(String(format: "%.1f sec", settings.windowTrackingInterval))
                             .monospacedDigit()
                             .foregroundColor(.secondary)
                     }
                     Slider(value: $settings.windowTrackingInterval, in: 0.1...2.0, step: 0.1)
-                    Text("How often to update overlay positions. Lightweight - can run faster.")
+                        .help("Controls how smoothly overlays follow window movement. Lower = smoother but slightly higher CPU. Default: 0.5 seconds.")
+                    Text("How often to update overlay positions when windows move. This is lightweight and can run faster. Default: 0.5s")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             } header: {
-                Label("Performance", systemImage: "gauge.medium")
+                Label("Performance Tuning", systemImage: "gauge.medium")
+            } footer: {
+                Text("Adjust these intervals to balance responsiveness and CPU usage. Brightness scanning is more intensive than window tracking.")
             }
         }
         .formStyle(.grouped)
@@ -553,7 +566,7 @@ struct WindowManagementPreferencesTab: View {
     var body: some View {
         Form {
             // ========================================================
-            // SuperFocus Section (2.2.1.5)
+            // SuperFocus Section (2.2.1.5 + 2.2.1.8 polish)
             // ========================================================
             Section {
                 Toggle(isOn: $settings.superFocusEnabled) {
@@ -569,6 +582,7 @@ struct WindowManagementPreferencesTab: View {
                             .foregroundColor(.secondary)
                     }
                 }
+                .help("SuperFocus helps you concentrate by de-emphasizing unused windows and apps. Turn this on to enable all focus features at once.")
                 
                 if settings.superFocusEnabled {
                     VStack(alignment: .leading, spacing: 4) {
@@ -595,6 +609,10 @@ struct WindowManagementPreferencesTab: View {
                 }
             } header: {
                 Label("Quick Setup", systemImage: "sparkles")
+            } footer: {
+                if settings.superFocusEnabled {
+                    Text("SuperFocus automatically manages your workspace by dimming, hiding, and minimizing inactive content. Configure individual features below.")
+                }
             }
             
             Divider()
@@ -1254,9 +1272,12 @@ private struct InfoRow: View {
 // ====================================================================
 
 /**
- About section with app info, version, and links
+ About section with app info, version, and links (2.2.1.8 - Enhanced)
  */
 struct AboutPreferencesTab: View {
+    
+    @EnvironmentObject var settings: SettingsManager
+    @State private var devToolsClickCount = 0
     
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -1270,7 +1291,7 @@ struct AboutPreferencesTab: View {
         VStack(spacing: 20) {
             // App Icon and Name
             VStack(spacing: 12) {
-                Image(systemName: "sun.max.fill")
+                Image(systemName: "moon.stars.fill")
                     .font(.system(size: 64))
                     .foregroundColor(.orange)
                 
@@ -1278,36 +1299,93 @@ struct AboutPreferencesTab: View {
                     .font(.title)
                     .fontWeight(.bold)
                 
-                Text("Version \(appVersion) (\(buildNumber))")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                // Version (with hidden dev tools unlock gesture)
+                Button(action: {
+                    devToolsClickCount += 1
+                    if devToolsClickCount >= 5 {
+                        settings.toggleDevTools()
+                        devToolsClickCount = 0
+                    }
+                }) {
+                    Text("Version \(appVersion) (\(buildNumber))")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(settings.isDevMode ? "Developer tools are unlocked" : "")
             }
             
             Divider()
                 .padding(.horizontal, 40)
             
             // Description
-            Text("Intelligent region-specific screen dimming for macOS")
+            Text("Intelligent screen dimming for macOS")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 40)
             
-            // Links
-            VStack(spacing: 8) {
-                Link("Visit Website", destination: URL(string: "https://superdimmer.com")!)
+            Text("Reduce eye strain and improve focus with adaptive brightness control")
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 40)
+            
+            // Links (2.2.1.8 - Learn More added)
+            VStack(spacing: 10) {
+                Link(destination: URL(string: "https://superdimmer.com")!) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "globe")
+                        Text("Visit Website")
+                    }
                     .font(.body)
+                }
                 
-                Link("Report an Issue", destination: URL(string: "mailto:support@superdimmer.com")!)
+                Link(destination: URL(string: "https://superdimmer.com/docs")!) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "book.fill")
+                        Text("Documentation & Guides")
+                    }
                     .font(.body)
+                }
+                .help("Learn more about SuperDimmer's features and how to use them effectively")
+                
+                Link(destination: URL(string: "mailto:support@superdimmer.com")!) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "envelope.fill")
+                        Text("Contact Support")
+                    }
+                    .font(.body)
+                }
+                
+                Link(destination: URL(string: "https://github.com/superdimmer/superdimmer/issues")!) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("Report an Issue")
+                    }
+                    .font(.body)
+                }
             }
+            .padding(.vertical, 10)
             
             Spacer()
             
-            // Copyright
-            Text("© 2026 SuperDimmer. All rights reserved.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            // Copyright and Dev Mode Indicator
+            VStack(spacing: 4) {
+                Text("© 2026 SuperDimmer. All rights reserved.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                if settings.isDevMode {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hammer.fill")
+                            .font(.caption2)
+                        Text("Developer Mode Active")
+                    }
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()

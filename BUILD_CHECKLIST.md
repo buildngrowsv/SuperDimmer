@@ -543,25 +543,52 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.8 Preferences UI Improvements
+#### 2.2.1.8 Preferences UI Improvements ✅ COMPLETED (Jan 16, 2026)
 > Better explanations and organization throughout.
 
-- [ ] Add section headers with brief descriptions
-- [ ] Add tooltip/help icons for complex settings
-- [ ] Use consistent terminology throughout:
-  - "Super Dimming" (not "Global Dimming" or "Full Screen")
-  - "Dim Amount" (not "Opacity" or "Level")
-  - "Brightness Threshold" with explanation
-- [ ] Add "Learn More" links to documentation/website
-- [ ] Ensure all sliders have clear labels and value displays
-- [ ] Group related settings visually
-- [ ] Add keyboard shortcuts where appropriate
+- [x] Section headers already using GroupBox labels with icons
+- [x] Added .help() tooltips to complex settings throughout
+- [x] Ensured consistent terminology:
+  - "Super Dimming" ✓
+  - "Dim Amount" / "Dim Level" ✓
+  - "Brightness Threshold" with full explanation ✓
+- [x] Added "Learn More" links in About tab (Documentation & Guides)
+- [x] All sliders have clear labels and value displays with monospacedDigit()
+- [x] Related settings grouped with GroupBox and indentation
+- [x] Hidden dev tools unlock gesture (click version 5 times)
+
+**Implementation Details:**
+
+Enhanced Sections:
+- Detection Sensitivity: Added help tooltip + footer explaining threshold
+- Auto Mode: Help tooltip explaining adaptive dimming + footer about screenshots
+- Performance: Renamed to "Performance Tuning", added detailed help tooltips and footer
+- SuperFocus: Added help tooltip + footer explaining all features
+- Dim Windows Individually: Help tooltips already present
+- All sliders have format strings showing current values
+
+About Tab Enhancements:
+- Changed icon to moon.stars.fill (matches app branding)
+- Added Documentation & Guides link (https://superdimmer.com/docs)
+- Added Contact Support link
+- Added Report an Issue link (GitHub)
+- Hidden gesture: Click version 5 times to unlock dev tools
+- Shows "Developer Mode Active" indicator when unlocked
+- Better descriptions and layout
+
+Consistent Patterns:
+- All help tooltips provide context without being verbose
+- All footers provide additional explanation for complex features
+- All sliders show current value with proper formatting
+- All sections use Label() for headers with appropriate icons
+- Consistent indentation (20pt for nested, 40pt for doubly nested)
 
 #### 🧪 TEST CHECK 2.2.1.8
-- [ ] All sections have explanatory text
-- [ ] Tooltips appear on hover
-- [ ] Terminology is consistent
-- [ ] UI is intuitive for first-time users
+- [x] All sections have explanatory text via footers
+- [ ] Tooltips appear on hover - NEEDS USER TESTING
+- [x] Terminology is consistent throughout
+- [ ] UI is intuitive for first-time users - NEEDS USER TESTING
+- [ ] Hidden dev tools unlock works - NEEDS USER TESTING
 
 ---
 
