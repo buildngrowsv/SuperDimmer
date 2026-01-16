@@ -346,26 +346,39 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.1 Appearance Mode System (Light/Dark/System)
+#### 2.2.1.1 Appearance Mode System (Light/Dark/System) ✅ COMPLETED (Jan 16, 2026)
 > Settings should adapt to user's preferred appearance. Dark mode users want dimming features ON.
 > Light mode users typically don't need aggressive dimming.
 
-- [ ] Add `appearanceMode` setting: `.system`, `.dark`, `.light`
-- [ ] Add `AppearanceManager.swift` to observe system appearance
-- [ ] Store separate settings profiles for light vs dark mode:
-  - [ ] `darkModeSettings: DimmingProfile`
-  - [ ] `lightModeSettings: DimmingProfile`
-- [ ] Create `DimmingProfile` struct with all dimming-related settings
-- [ ] Auto-switch profiles when system appearance changes (if mode = .system)
-- [ ] Add appearance picker at TOP of Preferences window
-- [ ] Default dark mode: Super Dimming ON, features enabled
-- [ ] Default light mode: Super Dimming OFF or minimal
+- [x] Add `appearanceMode` setting: `.system`, `.dark`, `.light`
+- [x] Add `AppearanceManager.swift` to observe system appearance
+- [x] Store separate settings profiles for light vs dark mode:
+  - [x] `darkModeProfile: DimmingProfile`
+  - [x] `lightModeProfile: DimmingProfile`
+- [x] Create `DimmingProfile` struct with all dimming-related settings
+- [x] Auto-switch profiles when system appearance changes (if mode = .system)
+- [x] Add appearance picker at TOP of Preferences window
+- [x] Default dark mode: Super Dimming ON, features enabled
+- [x] Default light mode: Super Dimming OFF or minimal
+
+**Implementation Details:**
+- Created `AppearanceManager` service that observes `AppleInterfaceThemeChangedNotification`
+- Created `DimmingProfile` struct to encapsulate all dimming-related settings
+- Moved `DetectionMode` enum before `DimmingProfile` for proper Codable synthesis
+- Added `appearanceMode`, `darkModeProfile`, `lightModeProfile` to `SettingsManager`
+- Implemented `loadProfileForCurrentAppearance()` and `saveCurrentSettingsToActiveProfile()`
+- Added appearance mode picker to top of General Preferences tab
+- Updated `resetToDefaults()` to reset both profiles
+- Profiles automatically switch when:
+  - System appearance changes (if mode = .system)
+  - User changes appearance mode manually
+  - App launches (loads appropriate profile based on current appearance)
 
 #### 🧪 TEST CHECK 2.2.1.1
-- [ ] Switching to Dark mode loads dark profile
-- [ ] Switching to Light mode loads light profile
-- [ ] System mode follows macOS appearance
-- [ ] Profile changes persist correctly
+- [ ] Switching to Dark mode loads dark profile - NEEDS USER TESTING
+- [ ] Switching to Light mode loads light profile - NEEDS USER TESTING
+- [ ] System mode follows macOS appearance - NEEDS USER TESTING
+- [ ] Profile changes persist correctly - NEEDS USER TESTING
 
 ---
 

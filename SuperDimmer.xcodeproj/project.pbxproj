@@ -20,6 +20,7 @@
 		34184663D93157DBBB3F3EC7 /* ActiveUsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */; };
 		353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */; };
 		4DD0AECDF80AE9516DB78ABB /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73D0D7E7FF2F4335B2B8EABD /* CoreLocation.framework */; };
+		508419C6B18C614C338729C0 /* AppearanceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075047FB28A493C3CFAF7035 /* AppearanceManager.swift */; };
 		52FD8C0A6C3C46BA4BB37103 /* CrashReportingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */; };
 		7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A846E425944D8F0661CB8819 /* SuperDimmerApp.swift */; };
 		7DF9E65F077D8883C984AD7F /* TemporaryDisableManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8713DCA6D1B43914E997B7 /* TemporaryDisableManager.swift */; };
@@ -57,6 +58,7 @@
 		007F0A55A64BEF81B7363D45 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		037D115986E52FD0778CDF1C /* OverlayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayManager.swift; sourceTree = "<group>"; };
 		03E06F14D1A62C96A81A599C /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		075047FB28A493C3CFAF7035 /* AppearanceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceManager.swift; sourceTree = "<group>"; };
 		15182B36183FA683F3EF6E20 /* SuperDimmer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SuperDimmer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1650EB9DF5649F71564D6C4D /* AppExclusionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExclusionsView.swift; sourceTree = "<group>"; };
 		1786CD87303B63162133E819 /* DimOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimOverlayWindow.swift; sourceTree = "<group>"; };
@@ -262,6 +264,7 @@
 			children = (
 				C36458EAE71B42F3362FD0B0 /* AccessibilityFocusObserver.swift */,
 				94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */,
+				075047FB28A493C3CFAF7035 /* AppearanceManager.swift */,
 				3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */,
 				F66E8844DCCCD25531199A7D /* AutoHideManager.swift */,
 				BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */,
@@ -403,6 +406,7 @@
 				305FA57277603D003500DA9C /* AppDelegate.swift in Sources */,
 				086E7F050857EA5DD5456DE4 /* AppExclusionsView.swift in Sources */,
 				353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */,
+				508419C6B18C614C338729C0 /* AppearanceManager.swift in Sources */,
 				D2603A35C27DD775210CE256 /* AutoHideManager.swift in Sources */,
 				1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */,
 				F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */,

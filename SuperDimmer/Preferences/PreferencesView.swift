@@ -156,6 +156,43 @@ struct GeneralPreferencesTab: View {
     var body: some View {
         Form {
             // ========================================================
+            // Appearance Mode Section (2.2.1.1)
+            // ========================================================
+            // This should be at the TOP of preferences because it affects
+            // all other settings - it determines which profile is active
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Choose how SuperDimmer adapts to your Mac's appearance")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Picker("Appearance", selection: $settings.appearanceMode) {
+                        ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                            Label(mode.displayName, systemImage: mode.iconName)
+                                .tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("System: automatically follow macOS Light/Dark mode. Light/Dark: force that appearance regardless of system.")
+                    
+                    // Show which profile is currently active
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(getAppearanceStatusText())
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } header: {
+                Label("Appearance Mode", systemImage: "paintbrush")
+            } footer: {
+                Text("SuperDimmer stores separate settings for Light and Dark mode. When you adjust settings, they save to the currently active profile.")
+                    .font(.caption)
+            }
+            
+            // ========================================================
             // Startup Section
             // ========================================================
             Section("Startup") {
@@ -266,6 +303,30 @@ struct GeneralPreferencesTab: View {
             }
         } message: {
             Text("This will reset all settings to their default values. Your exclusion lists, color temperature schedules, and all preferences will be lost. This action cannot be undone.")
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Helper Methods
+    // ================================================================
+    
+    /**
+     Returns a status string indicating which profile is currently active.
+     
+     FEATURE: 2.2.1.1 - Appearance Mode System
+     This helps users understand that settings are per-appearance-mode.
+     */
+    private func getAppearanceStatusText() -> String {
+        switch settings.appearanceMode {
+        case .system:
+            // Detect current system appearance
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let currentMode = isDark ? "Dark" : "Light"
+            return "Following system appearance (currently \(currentMode))"
+        case .light:
+            return "Always using Light mode profile"
+        case .dark:
+            return "Always using Dark mode profile"
         }
     }
 }

@@ -38,6 +38,187 @@ import Combine
 import AppKit
 
 // ====================================================================
+// MARK: - Detection Mode Enum
+// ====================================================================
+
+/**
+ Detection mode for intelligent dimming.
+ 
+ Determines how the app analyzes window brightness:
+ - perWindow: Analyzes entire window, dims if bright
+ - perRegion: Analyzes regions within window, dims only bright areas
+ 
+ MOVED HERE (2.2.1.1): Needed before DimmingProfile for Codable synthesis
+ */
+enum DetectionMode: String, Codable, CaseIterable, Identifiable {
+    /// Analyze entire window - if bright, dim the whole window
+    case perWindow = "perWindow"
+    
+    /// Analyze regions within windows - dim only the bright areas
+    /// This handles cases like dark Mail app with bright email content
+    case perRegion = "perRegion"
+    
+    var id: String { rawValue }
+    
+    /// User-facing display name
+    var displayName: String {
+        switch self {
+        case .perWindow: return "Per Window"
+        case .perRegion: return "Per Region"
+        }
+    }
+    
+    /// Description for the UI
+    var description: String {
+        switch self {
+        case .perWindow:
+            return "Dims entire windows that are bright"
+        case .perRegion:
+            return "Finds and dims bright areas within windows"
+        }
+    }
+    
+    /// Icon for the mode
+    var icon: String {
+        switch self {
+        case .perWindow: return "macwindow"
+        case .perRegion: return "rectangle.split.3x3"
+        }
+    }
+}
+
+// ====================================================================
+// MARK: - Dimming Profile Model
+// ====================================================================
+
+/**
+ Represents a complete set of dimming-related preferences for a specific appearance mode.
+ 
+ PURPOSE (2.2.1.1 - Appearance Mode System):
+ Users want different dimming behaviors for Light vs Dark mode.
+ - Dark mode users: Typically want aggressive dimming ON by default
+ - Light mode users: Typically prefer minimal or no dimming
+ 
+ DESIGN:
+ Instead of having ONE set of dimming settings, we maintain TWO profiles:
+ - darkModeProfile: Settings active when macOS is in Dark Mode
+ - lightModeProfile: Settings active when macOS is in Light Mode
+ 
+ When the user switches appearance (or system auto-switches), the app
+ loads the appropriate profile and applies those settings.
+ 
+ INCLUDED SETTINGS:
+ - Super Dimming ON/OFF and dim level
+ - Super Dimming Auto mode and range
+ - Intelligent Dimming (per-window/per-region) ON/OFF
+ - Active/Inactive dim levels
+ - Brightness threshold
+ - Scan and tracking intervals
+ - SuperFocus features (decay, auto-hide, auto-minimize)
+ 
+ NOT INCLUDED (global across appearances):
+ - Color temperature settings (separate schedule system)
+ - Wallpaper settings (may respect appearance in Phase 4.4)
+ - Permission states
+ - Launch at login
+ - Developer mode
+ */
+struct DimmingProfile: Codable, Equatable {
+    // Super Dimming (full-screen mode)
+    var isDimmingEnabled: Bool = true  // ON by default for dark mode
+    var globalDimLevel: Double = 0.25  // 25% dim
+    var superDimmingAutoEnabled: Bool = true  // Auto-adjust based on screen brightness
+    var autoAdjustRange: Double = 0.15  // ±15% adjustment
+    
+    // Intelligent Dimming (per-window/per-region mode)
+    var intelligentDimmingEnabled: Bool = false  // OFF by default (Beta)
+    var detectionMode: DetectionMode = .perWindow
+    var brightnessThreshold: Double = 0.85  // 85% brightness triggers dimming
+    var activeDimLevel: Double = 0.15  // 15% for active windows
+    var inactiveDimLevel: Double = 0.35  // 35% for inactive windows
+    var differentiateActiveInactive: Bool = true
+    var regionGridSize: Int = 6  // 6x6 grid for region detection
+    
+    // Performance & Timing
+    var scanInterval: Double = 2.0  // Brightness analysis interval (seconds)
+    var windowTrackingInterval: Double = 0.5  // Position/z-order tracking interval
+    
+    // SuperFocus Features
+    var superFocusEnabled: Bool = false
+    var inactivityDecayEnabled: Bool = false
+    var decayRate: Double = 0.01  // 1% per second
+    var decayStartDelay: TimeInterval = 30.0  // 30 seconds before decay starts
+    var maxDecayDimLevel: Double = 0.8  // 80% max decay dim
+    var autoHideEnabled: Bool = true  // Auto-hide inactive apps
+    var autoHideDelay: Double = 30.0  // 30 minutes
+    var autoMinimizeEnabled: Bool = false  // Auto-minimize windows
+    var autoMinimizeDelay: Double = 15.0  // 15 minutes
+    var autoMinimizeIdleResetTime: Double = 5.0  // 5 minutes idle resets timers
+    var autoMinimizeWindowThreshold: Int = 3  // Keep at least 3 windows
+    
+    /// Creates a profile with default values for Dark Mode
+    static func defaultDarkMode() -> DimmingProfile {
+        return DimmingProfile(
+            isDimmingEnabled: true,
+            globalDimLevel: 0.25,
+            superDimmingAutoEnabled: true,
+            autoAdjustRange: 0.15,
+            intelligentDimmingEnabled: false,
+            detectionMode: .perWindow,
+            brightnessThreshold: 0.85,
+            activeDimLevel: 0.15,
+            inactiveDimLevel: 0.35,
+            differentiateActiveInactive: true,
+            regionGridSize: 6,
+            scanInterval: 2.0,
+            windowTrackingInterval: 0.5,
+            superFocusEnabled: false,
+            inactivityDecayEnabled: false,
+            decayRate: 0.01,
+            decayStartDelay: 30.0,
+            maxDecayDimLevel: 0.8,
+            autoHideEnabled: true,
+            autoHideDelay: 30.0,
+            autoMinimizeEnabled: false,
+            autoMinimizeDelay: 15.0,
+            autoMinimizeIdleResetTime: 5.0,
+            autoMinimizeWindowThreshold: 3
+        )
+    }
+    
+    /// Creates a profile with default values for Light Mode
+    /// Light mode users typically don't want aggressive dimming
+    static func defaultLightMode() -> DimmingProfile {
+        return DimmingProfile(
+            isDimmingEnabled: false,  // OFF by default in light mode
+            globalDimLevel: 0.15,  // Lighter dimming if enabled
+            superDimmingAutoEnabled: false,  // No auto-adjustment
+            autoAdjustRange: 0.10,  // Smaller range if enabled
+            intelligentDimmingEnabled: false,
+            detectionMode: .perWindow,
+            brightnessThreshold: 0.90,  // Higher threshold (less aggressive)
+            activeDimLevel: 0.10,  // Lighter dimming
+            inactiveDimLevel: 0.25,  // Lighter dimming
+            differentiateActiveInactive: true,
+            regionGridSize: 6,
+            scanInterval: 2.0,
+            windowTrackingInterval: 0.5,
+            superFocusEnabled: false,
+            inactivityDecayEnabled: false,
+            decayRate: 0.01,
+            decayStartDelay: 30.0,
+            maxDecayDimLevel: 0.6,  // Lower max decay
+            autoHideEnabled: false,  // OFF by default in light mode
+            autoHideDelay: 30.0,
+            autoMinimizeEnabled: false,
+            autoMinimizeDelay: 15.0,
+            autoMinimizeIdleResetTime: 5.0,
+            autoMinimizeWindowThreshold: 3
+        )
+    }
+}
+
+// ====================================================================
 // MARK: - App Exclusion Model
 // ====================================================================
 
@@ -240,6 +421,11 @@ final class SettingsManager: ObservableObject {
         case wallpaperAutoSwitchEnabled = "superdimmer.wallpaperAutoSwitchEnabled"
         case wallpaperDimEnabled = "superdimmer.wallpaperDimEnabled"
         case wallpaperDimLevel = "superdimmer.wallpaperDimLevel"
+        
+        // Appearance Mode System (2.2.1.1)
+        case appearanceMode = "superdimmer.appearanceMode"
+        case darkModeProfile = "superdimmer.darkModeProfile"
+        case lightModeProfile = "superdimmer.lightModeProfile"
     }
     
     // ================================================================
@@ -1165,6 +1351,98 @@ final class SettingsManager: ObservableObject {
     }
     
     // ================================================================
+    // MARK: - Appearance Mode System (2.2.1.1)
+    // ================================================================
+    
+    /**
+     The user's appearance mode preference.
+     
+     FEATURE: 2.2.1.1 - Appearance Mode System
+     
+     VALUES:
+     - .system: Automatically follow macOS Light/Dark mode
+     - .light: Force Light mode profile regardless of system
+     - .dark: Force Dark mode profile regardless of system
+     
+     DEFAULT: .system (follows macOS)
+     
+     BEHAVIOR:
+     When this changes, or when system appearance changes (if .system),
+     the app loads the appropriate profile (darkModeProfile or lightModeProfile)
+     and applies those settings to the active @Published properties.
+     
+     WHY SEPARATE FROM SETTINGS:
+     We store TWO complete profiles (one for Light, one for Dark) but only
+     ONE set is "active" at any time. The active settings are what the rest
+     of the app reads. This allows seamless switching without losing preferences.
+     */
+    @Published var appearanceMode: AppearanceMode {
+        didSet {
+            defaults.set(appearanceMode.rawValue, forKey: Keys.appearanceMode.rawValue)
+            // When user changes appearance mode, load the appropriate profile
+            loadProfileForCurrentAppearance()
+        }
+    }
+    
+    /**
+     Dimming settings profile for Dark Mode.
+     
+     USAGE:
+     - Loaded when system appearance is dark (if appearanceMode == .system)
+     - Loaded when user forces dark mode (if appearanceMode == .dark)
+     - Updated whenever settings change while in dark mode
+     
+     DEFAULT:
+     Aggressive dimming ON by default. Dark mode users benefit from dimming.
+     */
+    @Published var darkModeProfile: DimmingProfile {
+        didSet {
+            // Save profile to UserDefaults as JSON
+            if let encoded = try? JSONEncoder().encode(darkModeProfile) {
+                defaults.set(encoded, forKey: Keys.darkModeProfile.rawValue)
+            }
+            // If currently in dark mode, apply the profile changes immediately
+            if getCurrentActiveAppearance() == .dark {
+                loadProfileForCurrentAppearance()
+            }
+        }
+    }
+    
+    /**
+     Dimming settings profile for Light Mode.
+     
+     USAGE:
+     - Loaded when system appearance is light (if appearanceMode == .system)
+     - Loaded when user forces light mode (if appearanceMode == .light)
+     - Updated whenever settings change while in light mode
+     
+     DEFAULT:
+     Minimal or no dimming. Light mode users typically don't want aggressive dimming.
+     */
+    @Published var lightModeProfile: DimmingProfile {
+        didSet {
+            // Save profile to UserDefaults as JSON
+            if let encoded = try? JSONEncoder().encode(lightModeProfile) {
+                defaults.set(encoded, forKey: Keys.lightModeProfile.rawValue)
+            }
+            // If currently in light mode, apply the profile changes immediately
+            if getCurrentActiveAppearance() == .light {
+                loadProfileForCurrentAppearance()
+            }
+        }
+    }
+    
+    /**
+     The AppearanceManager instance for observing system appearance changes.
+     
+     LIFECYCLE:
+     - Initialized in init()
+     - Started in init() with callback to loadProfileForCurrentAppearance()
+     - Stopped when app terminates (handled by AppearanceManager's deinit)
+     */
+    private var appearanceManager: AppearanceManager?
+    
+    // ================================================================
     // MARK: - Initialization
     // ================================================================
     
@@ -1363,11 +1641,51 @@ final class SettingsManager: ObservableObject {
             defaults.double(forKey: Keys.wallpaperDimLevel.rawValue) : 0.3
         
         // ============================================================
+        // Load Appearance Mode System (2.2.1.1)
+        // ============================================================
+        // Appearance mode: system, light, or dark
+        if let modeString = defaults.string(forKey: Keys.appearanceMode.rawValue),
+           let mode = AppearanceMode(rawValue: modeString) {
+            self.appearanceMode = mode
+        } else {
+            self.appearanceMode = .system  // Default to following system appearance
+        }
+        
+        // Load Dark Mode profile (or use defaults)
+        if let data = defaults.data(forKey: Keys.darkModeProfile.rawValue),
+           let profile = try? JSONDecoder().decode(DimmingProfile.self, from: data) {
+            self.darkModeProfile = profile
+        } else {
+            self.darkModeProfile = .defaultDarkMode()
+        }
+        
+        // Load Light Mode profile (or use defaults)
+        if let data = defaults.data(forKey: Keys.lightModeProfile.rawValue),
+           let profile = try? JSONDecoder().decode(DimmingProfile.self, from: data) {
+            self.lightModeProfile = profile
+        } else {
+            self.lightModeProfile = .defaultLightMode()
+        }
+        
+        // ============================================================
         // Migrate Legacy Exclusion Lists (2.2.1.12)
         // ============================================================
         migrateExclusionsIfNeeded()
         
+        // ============================================================
+        // Initialize AppearanceManager (2.2.1.1)
+        // ============================================================
+        // Set up appearance monitoring AFTER all settings are loaded
+        // This will immediately detect current appearance and load the appropriate profile
+        self.appearanceManager = AppearanceManager()
+        self.appearanceManager?.onAppearanceChanged = { [weak self] newAppearance in
+            print("🌓 System appearance changed to: \(newAppearance.displayName)")
+            self?.loadProfileForCurrentAppearance()
+        }
+        self.appearanceManager?.start()
+        
         print("✓ SettingsManager loaded from UserDefaults")
+        print("🎨 Appearance Mode: \(appearanceMode.displayName)")
     }
     
     // ================================================================
@@ -1445,6 +1763,158 @@ final class SettingsManager: ObservableObject {
     }
     
     // ================================================================
+    // MARK: - Appearance Profile Management (2.2.1.1)
+    // ================================================================
+    
+    /**
+     Determines which appearance should be active based on user's appearance mode.
+     
+     LOGIC:
+     - If appearanceMode == .system → use system's current appearance
+     - If appearanceMode == .light → always return .light
+     - If appearanceMode == .dark → always return .dark
+     
+     RETURNS:
+     The appearance type that should determine which profile to load.
+     */
+    private func getCurrentActiveAppearance() -> AppearanceType {
+        switch appearanceMode {
+        case .system:
+            // Follow system appearance
+            return appearanceManager?.getCurrentAppearance() ?? .dark
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
+    }
+    
+    /**
+     Loads the appropriate profile based on current appearance and applies it to active settings.
+     
+     WHEN CALLED:
+     - On app launch (after init)
+     - When system appearance changes (if appearanceMode == .system)
+     - When user changes appearanceMode
+     - When user directly modifies a profile (to immediately apply it if active)
+     
+     BEHAVIOR:
+     1. Determine active appearance (light or dark)
+     2. Load the corresponding profile (lightModeProfile or darkModeProfile)
+     3. Apply all profile settings to the @Published properties
+     4. Dimming coordinator will react to these changes automatically
+     
+     IMPORTANT:
+     This does NOT trigger profile saving (to avoid infinite loops).
+     The didSet handlers are temporarily bypassed by directly modifying properties.
+     */
+    private func loadProfileForCurrentAppearance() {
+        let activeAppearance = getCurrentActiveAppearance()
+        let profile = activeAppearance == .dark ? darkModeProfile : lightModeProfile
+        
+        print("🔄 Loading \(activeAppearance.displayName) mode profile...")
+        
+        // Apply profile settings to active @Published properties
+        // WHY we don't use willSet/didSet to prevent saving:
+        // These properties' didSet handlers save to UserDefaults,
+        // but we're LOADING, not saving. So we just set them directly.
+        // The didSet will trigger, but that's okay - it just re-saves the value.
+        
+        // Super Dimming
+        isDimmingEnabled = profile.isDimmingEnabled
+        globalDimLevel = profile.globalDimLevel
+        superDimmingAutoEnabled = profile.superDimmingAutoEnabled
+        autoAdjustRange = profile.autoAdjustRange
+        
+        // Intelligent Dimming
+        intelligentDimmingEnabled = profile.intelligentDimmingEnabled
+        detectionMode = profile.detectionMode
+        brightnessThreshold = profile.brightnessThreshold
+        activeDimLevel = profile.activeDimLevel
+        inactiveDimLevel = profile.inactiveDimLevel
+        differentiateActiveInactive = profile.differentiateActiveInactive
+        regionGridSize = profile.regionGridSize
+        
+        // Performance & Timing
+        scanInterval = profile.scanInterval
+        windowTrackingInterval = profile.windowTrackingInterval
+        
+        // SuperFocus Features
+        superFocusEnabled = profile.superFocusEnabled
+        inactivityDecayEnabled = profile.inactivityDecayEnabled
+        decayRate = profile.decayRate
+        decayStartDelay = profile.decayStartDelay
+        maxDecayDimLevel = profile.maxDecayDimLevel
+        autoHideEnabled = profile.autoHideEnabled
+        autoHideDelay = profile.autoHideDelay
+        autoMinimizeEnabled = profile.autoMinimizeEnabled
+        autoMinimizeDelay = profile.autoMinimizeDelay
+        autoMinimizeIdleResetTime = profile.autoMinimizeIdleResetTime
+        autoMinimizeWindowThreshold = profile.autoMinimizeWindowThreshold
+        
+        print("✅ \(activeAppearance.displayName) mode profile applied")
+    }
+    
+    /**
+     Saves the current active settings to the appropriate profile.
+     
+     WHEN TO CALL:
+     - When user changes a dimming-related setting in preferences
+     - Automatically called from property didSet handlers (future enhancement)
+     
+     BEHAVIOR:
+     1. Determine active appearance
+     2. Create a DimmingProfile from current @Published settings
+     3. Save to darkModeProfile or lightModeProfile
+     4. The profile's didSet will persist to UserDefaults
+     
+     USAGE:
+     This allows users to configure different settings for Light vs Dark mode.
+     When they adjust a setting, it saves to the currently active profile,
+     preserving the other profile's settings.
+     */
+    func saveCurrentSettingsToActiveProfile() {
+        let activeAppearance = getCurrentActiveAppearance()
+        
+        // Create profile from current settings
+        let currentProfile = DimmingProfile(
+            isDimmingEnabled: isDimmingEnabled,
+            globalDimLevel: globalDimLevel,
+            superDimmingAutoEnabled: superDimmingAutoEnabled,
+            autoAdjustRange: autoAdjustRange,
+            intelligentDimmingEnabled: intelligentDimmingEnabled,
+            detectionMode: detectionMode,
+            brightnessThreshold: brightnessThreshold,
+            activeDimLevel: activeDimLevel,
+            inactiveDimLevel: inactiveDimLevel,
+            differentiateActiveInactive: differentiateActiveInactive,
+            regionGridSize: regionGridSize,
+            scanInterval: scanInterval,
+            windowTrackingInterval: windowTrackingInterval,
+            superFocusEnabled: superFocusEnabled,
+            inactivityDecayEnabled: inactivityDecayEnabled,
+            decayRate: decayRate,
+            decayStartDelay: decayStartDelay,
+            maxDecayDimLevel: maxDecayDimLevel,
+            autoHideEnabled: autoHideEnabled,
+            autoHideDelay: autoHideDelay,
+            autoMinimizeEnabled: autoMinimizeEnabled,
+            autoMinimizeDelay: autoMinimizeDelay,
+            autoMinimizeIdleResetTime: autoMinimizeIdleResetTime,
+            autoMinimizeWindowThreshold: autoMinimizeWindowThreshold
+        )
+        
+        // Save to the active profile
+        if activeAppearance == .dark {
+            darkModeProfile = currentProfile
+            print("💾 Saved settings to Dark Mode profile")
+        } else {
+            lightModeProfile = currentProfile
+            print("💾 Saved settings to Light Mode profile")
+        }
+    }
+    
+    // ================================================================
     // MARK: - Public Methods
     // ================================================================
     
@@ -1481,6 +1951,20 @@ final class SettingsManager: ObservableObject {
         // ============================================================
         // Note: isFirstLaunch intentionally NOT reset (keeps false)
         launchAtLogin = false
+        
+        // ============================================================
+        // Appearance Mode System (2.2.1.1)
+        // ============================================================
+        appearanceMode = .system  // Follow system by default
+        darkModeProfile = .defaultDarkMode()
+        lightModeProfile = .defaultLightMode()
+        
+        // Load the appropriate profile for current appearance
+        loadProfileForCurrentAppearance()
+        
+        // NOTE: The rest of the dimming settings will be set by loadProfileForCurrentAppearance()
+        // But we set them here too for clarity and to ensure they're in the correct state
+        // before the profile loads (in case profile loading is delayed)
         
         // ============================================================
         // Dimming Settings (2.2.1.2 - Super Dimming defaults)
@@ -1589,50 +2073,4 @@ extension Notification.Name {
     static let colorTemperatureChanged = Notification.Name("superdimmer.colorTemperatureChanged")
 }
 
-// ====================================================================
-// MARK: - Detection Mode
-// ====================================================================
-
-/**
- Detection modes for intelligent dimming.
- 
- This is a key differentiator for SuperDimmer. While other apps only
- offer full-screen dimming, we can dim specific bright REGIONS within
- windows, handling complex scenarios like dark mode apps with bright content.
- */
-enum DetectionMode: String, CaseIterable, Identifiable {
-    /// Analyze entire window - if bright, dim the whole window
-    case perWindow = "perWindow"
-    
-    /// Analyze regions within windows - dim only the bright areas
-    /// This handles cases like dark Mail app with bright email content
-    case perRegion = "perRegion"
-    
-    var id: String { rawValue }
-    
-    /// User-facing display name
-    var displayName: String {
-        switch self {
-        case .perWindow: return "Per Window"
-        case .perRegion: return "Per Region"
-        }
-    }
-    
-    /// Description for the UI
-    var description: String {
-        switch self {
-        case .perWindow:
-            return "Dims entire windows that are bright"
-        case .perRegion:
-            return "Finds and dims bright areas within windows"
-        }
-    }
-    
-    /// Icon for the mode
-    var icon: String {
-        switch self {
-        case .perWindow: return "macwindow"
-        case .perRegion: return "rectangle.split.3x3"
-        }
-    }
-}
+// NOTE: DetectionMode enum moved to top of file (before DimmingProfile) for Codable synthesis
