@@ -574,38 +574,80 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 ---
 
 #### 2.2.1.12 Per-Feature Exclusion Lists
-> Instead of one exclusion list, allow users to specify which features
-> each app is excluded from (dimming, auto-hide, auto-minimize).
+> Instead of separate exclusion lists per feature, have ONE unified list
+> where each app has checkboxes for which features it's excluded from.
+> This is cleaner UX and easier to manage.
 
-- [ ] Refactor `excludedApps: [String]` to:
+**Features that can be excluded per-app:**
+1. **Brightness Dimming** - overlay-based dimming (intelligent mode)
+2. **Decay Dimming** - inactivity-based progressive dimming
+3. **Auto-Hide** - automatically hide inactive apps
+4. **Auto-Minimize** - automatically minimize inactive windows
+
+**Data Structure:**
+- [ ] Create `AppExclusion` struct:
   ```swift
-  struct AppExclusion: Codable {
+  struct AppExclusion: Codable, Identifiable {
+      var id: String { bundleID }
       var bundleID: String
-      var excludeFromDimming: Bool
-      var excludeFromAutoHide: Bool  
-      var excludeFromAutoMinimize: Bool
+      var appName: String  // For display (resolved from bundle ID)
+      var excludeFromDimming: Bool = false
+      var excludeFromDecayDimming: Bool = false
+      var excludeFromAutoHide: Bool = false  
+      var excludeFromAutoMinimize: Bool = false
   }
-  var appExclusions: [AppExclusion]
   ```
-- [ ] Update ExcludedAppsListView to show checkboxes:
+- [ ] Add `appExclusions: [AppExclusion]` to SettingsManager
+- [ ] Remove old separate exclusion arrays (with migration)
+
+**UI - Unified Exclusions View:**
+- [ ] Create `AppExclusionsView` with table layout:
   ```
-  ┌─────────────────────────────────────────────────┐
-  │ App Name          │ Dim │ Hide │ Minimize │
-  │ Safari            │ ☑   │ ☐    │ ☑        │
-  │ Finder            │ ☐   │ ☑    │ ☑        │
-  │ Terminal          │ ☑   │ ☑    │ ☐        │
-  └─────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────┐
+  │ App Name       │ Dimming │ Decay │ Auto-Hide │ Auto-Min │   │
+  ├──────────────────────────────────────────────────────────────┤
+  │ Safari         │   ☑     │  ☐    │    ☐      │    ☑     │ 🗑 │
+  │ Finder         │   ☐     │  ☑    │    ☑      │    ☑     │ 🗑 │
+  │ Terminal       │   ☑     │  ☑    │    ☐      │    ☐     │ 🗑 │
+  │ Mail           │   ☐     │  ☐    │    ☑      │    ☐     │ 🗑 │
+  └──────────────────────────────────────────────────────────────┘
+  │ [+ Add App]                                                  │
+  └──────────────────────────────────────────────────────────────┘
   ```
+- [ ] App picker (running apps + manual bundle ID entry)
+- [ ] Column headers with tooltips explaining each feature
+- [ ] Delete button per row
+- [ ] "Add App" button opens app picker sheet
+
+**Service Updates:**
 - [ ] Update DimmingCoordinator to check `excludeFromDimming`
+- [ ] Update decay dimming logic to check `excludeFromDecayDimming`
 - [ ] Update AutoHideManager to check `excludeFromAutoHide`
 - [ ] Update AutoMinimizeManager to check `excludeFromAutoMinimize`
-- [ ] Migrate existing exclusion settings on first launch
+
+**Migration:**
+- [ ] On first launch with new format:
+  - Read old `excludedAppBundleIDs` → create entries with `excludeFromDimming = true`
+  - Read old `autoHideExcludedApps` → merge/create entries with `excludeFromAutoHide = true`
+  - Read old `autoMinimizeExcludedApps` → merge/create entries with `excludeFromAutoMinimize = true`
+- [ ] Remove old keys after migration
+
+**Helper Functions:**
+- [ ] `isAppExcludedFrom(_ feature: ExclusionFeature, bundleID: String) -> Bool`
+- [ ] `getExclusionFlags(for bundleID: String) -> AppExclusion?`
+- [ ] `resolveAppName(from bundleID: String) -> String` (uses NSWorkspace)
 
 #### 🧪 TEST CHECK 2.2.1.12
-- [ ] Can exclude app from specific features
-- [ ] Checkboxes persist correctly
-- [ ] Each feature respects its exclusion flag
-- [ ] Migration from old format works
+- [ ] Can add app to exclusions list
+- [ ] Can toggle individual feature checkboxes
+- [ ] Checkboxes persist correctly across restart
+- [ ] Each feature respects its exclusion flag:
+  - [ ] Excluded from dimming → no overlays on that app
+  - [ ] Excluded from decay → no progressive dimming on that app's windows
+  - [ ] Excluded from auto-hide → app never auto-hidden
+  - [ ] Excluded from auto-minimize → app's windows never auto-minimized
+- [ ] Migration from old format works correctly
+- [ ] Apps with all flags off can be removed from list
 
 ---
 
