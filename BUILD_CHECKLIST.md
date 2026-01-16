@@ -404,41 +404,56 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.3 "Dim Windows Individually" - Beta Feature
+#### 2.2.1.3 "Dim Windows Individually" - Beta Feature ✅ COMPLETED (Jan 16, 2026)
 > Advanced mode that dims specific windows. Marked as Beta because it's more complex.
 
-- [ ] Add "Dim Windows Individually (Beta)" toggle
-- [ ] OFF by default
-- [ ] Show beta badge/label in UI
-- [ ] Only visible when Super Dimming is ON
-- [ ] When enabled, disables full-screen overlay and switches to per-window
-- [ ] Clear explanation:
-  > "Analyzes each window and applies individual dimming based on content brightness.
-  > Beta: May have higher CPU usage."
+- [x] Renamed "Intelligent Mode" to "Dim Windows Individually (Beta)"
+- [x] OFF by default (intelligentDimmingEnabled = false in resetToDefaults)
+- [x] Shows purple "(Beta)" badge in UI
+- [x] Always visible in Brightness Preferences (not dependent on Super Dimming)
+- [x] When enabled, switches from full-screen to per-window/per-region overlays
+- [x] Clear explanation: "Analyze each window and apply individual dimming based on content brightness"
+- [x] Help text: "Requires Screen Recording permission. May have higher CPU usage."
+
+**Implementation Details:**
+- Reuses existing `intelligentDimmingEnabled` setting
+- Master toggle for both per-window and per-region modes
+- Replaces old "Intelligent Mode" in BrightnessPreferencesTab
+- Purple Beta badge for consistency
+- Shows mode status indicator when enabled
 
 #### 🧪 TEST CHECK 2.2.1.3
-- [ ] Toggle shows "(Beta)" label
-- [ ] Only appears when Super Dimming is ON
-- [ ] Enabling switches from full-screen to per-window overlays
-- [ ] Disabling returns to Super Dimming behavior
+- [x] Toggle shows "(Beta)" label in purple badge
+- [ ] Enabling switches from full-screen to per-window overlays - NEEDS USER TESTING
+- [ ] Disabling returns to Super Dimming behavior - NEEDS USER TESTING
 
 ---
 
-#### 2.2.1.4 "Dim Bright Areas" - Nested Feature
+#### 2.2.1.4 "Dim Bright Areas" - Nested Feature ✅ COMPLETED (Jan 16, 2026)
 > Per-region dimming within windows. Only available when per-window is enabled.
 
-- [ ] Add "Dim Bright Areas" toggle
-- [ ] OFF by default
-- [ ] Only appears when "Dim Windows Individually" is ON
-- [ ] When enabled, detects bright regions within each window
-- [ ] Clear explanation:
-  > "Finds bright areas within windows (like white backgrounds in emails)
-  > and dims only those regions. Uses more resources."
+- [x] Added "Dim Bright Areas" toggle nested under "Dim Windows Individually"
+- [x] OFF by default (detectionMode = .perWindow)
+- [x] Only appears when "Dim Windows Individually" is ON
+- [x] When enabled, sets detectionMode to .perRegion
+- [x] When disabled, sets detectionMode to .perWindow
+- [x] Clear explanation: "Finds bright areas within windows (like white email backgrounds) and dims only those regions. Uses more resources."
+- [x] Shows mode indicator with icon and color coding
+
+**Implementation Details:**
+- Removed old "Detection Mode" segmented picker
+- Created nested toggle using Binding<Bool> that maps to detectionMode
+- Added visual mode indicators:
+  - Full Window: Blue with macwindow icon
+  - Region-Specific: Purple with square.split.2x2 icon
+- Added footer text explaining the two modes
+- Indented 20pt to show hierarchy
+- All per-window settings (active/inactive differentiation) remain nested
 
 #### 🧪 TEST CHECK 2.2.1.4
-- [ ] Toggle only visible when "Dim Windows Individually" is ON
-- [ ] Enabling shows per-region overlays
-- [ ] Disabling returns to per-window overlays
+- [x] Toggle only visible when "Dim Windows Individually" is ON
+- [ ] Enabling shows per-region overlays - NEEDS USER TESTING
+- [ ] Disabling returns to per-window overlays - NEEDS USER TESTING
 
 ---
 

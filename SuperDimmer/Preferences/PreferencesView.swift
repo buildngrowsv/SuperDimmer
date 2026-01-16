@@ -375,13 +375,14 @@ struct BrightnessPreferencesTab: View {
             }
             
             // ========================================================
-            // Intelligent Mode Section
+            // Per-Window Dimming Section (2.2.1.3)
             // ========================================================
             Section {
+                // Master toggle for per-window dimming
                 Toggle(isOn: $settings.intelligentDimmingEnabled) {
                     VStack(alignment: .leading) {
                         HStack {
-                            Text("Intelligent Mode")
+                            Text("Dim Windows Individually")
                             Text("(Beta)")
                                 .font(.caption)
                                 .padding(.horizontal, 6)
@@ -389,35 +390,67 @@ struct BrightnessPreferencesTab: View {
                                 .background(Color.purple.opacity(0.2))
                                 .cornerRadius(4)
                         }
-                        Text("Analyze and dim individual windows/areas instead of full screen")
+                        Text("Analyze each window and apply individual dimming based on content brightness")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
-                .help("Requires Screen Recording permission")
+                .help("Requires Screen Recording permission. May have higher CPU usage.")
                 
                 if settings.intelligentDimmingEnabled {
-                    // Detection mode picker
-                    Picker("Detection Mode", selection: $settings.detectionMode) {
-                        Text("Per Window").tag(DetectionMode.perWindow)
-                        Text("Per Region").tag(DetectionMode.perRegion)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.leading, 20)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        if settings.detectionMode == .perWindow {
-                            Text("Dims entire windows based on their average brightness")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("Finds and dims bright areas within windows (e.g., white email content)")
+                    // ========================================================
+                    // Per-Region Dimming Section (2.2.1.4 - Nested)
+                    // ========================================================
+                    Toggle(isOn: Binding(
+                        get: { settings.detectionMode == .perRegion },
+                        set: { isPerRegion in
+                            settings.detectionMode = isPerRegion ? .perRegion : .perWindow
+                        }
+                    )) {
+                        VStack(alignment: .leading) {
+                            Text("Dim Bright Areas")
+                                .font(.subheadline)
+                            Text("Finds bright areas within windows (like white email backgrounds) and dims only those regions. Uses more resources.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
                     .padding(.leading, 20)
+                    .help("Per-region detection: more precise but higher CPU usage")
                     
+                    // Show current mode description
+                    VStack(alignment: .leading, spacing: 4) {
+                        if settings.detectionMode == .perWindow {
+                            HStack(spacing: 4) {
+                                Image(systemName: "macwindow")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                Text("Mode: Full Window Dimming")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                            }
+                            Text("Dims entire windows based on their average brightness")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        } else {
+                            HStack(spacing: 4) {
+                                Image(systemName: "square.split.2x2")
+                                    .font(.caption)
+                                    .foregroundColor(.purple)
+                                Text("Mode: Region-Specific Dimming")
+                                    .font(.caption)
+                                    .foregroundColor(.purple)
+                            }
+                            Text("Detects and dims only bright areas within each window")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.leading, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                    
+                    // Active/Inactive differentiation
                     Toggle("Different levels for active/inactive windows", isOn: $settings.differentiateActiveInactive)
                         .padding(.leading, 20)
                         .help("Apply lighter dimming to the window you're working in")
@@ -450,6 +483,10 @@ struct BrightnessPreferencesTab: View {
                 }
             } header: {
                 Label("Advanced Detection", systemImage: "wand.and.stars")
+            } footer: {
+                if settings.intelligentDimmingEnabled {
+                    Text("Per-window dimming analyzes each window separately. Enable 'Dim Bright Areas' for more precise region detection within windows.")
+                }
             }
             
             // ========================================================
