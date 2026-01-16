@@ -806,6 +806,9 @@ struct MenuBarView: View {
     /**
      Shows excluded apps count and button to manage them.
      Full management is in Preferences for space reasons.
+     
+     NOTE (2.2.1.12): Updated to use unified appExclusions which now has
+     per-feature checkboxes instead of separate exclusion lists.
      */
     private var excludedAppsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -814,12 +817,13 @@ struct MenuBarView: View {
                     .foregroundColor(.red)
                     .font(.caption)
                 
-                Text("Excluded Apps")
+                Text("App Exclusions")
                     .font(.caption)
                 
                 Spacer()
                 
-                let count = settings.excludedAppBundleIDs.count
+                // Count apps with ANY exclusion enabled
+                let count = settings.appExclusions.count
                 if count > 0 {
                     Text("\(count) app\(count == 1 ? "" : "s")")
                         .font(.caption2)
@@ -834,10 +838,10 @@ struct MenuBarView: View {
                 .foregroundColor(.blue)
             }
             
-            if !settings.excludedAppBundleIDs.isEmpty {
-                // Show first few excluded apps
-                let displayApps = Array(settings.excludedAppBundleIDs.prefix(2))
-                Text(displayApps.joined(separator: ", ") + (settings.excludedAppBundleIDs.count > 2 ? "..." : ""))
+            if !settings.appExclusions.isEmpty {
+                // Show first few excluded apps by name
+                let displayApps = Array(settings.appExclusions.prefix(2)).map { $0.appName }
+                Text(displayApps.joined(separator: ", ") + (settings.appExclusions.count > 2 ? "..." : ""))
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
