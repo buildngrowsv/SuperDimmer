@@ -1465,45 +1465,84 @@ final class SettingsManager: ObservableObject {
      Used for troubleshooting or fresh start.
      Does NOT reset license state.
      */
+    /**
+     Resets all settings to their default values.
+     
+     IMPLEMENTATION (2.2.1.7):
+     This provides users with a way to return to factory settings if they've
+     misconfigured the app or want a fresh start.
+     
+     IMPORTANT: This does NOT clear isFirstLaunch intentionally, so users
+     won't see the onboarding flow again after reset.
+     */
     func resetToDefaults() {
-        // General
-        isFirstLaunch = false // Don't show onboarding again
+        // ============================================================
+        // General Settings
+        // ============================================================
+        // Note: isFirstLaunch intentionally NOT reset (keeps false)
         launchAtLogin = false
         
-        // Dimming
-        isDimmingEnabled = false
+        // ============================================================
+        // Dimming Settings (2.2.1.2 - Super Dimming defaults)
+        // ============================================================
+        isDimmingEnabled = true  // Super Dimming ON by default (2.2.1.9)
         globalDimLevel = 0.25
         brightnessThreshold = 0.85
         activeDimLevel = 0.15
         inactiveDimLevel = 0.35
         differentiateActiveInactive = true
+        
+        // Super Dimming Auto Mode (2.2.1.2)
+        superDimmingAutoEnabled = true  // Auto mode ON by default
+        autoAdjustRange = 0.15  // ±15%
+        
+        // Intelligent Dimming (OFF by default until we implement 2.2.1.3/2.2.1.4)
         intelligentDimmingEnabled = false
-        detectionMode = .perWindow
+        detectionMode = .perRegion  // Per-region detection
         regionGridSize = 8
-        scanInterval = 1.0
-        excludedAppBundleIDs = []
+        minRegionSize = 80
+        brightnessAnalysisThrottle = 0.1
+        
+        // Performance
+        scanInterval = 2.0  // 2 seconds for brightness analysis
+        windowTrackingInterval = 0.5  // 0.5 seconds for position tracking
+        
+        // Debug
+        debugOverlayBorders = false
+        
+        // ============================================================
+        // Inactivity Features (2.2.1.5 - SuperFocus OFF by default)
+        // ============================================================
+        superFocusEnabled = false
+        
+        // Window Decay Dimming
         inactivityDecayEnabled = false
         decayRate = 0.01
         decayStartDelay = 30.0
         maxDecayDimLevel = 0.8
         
-        // Auto-Hide (ON by default)
+        // Auto-Hide Apps (ON by default when SuperFocus is enabled)
         autoHideEnabled = true
         autoHideDelay = 30.0
-        autoHideExcludedApps = []
         autoHideExcludeSystemApps = true
+        autoHideExcludedApps = []  // Legacy, will be migrated
         
-        // Auto-Minimize (OFF by default)
+        // Auto-Minimize Windows (OFF by default)
         autoMinimizeEnabled = false
         autoMinimizeDelay = 15.0
         autoMinimizeIdleResetTime = 5.0
         autoMinimizeWindowThreshold = 3
-        autoMinimizeExcludedApps = []
+        autoMinimizeExcludedApps = []  // Legacy, will be migrated
         
-        // Per-Feature Exclusions (clear all)
+        // ============================================================
+        // Exclusions (2.2.1.12 - Unified system)
+        // ============================================================
         appExclusions = []
+        excludedAppBundleIDs = []  // Legacy, kept for backwards compat
         
+        // ============================================================
         // Color Temperature
+        // ============================================================
         colorTemperatureEnabled = false
         colorTemperature = 6500.0
         colorTemperatureScheduleEnabled = false
@@ -1516,12 +1555,18 @@ final class SettingsManager: ObservableObject {
         transitionDuration = 60.0
         useLocationBasedSchedule = false
         
+        // ============================================================
         // Wallpaper
+        // ============================================================
         wallpaperAutoSwitchEnabled = false
         wallpaperDimEnabled = false
         wallpaperDimLevel = 0.3
         
-        print("✓ Settings reset to defaults")
+        print("✓ Settings reset to defaults (2.2.1.7)")
+        print("   Super Dimming: ON with Auto mode")
+        print("   Intelligent Dimming: OFF")
+        print("   SuperFocus: OFF")
+        print("   All exclusions cleared")
     }
 }
 

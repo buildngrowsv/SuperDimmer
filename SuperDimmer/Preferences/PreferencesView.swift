@@ -142,12 +142,16 @@ struct PreferencesView: View {
 // ====================================================================
 
 /**
- General settings: launch at login, global behaviors
+ General settings: launch at login, global behaviors, reset
+ 
+ IMPLEMENTATION (2.2.1.7): Includes Reset to Defaults with confirmation dialog
  */
 struct GeneralPreferencesTab: View {
     
     @EnvironmentObject var settings: SettingsManager
     @ObservedObject var permissionManager = PermissionManager.shared
+    
+    @State private var showResetConfirmation = false
     
     var body: some View {
         Form {
@@ -228,17 +232,41 @@ struct GeneralPreferencesTab: View {
             }
             
             // ========================================================
-            // Reset Section
+            // Reset Section (2.2.1.7)
             // ========================================================
-            Section("Reset") {
-                Button("Reset All Settings to Defaults") {
-                    settings.resetToDefaults()
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    Button(action: {
+                        showResetConfirmation = true
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.counterclockwise.circle.fill")
+                                .foregroundColor(.red)
+                            Text("Reset All Settings to Defaults")
+                                .foregroundColor(.red)
+                                .fontWeight(.medium)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Text("Resets all settings to their original values. This cannot be undone.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                .foregroundColor(.red)
+            } header: {
+                Label("Reset", systemImage: "exclamationmark.triangle")
             }
         }
         .formStyle(.grouped)
         .padding()
+        .alert("Reset All Settings?", isPresented: $showResetConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) {
+                settings.resetToDefaults()
+            }
+        } message: {
+            Text("This will reset all settings to their default values. Your exclusion lists, color temperature schedules, and all preferences will be lost. This action cannot be undone.")
+        }
     }
 }
 

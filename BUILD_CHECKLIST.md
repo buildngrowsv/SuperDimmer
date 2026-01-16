@@ -498,22 +498,33 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.7 Reset to Defaults
+#### 2.2.1.7 Reset to Defaults ✅ COMPLETED (Jan 16, 2026)
 > Users should be able to easily return to factory settings.
 
-- [ ] Add "Reset to Defaults" button in Preferences
-- [ ] Confirmation dialog before reset
-- [ ] Reset behavior:
-  - [ ] Clears all UserDefaults for app
-  - [ ] Reloads default DimmingProfile for current appearance mode
-  - [ ] Restores first-launch state
-- [ ] Clear explanation:
-  > "Resets all settings to their original values. This cannot be undone."
+- [x] Added "Reset All Settings to Defaults" button in General Preferences tab
+- [x] Confirmation dialog before reset using SwiftUI .alert()
+- [x] Reset behavior:
+  - [x] Resets all @Published settings to default values
+  - [x] Preserves isFirstLaunch to avoid showing onboarding again
+  - [x] Includes all new settings (superDimmingAutoEnabled, superFocusEnabled, etc.)
+- [x] Clear explanation and warning:
+  > "This will reset all settings to their default values. Your exclusion lists, color temperature schedules, and all preferences will be lost. This action cannot be undone."
+
+**Implementation Details:**
+- Updated SettingsManager.resetToDefaults() to include ALL current settings
+- Added proper defaults based on 2.2.1 redesign:
+  - Super Dimming: ON with Auto mode (2.2.1.2)
+  - Intelligent Dimming: OFF (until 2.2.1.3/2.2.1.4)
+  - SuperFocus: OFF (2.2.1.5)
+  - All exclusions cleared
+- Added @State var showResetConfirmation to GeneralPreferencesTab
+- Alert has Cancel and Reset (destructive) buttons
+- Button styled with red color and warning icon
 
 #### 🧪 TEST CHECK 2.2.1.7
-- [ ] Reset button shows confirmation
-- [ ] After reset, settings match first-launch defaults
-- [ ] App continues working normally after reset
+- [ ] Reset button shows confirmation - NEEDS USER TESTING
+- [ ] After reset, settings match first-launch defaults - NEEDS USER TESTING
+- [ ] App continues working normally after reset - NEEDS USER TESTING
 
 ---
 
