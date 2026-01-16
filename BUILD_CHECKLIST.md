@@ -663,22 +663,32 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.14 Dynamic Overlay Tracking (Performance)
+#### 2.2.1.14 Dynamic Overlay Tracking (Performance) ✅ COMPLETED (Jan 16, 2026)
 > Overlays should follow window movement/resize in real-time without
 > waiting for the 2-second analysis cycle.
 
-- [ ] Create `WindowChangeObserver` service using Accessibility API or CGWindowList polling
-- [ ] Track window position changes at high frequency (10-20 Hz)
-- [ ] When window moves/resizes:
-  - [ ] Update overlay frame immediately (no re-analysis)
-  - [ ] Keep same dim level until next analysis cycle
-- [ ] Lightweight operation: only frame updates, no screenshot
-- [ ] Fallback: If window tracking fails, rely on analysis cycle
+- [x] Track window bounds during brightness analysis (previousWindowBounds)
+- [x] Calculate position/size deltas in updateOverlayPositions()
+- [x] Apply deltas to region overlays when windows move/resize
+- [x] Apply updates to decay overlays (full-window tracking)
+- [x] Lightweight operation: only frame updates, no screenshot or analysis
+- [x] Runs at windowTrackingInterval (default 0.5s, configurable)
+- [x] Falls back to analysis cycle for initial overlay creation
+
+**Implementation Details:**
+- Added `previousWindowBounds: [CGWindowID: CGRect]` to OverlayManager
+- Added `windowBounds: CGRect` to RegionDimmingDecision struct
+- Enhanced `updateOverlayPositions()` to calculate and apply position/scale deltas
+- Tracks both translation (movement) and scaling (resize) independently
+- Updates region overlays by calculating delta from previous bounds
+- Updates decay overlays by matching current window bounds
+- Threshold: Only updates if movement > 1px or scale change > 1%
 
 #### 🧪 TEST CHECK 2.2.1.14
-- [ ] Overlays follow windows smoothly during drag
-- [ ] Overlays resize with windows
-- [ ] No visible lag during movement
+- [ ] Overlays follow windows smoothly during drag - NEEDS USER TESTING
+- [ ] Overlays resize with windows - NEEDS USER TESTING
+- [ ] No visible lag during movement - NEEDS USER TESTING
+- [ ] Performance: CPU impact minimal (frame updates only) - NEEDS USER TESTING
 - [ ] CPU usage acceptable during tracking
 
 ---

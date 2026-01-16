@@ -480,6 +480,12 @@ final class OverlayManager {
     /// Counter for generating unique region IDs
     private var regionCounter: Int = 0
     
+    /// Tracks previous window bounds for position delta calculation (2.2.1.14)
+    /// Maps CGWindowID → CGRect (last known window bounds).
+    /// Updated during brightness analysis, used by updateOverlayPositions() to
+    /// calculate how much a window has moved/resized since last analysis.
+    private var previousWindowBounds: [CGWindowID: CGRect] = [:]
+    
     /// Current count of active region overlays (for UI status display)
     /// IMPORTANT: This is the ACTUAL count, not a cached analysis result
     var currentRegionOverlayCount: Int {
@@ -555,6 +561,12 @@ final class OverlayManager {
                 decisionsByWindow[decision.windowID] = []
             }
             decisionsByWindow[decision.windowID]?.append(decision)
+        }
+        
+        // Step 2.5: Update window bounds tracking (2.2.1.14)
+        // Store current window bounds so updateOverlayPositions() can calculate position deltas
+        for decision in decisions {
+            previousWindowBounds[decision.windowID] = decision.windowBounds
         }
         
         // Tolerance for frame comparison (pixels)
@@ -816,6 +828,13 @@ final class OverlayManager {
                     print("🔄 applyDecayDimming END - decayOverlays.count=\(self.decayOverlays.count)")
                 }
                 
+                // Update window bounds tracking (2.2.1.14)
+                // Store current window bounds for decay overlays so updateOverlayPositions()
+                // can track window movement without expensive screenshot analysis
+                for decision in decisions {
+                    self.previousWindowBounds[decision.windowID] = decision.windowBounds
+                }
+                
                 for decision in decisions {
                     // DEBUG: Log each decision being processed
                     let isActive = decision.isActive
@@ -1062,6 +1081,22 @@ final class OverlayManager {
      - Parameter visibleWindowIDs: Set of currently visible window IDs
      - Parameter windows: Current window data from WindowTrackerService
      */
+    /**
+     Updates overlay positions when windows move or resize.
+     
+     IMPLEMENTATION (2.2.1.14): This provides smooth overlay tracking without waiting
+     for the slow (2-second) brightness analysis cycle. We track the window's position
+     change and apply the same delta to all region overlays for that window.
+     
+     PERFORMANCE: This is lightweight - only frame updates, no screenshots or analysis.
+     
+     IMPORTANT: We maintain the same dim level and region shapes until the next
+     brightness analysis cycle. This method only handles POSITION/SIZE tracking.
+     
+     - Parameters:
+       - visibleWindowIDs: Set of currently visible window IDs
+       - windows: Array of tracked windows with current bounds
+     */
     func updateOverlayPositions(visibleWindowIDs: Set<CGWindowID>, windows: [TrackedWindow]) {
         overlayLock.lock()
         defer { overlayLock.unlock() }
@@ -1069,25 +1104,111 @@ final class OverlayManager {
         // Build lookup dictionary for quick window access
         let windowLookup = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
         
-        // Update region overlay positions
+        var updatedCount = 0
+        
+        // ============================================================
+        // UPDATE REGION OVERLAY POSITIONS (2.2.1.14)
+        // ============================================================
+        // Region overlays are positioned relative to their target window.
+        // When a window moves, we need to move all of its region overlays by the same delta.
+        //
+        // We store the original window bounds at analysis time in previousWindowBounds.
+        // By comparing current window bounds to previous bounds, we can calculate
+        // the position delta and apply it to all region overlays.
+        //
+        // EXAMPLE:
+        // - Window was at (100, 200), now at (150, 250) → delta = (+50, +50)
+        // - Region overlay was at (110, 210), moves to (160, 260)
+        //
+        // This keeps overlays visually synchronized with their target windows
+        // without requiring expensive screenshot analysis.
+        // ============================================================
+        
         for (overlayID, overlay) in regionOverlays {
             guard let windowID = regionToWindowID[overlayID],
                   let window = windowLookup[windowID] else {
                 continue
             }
             
-            // Check if window has moved/resized
+            // Get the window bounds we used during the last analysis
+            guard let previousBounds = previousWindowBounds[windowID] else {
+                // No previous bounds stored - skip this update
+                // (Will be handled on next analysis cycle)
+                continue
+            }
+            
+            // Calculate position delta
+            let currentBounds = window.bounds
+            let deltaX = currentBounds.origin.x - previousBounds.origin.x
+            let deltaY = currentBounds.origin.y - previousBounds.origin.y
+            let scaleX = currentBounds.size.width / previousBounds.size.width
+            let scaleY = currentBounds.size.height / previousBounds.size.height
+            
+            // Only update if window actually moved or resized significantly (avoid jitter)
+            let positionChanged = abs(deltaX) > 1.0 || abs(deltaY) > 1.0
+            let sizeChanged = abs(scaleX - 1.0) > 0.01 || abs(scaleY - 1.0) > 0.01
+            
+            if positionChanged || sizeChanged {
+                var newFrame = overlay.frame
+                
+                if positionChanged {
+                    // Apply position delta
+                    newFrame.origin.x += deltaX
+                    newFrame.origin.y += deltaY
+                }
+                
+                if sizeChanged {
+                    // Scale overlay relative to window's top-left corner
+                    // (Overlays are positioned relative to their window)
+                    let relativeX = newFrame.origin.x - previousBounds.origin.x
+                    let relativeY = newFrame.origin.y - previousBounds.origin.y
+                    
+                    newFrame.origin.x = currentBounds.origin.x + (relativeX * scaleX)
+                    newFrame.origin.y = currentBounds.origin.y + (relativeY * scaleY)
+                    newFrame.size.width *= scaleX
+                    newFrame.size.height *= scaleY
+                }
+                
+                // Update overlay frame smoothly
+                DispatchQueue.main.async {
+                    overlay.setFrame(newFrame, display: false)
+                }
+                
+                updatedCount += 1
+            }
+        }
+        
+        // ============================================================
+        // UPDATE DECAY OVERLAY POSITIONS (2.2.1.14)
+        // ============================================================
+        // Decay overlays are full-window overlays, so they simply match
+        // their target window's bounds.
+        // ============================================================
+        
+        for (windowID, overlay) in decayOverlays {
+            guard let window = windowLookup[windowID] else {
+                continue
+            }
+            
             let currentFrame = overlay.frame
-            let windowBounds = window.bounds
+            let targetFrame = window.bounds
             
-            // Region overlays are positioned relative to their target window
-            // The overlay's frame was set during creation - here we just need to
-            // check if the WINDOW moved and offset accordingly
-            // NOTE: Full repositioning requires re-analysis (brightness might have changed)
-            // This is just a quick position sync for window movement
-            
-            // For now, just ensure z-order is correct
-            // Full position update happens during brightness analysis cycle
+            // Only update if bounds changed significantly
+            if abs(currentFrame.origin.x - targetFrame.origin.x) > 1.0 ||
+               abs(currentFrame.origin.y - targetFrame.origin.y) > 1.0 ||
+               abs(currentFrame.size.width - targetFrame.size.width) > 1.0 ||
+               abs(currentFrame.size.height - targetFrame.size.height) > 1.0 {
+                
+                DispatchQueue.main.async {
+                    overlay.setFrame(targetFrame, display: false)
+                }
+                
+                updatedCount += 1
+            }
+        }
+        
+        if updatedCount > 0 {
+            print("📍 Updated \(updatedCount) overlay positions (window movement tracking)")
         }
     }
     
@@ -1538,4 +1659,9 @@ struct RegionDimmingDecision {
     
     /// The dim level to apply (0.0-1.0)
     let dimLevel: CGFloat
+    
+    /// The full window bounds (for tracking window movement in 2.2.1.14)
+    /// This allows updateOverlayPositions() to calculate position deltas
+    /// without requiring expensive screenshot analysis
+    let windowBounds: CGRect
 }

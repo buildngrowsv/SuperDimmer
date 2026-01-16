@@ -772,7 +772,8 @@ final class DimmingCoordinator: ObservableObject {
                         isFrontmostWindow: window.isActive,
                         regionRect: regionRect,
                         brightness: region.brightness,
-                        dimLevel: dimLevel
+                        dimLevel: dimLevel,
+                        windowBounds: window.bounds
                     )
                     allRegionDecisions.append(decision)
                 }
@@ -827,7 +828,8 @@ final class DimmingCoordinator: ObservableObject {
                     isFrontmostWindow: window.isActive,
                     regionRect: regionRect,
                     brightness: region.brightness,
-                    dimLevel: dimLevel
+                    dimLevel: dimLevel,
+                    windowBounds: window.bounds
                 )
                 allRegionDecisions.append(decision)
             }
