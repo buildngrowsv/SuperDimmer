@@ -194,6 +194,9 @@ final class AutoHideManager: ObservableObject {
     /**
      Hides a specific app by bundle ID.
      
+     IMPORTANT (2.2.1.10): We remove all overlays for this app BEFORE hiding it
+     to prevent orphaned overlays that remain visible after the app is hidden.
+     
      - Parameter bundleID: The bundle identifier of the app to hide
      - Returns: true if successfully hidden
      */
@@ -214,6 +217,12 @@ final class AutoHideManager: ObservableObject {
         if app.isHidden {
             return false
         }
+        
+        // CRITICAL FIX (2.2.1.10): Remove all overlays for this app BEFORE hiding it
+        // This prevents orphaned overlays that remain visible after the app is hidden.
+        // The overlays will be recreated when the app is unhidden and becomes visible again.
+        let pid = app.processIdentifier
+        OverlayManager.shared.removeOverlaysForApp(pid: pid)
         
         // Hide the app
         let result = app.hide()

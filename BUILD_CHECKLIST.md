@@ -548,19 +548,21 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.10 Overlay Refresh on App Hide (BUG FIX)
+#### 2.2.1.10 Overlay Refresh on App Hide (BUG FIX) ✅ COMPLETED (Jan 16, 2026)
 > Apps hidden by SuperDimmer's auto-hide still show orphaned overlays.
 > Need to trigger overlay cleanup when hiding apps.
 
-- [ ] Call `OverlayManager.removeOverlaysForApp(pid:)` BEFORE hiding the app
-- [ ] Verify AutoHideManager triggers cleanup first, then hides
-- [ ] Test: Hidden app should have NO visible overlays
-- [ ] Also handle user-initiated hide (Cmd+H) - already implemented via notification
+- [x] Call `OverlayManager.removeOverlaysForApp(pid:)` BEFORE hiding the app
+- [x] Call `OverlayManager.removeOverlay(for:)` BEFORE minimizing window
+- [x] AutoHideManager.hideApp() now removes overlays first
+- [x] AutoMinimizeManager.minimizeWindow() now removes overlays first
+- [x] User-initiated hide (Cmd+H) - already handled via NSWorkspace notifications
 
 #### 🧪 TEST CHECK 2.2.1.10
-- [ ] Auto-hide removes overlays before hiding
-- [ ] No orphaned overlays after app is hidden
-- [ ] Overlays restored when app is unhidden
+- [ ] Auto-hide removes overlays before hiding - NEEDS USER TESTING
+- [ ] Auto-minimize removes overlays before minimizing - NEEDS USER TESTING
+- [ ] No orphaned overlays after app is hidden - NEEDS USER TESTING
+- [ ] Overlays restored when app is unhidden - NEEDS USER TESTING
 
 ---
 

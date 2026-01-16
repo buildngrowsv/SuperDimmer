@@ -400,11 +400,19 @@ final class AutoMinimizeManager: ObservableObject {
     /**
      Minimizes a specific window.
      
+     IMPORTANT (2.2.1.10): We remove all overlays for this window BEFORE minimizing it
+     to prevent orphaned overlays that remain visible after the window is minimized.
+     
      - Parameters:
        - windowID: The CGWindowID of the window to minimize
        - appName: The app name (for logging and tracking)
      */
     private func minimizeWindow(windowID: CGWindowID, appName: String) {
+        // CRITICAL FIX (2.2.1.10): Remove all overlays for this window BEFORE minimizing it
+        // This prevents orphaned overlays that remain visible after the window is minimized.
+        // The overlays will be recreated when the window is unminimized and becomes visible again.
+        OverlayManager.shared.removeOverlay(for: windowID)
+        
         // Unfortunately, there's no direct way to minimize a window by CGWindowID
         // We need to use Accessibility API or AppleScript
         // For now, we'll use AppleScript as it's more reliable
