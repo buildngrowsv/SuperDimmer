@@ -978,9 +978,25 @@ final class DimmingCoordinator: ObservableObject {
             return CGFloat(settings.globalDimLevel)
         }
         
-        // Auto mode: Capture and analyze screen brightness
-        // Use a small, fast capture for efficiency
-        guard let screenImage = ScreenCaptureService.shared.captureMainDisplay() else {
+        // PERFORMANCE FIX (Jan 16, 2026):
+        // Capturing 6400x3600 screenshot every 2 seconds = 78%+ CPU on 4 threads!
+        // Solution: Cache the brightness value and only recapture every 10 seconds.
+        // Screen brightness doesn't change that rapidly, so this is acceptable.
+        
+        let now = CFAbsoluteTimeGetCurrent()
+        let timeSinceLastCapture = now - lastBrightnessCapture
+        
+        // Use cached value if recent enough
+        if let cached = cachedScreenBrightness, timeSinceLastCapture < minBrightnessCaptureInterval {
+            // Cache hit - use existing brightness value (no capture needed!)
+            return calculateAutoDimLevel(screenBrightness: cached)
+        }
+        
+        // Cache miss or expired - need to capture and analyze
+        debugLog("📸 Auto mode: Capturing screen for brightness analysis (last capture: \(String(format: "%.1f", timeSinceLastCapture))s ago)")
+        
+        // Use downsampled capture for faster analysis (25% resolution = 1600x900 instead of 6400x3600)
+        guard let screenImage = ScreenCaptureService.shared.captureMainDisplayDownsampled() else {
             debugLog("⚠️ Auto mode: Could not capture screen, using static level")
             return CGFloat(settings.globalDimLevel)
         }
@@ -990,6 +1006,11 @@ final class DimmingCoordinator: ObservableObject {
             debugLog("⚠️ Auto mode: Could not analyze brightness, using static level")
             return CGFloat(settings.globalDimLevel)
         }
+        
+        // Update cache
+        cachedScreenBrightness = brightness
+        lastBrightnessCapture = now
+        debugLog("💡 Auto mode: Screen brightness = \(String(format: "%.2f", brightness)) (cached for \(minBrightnessCaptureInterval)s)")
         
         return calculateAutoDimLevel(screenBrightness: brightness)
     }
@@ -1003,6 +1024,22 @@ final class DimmingCoordinator: ObservableObject {
     
     /// Minimum interval between decay dimming updates (seconds)
     private let minDecayInterval: CFAbsoluteTime = 1.0
+    
+    // ================================================================
+    // MARK: - Auto Mode Brightness Caching (Performance Fix Jan 16, 2026)
+    // ================================================================
+    
+    /// Cached brightness value for Auto mode
+    /// PERFORMANCE FIX: Full screen capture (6400x3600) is expensive.
+    /// We cache the brightness value and only recapture every N seconds.
+    private var cachedScreenBrightness: Float?
+    
+    /// Timestamp of last brightness capture
+    private var lastBrightnessCapture: CFAbsoluteTime = 0
+    
+    /// Minimum interval between brightness captures for Auto mode (seconds)
+    /// 10 seconds is reasonable - screen brightness doesn't change that fast
+    private let minBrightnessCaptureInterval: CFAbsoluteTime = 10.0
     
     /**
      Generates and applies decay dimming for all inactive windows.
