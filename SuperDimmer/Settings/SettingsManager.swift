@@ -1500,8 +1500,6 @@ final class SettingsManager: ObservableObject {
         intelligentDimmingEnabled = false
         detectionMode = .perRegion  // Per-region detection
         regionGridSize = 8
-        minRegionSize = 80
-        brightnessAnalysisThrottle = 0.1
         
         // Performance
         scanInterval = 2.0  // 2 seconds for brightness analysis
