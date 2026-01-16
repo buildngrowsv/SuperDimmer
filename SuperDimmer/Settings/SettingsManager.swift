@@ -543,6 +543,42 @@ final class SettingsManager: ObservableObject {
         }
     }
     
+    /**
+     Whether the app is running in developer mode.
+     
+     IMPLEMENTATION (2.2.1.6):
+     Dev mode is true when:
+     1. Running a DEBUG build, OR
+     2. User has enabled devToolsUnlocked flag (via hidden gesture)
+     
+     When true, additional developer tools are visible in Preferences:
+     - Debug Borders toggle
+     - Analysis timing logs
+     - Force refresh buttons
+     - Overlay count displays
+     */
+    var isDevMode: Bool {
+        // Check if this is a DEBUG build
+        #if DEBUG
+        return true
+        #else
+        // Check if user has unlocked dev tools manually
+        return defaults.bool(forKey: "superdimmer.devToolsUnlocked")
+        #endif
+    }
+    
+    /**
+     Unlocks developer tools in release builds.
+     
+     This can be toggled via a hidden gesture (e.g., Option+Click version 5 times)
+     to enable dev tools without recompiling.
+     */
+    func toggleDevTools() {
+        let current = defaults.bool(forKey: "superdimmer.devToolsUnlocked")
+        defaults.set(!current, forKey: "superdimmer.devToolsUnlocked")
+        print(current ? "🔧 Dev tools LOCKED" : "🔧 Dev tools UNLOCKED")
+    }
+    
     // ================================================================
     // MARK: - Inactivity Decay Dimming
     // ================================================================

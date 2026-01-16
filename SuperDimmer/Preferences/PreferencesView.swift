@@ -60,11 +60,13 @@ struct PreferencesView: View {
     
     /// Available preference sections for sidebar navigation
     /// NOTE (2.2.1.12): Removed "Excluded Apps" tab - now unified in Window Management
+    /// NOTE (2.2.1.6): Added Developer tab - only visible in dev mode
     enum PreferenceSection: String, CaseIterable, Identifiable {
         case general = "General"
         case brightness = "Brightness"
         case windowManagement = "Window Management"
         case color = "Color"
+        case developer = "Developer"
         case about = "About"
         
         var id: String { rawValue }
@@ -75,8 +77,18 @@ struct PreferencesView: View {
             case .brightness: return "sun.max"
             case .windowManagement: return "macwindow.on.rectangle"
             case .color: return "thermometer.sun"
+            case .developer: return "hammer.fill"
             case .about: return "info.circle"
             }
+        }
+    }
+    
+    /// Returns sections to display based on dev mode status (2.2.1.6)
+    var visibleSections: [PreferenceSection] {
+        if settings.isDevMode {
+            return PreferenceSection.allCases
+        } else {
+            return PreferenceSection.allCases.filter { $0 != .developer }
         }
     }
     
@@ -87,9 +99,9 @@ struct PreferencesView: View {
     var body: some View {
         NavigationSplitView {
             // ========================================================
-            // Sidebar - Navigation List
+            // Sidebar - Navigation List (Filtered by dev mode - 2.2.1.6)
             // ========================================================
-            List(PreferenceSection.allCases, selection: $selectedSection) { section in
+            List(visibleSections, selection: $selectedSection) { section in
                 NavigationLink(value: section) {
                     Label(section.rawValue, systemImage: section.icon)
                 }
@@ -110,6 +122,8 @@ struct PreferencesView: View {
                     WindowManagementPreferencesTab()
                 case .color:
                     ColorPreferencesTab()
+                case .developer:
+                    DeveloperPreferencesTab()
                 case .about:
                     AboutPreferencesTab()
                 }
@@ -1015,6 +1029,160 @@ struct PresetButton: View {
 // AppExclusionsView which is accessible from Window Management tab.
 // The new unified exclusion system uses per-feature checkboxes instead
 // of separate exclusion lists.
+
+// ====================================================================
+// MARK: - Developer Preferences Tab (2.2.1.6)
+// ====================================================================
+
+/**
+ Developer tools and debug options.
+ 
+ VISIBILITY (2.2.1.6):
+ Only visible when:
+ - Running a DEBUG build, OR
+ - User has unlocked dev tools via hidden gesture
+ 
+ This keeps the main UI clean for end users while providing
+ developers with useful debugging tools.
+ */
+struct DeveloperPreferencesTab: View {
+    
+    @EnvironmentObject var settings: SettingsManager
+    @State private var overlayCount: String = "Loading..."
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // ========================================================
+                // Header
+                // ========================================================
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "hammer.fill")
+                            .font(.title)
+                            .foregroundColor(.orange)
+                        
+                        Text("Developer Tools")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                    }
+                    
+                    Text("Debug features and diagnostic tools for development")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.bottom, 8)
+                
+                Divider()
+                
+                // ========================================================
+                // Debug Borders
+                // ========================================================
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle(isOn: Binding(
+                            get: { settings.debugOverlayBorders },
+                            set: { newValue in
+                                settings.debugOverlayBorders = newValue
+                                // Update existing overlays immediately
+                                AppDelegate.shared?.dimmingCoordinator?.updateDebugBorders()
+                            }
+                        )) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Debug Borders")
+                                    .font(.headline)
+                                Text("Shows red borders on all dimming overlays for position debugging")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(8)
+                } label: {
+                    Label("Visual Debugging", systemImage: "eye.fill")
+                }
+                
+                // ========================================================
+                // System Information
+                // ========================================================
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        InfoRow(label: "Active Overlays", value: overlayCount)
+                        InfoRow(label: "Scan Interval", value: String(format: "%.1fs", settings.scanInterval))
+                        InfoRow(label: "Tracking Interval", value: String(format: "%.1fs", settings.windowTrackingInterval))
+                        InfoRow(label: "Build Configuration", value: settings.isDevMode ? "DEBUG" : "RELEASE")
+                        
+                        Button("Refresh Stats") {
+                            updateOverlayCount()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(8)
+                } label: {
+                    Label("System Information", systemImage: "info.circle.fill")
+                }
+                .onAppear {
+                    updateOverlayCount()
+                }
+                
+                // ========================================================
+                // Force Actions
+                // ========================================================
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button("Force Analysis Cycle") {
+                            print("🔄 Forcing analysis cycle...")
+                            // Trigger immediate analysis
+                            NotificationCenter.default.post(name: NSNotification.Name("ForceAnalysisCycle"), object: nil)
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("Clear Analysis Cache") {
+                            print("🗑️ Clearing analysis cache...")
+                            // Clear cache
+                            NotificationCenter.default.post(name: NSNotification.Name("ClearAnalysisCache"), object: nil)
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Text("Force actions trigger immediate operations without waiting for timers")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                } label: {
+                    Label("Force Actions", systemImage: "bolt.fill")
+                }
+                
+                Spacer()
+            }
+            .padding()
+        }
+    }
+    
+    private func updateOverlayCount() {
+        let count = OverlayManager.shared.totalOverlayCount
+        overlayCount = "\(count)"
+    }
+}
+
+/**
+ Helper view for displaying labeled information rows
+ */
+private struct InfoRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+    }
+}
 
 // ====================================================================
 // MARK: - About Preferences Tab

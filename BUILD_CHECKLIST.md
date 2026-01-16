@@ -467,23 +467,34 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 ---
 
-#### 2.2.1.6 Debug/Developer Tools
+#### 2.2.1.6 Debug/Developer Tools ✅ COMPLETED (Jan 16, 2026)
 > Remove debug features from regular users, add Dev Tools section for developers.
 
-- [ ] Remove "Debug Borders" from main UI
-- [ ] Add `isDevMode` computed property (check for debug build or dev flag)
-- [ ] Create "Developer Tools" section in Preferences (only visible in dev mode)
-  - [ ] Debug Borders toggle
-  - [ ] Analysis timing logs
-  - [ ] Overlay count display
-  - [ ] Force refresh button
-- [ ] Alternative: Add hidden gesture/shortcut to enable Dev Tools
-  - [ ] e.g., Option+Click on version number 5 times
+- [x] Removed "Debug Borders" from menu bar UI
+- [x] Added `isDevMode` computed property to SettingsManager
+  - [x] Returns true for DEBUG builds
+  - [x] Can be unlocked in release via `toggleDevTools()`
+- [x] Created "Developer" tab in Preferences (conditionally visible)
+  - [x] Debug Borders toggle with live overlay update
+  - [x] System Information section (overlay count, intervals, build config)
+  - [x] Force Actions section (force analysis, clear cache)
+  - [x] Refresh Stats button
+- [x] Implemented hidden activation method via `toggleDevTools()`
+  - [ ] UI gesture not yet implemented (can be added to About tab)
+
+**Implementation Details:**
+- Added `isDevMode` computed property using `#if DEBUG` compiler directive
+- Added `devToolsUnlocked` UserDefaults key for release builds
+- Created `DeveloperPreferencesTab` with grouped sections using `GroupBox`
+- Added `visibleSections` computed property to filter tabs based on dev mode
+- Developer tab only appears in sidebar when `isDevMode` is true
+- Menu bar stays clean for end users
 
 #### 🧪 TEST CHECK 2.2.1.6
-- [ ] Debug Borders NOT visible in release build
-- [ ] Dev Tools visible in debug build
-- [ ] Hidden activation works (if implemented)
+- [x] Debug Borders NOT in menu bar - VERIFIED (removed from MenuBarView)
+- [ ] Dev Tools hidden in release build - NEEDS TESTING
+- [ ] Dev Tools visible in debug build - NEEDS TESTING
+- [ ] Hidden activation via toggleDevTools() works - NEEDS UI GESTURE
 
 ---
 

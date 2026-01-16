@@ -608,46 +608,10 @@ struct MenuBarView: View {
     }
     
     // ================================================================
-    // MARK: - Debug Section
+    // MARK: - Debug Section (REMOVED - 2.2.1.6)
     // ================================================================
-    
-    /**
-     Debug controls section.
-     */
-    private var debugSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Debug Mode Toggle
-            
-            HStack {
-                Image(systemName: "ladybug")
-                    .foregroundColor(.orange)
-                    .font(.caption)
-                
-                Text("Debug Borders")
-                    .font(.caption)
-                
-                Spacer()
-                
-                Toggle("", isOn: Binding(
-                    get: { settings.debugOverlayBorders },
-                    set: { newValue in
-                        settings.debugOverlayBorders = newValue
-                        // Update existing overlays immediately
-                        AppDelegate.shared?.dimmingCoordinator?.updateDebugBorders()
-                    }
-                ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-            }
-            
-            if settings.debugOverlayBorders {
-                Text("Shows red borders on overlays for positioning debug")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
+    // Debug tools are now only available in Preferences → Advanced (Dev Mode)
+    // This keeps the menu bar clean for regular users.
     
     // ================================================================
     // MARK: - Temporary Disable Section
