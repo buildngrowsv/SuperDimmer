@@ -364,6 +364,8 @@ struct MenuBarView: View {
                     Divider()
                         .padding(.vertical, 2)
                     
+                    // NOTE: contentShape(Rectangle()) makes the entire row clickable,
+                    // not just the text content. This improves UX for menu bar apps.
                     Button(action: openPreferences) {
                         HStack {
                             Image(systemName: "slider.horizontal.3")
@@ -376,6 +378,10 @@ struct MenuBarView: View {
                                 .foregroundColor(.secondary)
                         }
                         .foregroundColor(.primary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -772,7 +778,7 @@ struct MenuBarView: View {
                     .background(Color.secondary.opacity(0.05))
                     .cornerRadius(8)
                 } else {
-                    // Collapsed state: Show simple pause button
+                    // Collapsed state: Show simple pause button with full clickable area
                     HStack {
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -785,6 +791,9 @@ struct MenuBarView: View {
                                 Text("Pause Dimming")
                                     .font(.caption)
                             }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 6)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         
@@ -830,12 +839,17 @@ struct MenuBarView: View {
                         .foregroundColor(.secondary)
                 }
                 
-                Button("Manage") {
+                Button(action: {
                     openPreferences()
+                }) {
+                    Text("Manage")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .font(.caption2)
-                .foregroundColor(.blue)
             }
             
             if !settings.appExclusions.isEmpty {
@@ -933,10 +947,11 @@ struct MenuBarView: View {
     
     /**
      Quick action buttons - preferences and quit.
+     NOTE: contentShape(Rectangle()) ensures full button area is clickable, not just text.
      */
     private var footerSection: some View {
         HStack(spacing: 16) {
-            // Preferences button
+            // Preferences button - full area clickable
             Button(action: {
                 openPreferences()
             }) {
@@ -945,13 +960,16 @@ struct MenuBarView: View {
                     Text("Preferences")
                 }
                 .font(.subheadline)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundColor(.primary)
             
             Spacer()
             
-            // Quit button
+            // Quit button - full area clickable
             Button(action: {
                 quitApp()
             }) {
@@ -960,6 +978,9 @@ struct MenuBarView: View {
                     Text("Quit")
                 }
                 .font(.subheadline)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundColor(.secondary)
