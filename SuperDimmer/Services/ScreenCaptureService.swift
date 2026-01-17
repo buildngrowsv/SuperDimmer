@@ -429,6 +429,33 @@ final class ScreenCaptureService {
     }
     
     /**
+     Captures a TINY version of the main display for brightness analysis only.
+     
+     - Returns: Very small CGImage (~100 pixels wide), or nil if capture failed
+     
+     PERFORMANCE OPTIMIZATION (Jan 16, 2026):
+     For Auto mode brightness analysis, we don't need detail - just general brightness.
+     This returns an image ~100x56 pixels regardless of display resolution.
+     
+     Example: 6400x3600 → 100x56 = 5,600 pixels instead of 23,040,000
+     That's 4,000x fewer pixels to analyze!
+     
+     NOTE: We still have to capture full resolution (CGWindowListCreateImage limitation),
+     but the brightness analysis on 100x56 is nearly instant.
+     */
+    func captureMainDisplayForBrightnessAnalysis() -> CGImage? {
+        guard let fullImage = captureMainDisplay() else {
+            return nil
+        }
+        
+        // Target: ~100 pixels wide, maintain aspect ratio
+        let targetWidth: CGFloat = 100.0
+        let factor = targetWidth / CGFloat(fullImage.width)
+        
+        return downsample(fullImage, factor: factor)
+    }
+    
+    /**
      Captures and downsamples a specific region.
      
      - Parameter rect: Region to capture

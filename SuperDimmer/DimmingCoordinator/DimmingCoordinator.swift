@@ -995,8 +995,9 @@ final class DimmingCoordinator: ObservableObject {
         // Cache miss or expired - need to capture and analyze
         debugLog("📸 Auto mode: Capturing screen for brightness analysis (last capture: \(String(format: "%.1f", timeSinceLastCapture))s ago)")
         
-        // Use downsampled capture for faster analysis (25% resolution = 1600x900 instead of 6400x3600)
-        guard let screenImage = ScreenCaptureService.shared.captureMainDisplayDownsampled() else {
+        // Use TINY capture for brightness analysis (~100x56 pixels instead of 6400x3600)
+        // We only need general brightness, not detail - this is 4000x fewer pixels!
+        guard let screenImage = ScreenCaptureService.shared.captureMainDisplayForBrightnessAnalysis() else {
             debugLog("⚠️ Auto mode: Could not capture screen, using static level")
             return CGFloat(settings.globalDimLevel)
         }
