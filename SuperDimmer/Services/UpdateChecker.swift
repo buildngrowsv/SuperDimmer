@@ -60,7 +60,7 @@ final class UpdateChecker {
     // MARK: - Configuration
     
     /// Base URL for update feeds
-    private let baseURL = "https://superdimmer.app"
+    private let baseURL = "https://superdimmer.com"
     
     /// Stable release version feed (default for most users)
     private var stableVersionURL: URL { URL(string: "\(baseURL)/version.json")! }
@@ -69,7 +69,7 @@ final class UpdateChecker {
     private var betaVersionURL: URL { URL(string: "\(baseURL)/version-beta.json")! }
     
     /// Changelog/update log URL that opens in browser
-    private let changelogURL = URL(string: "https://superdimmer.app/changelog.html")!
+    private let changelogURL = URL(string: "https://superdimmer.com/changelog.html")!
     
     /// How often to automatically check for updates (24 hours)
     /// This prevents excessive requests to our server and respects user bandwidth
@@ -106,13 +106,13 @@ final class UpdateChecker {
     
     /// Structure matching version.json format on our website
     /// This must exactly match the JSON structure we deploy to Cloudflare
-    /// Example JSON from https://superdimmer.app/version.json:
+    /// Example JSON from https://superdimmer.com/version.json:
     /// ```json
     /// {
     ///   "version": "1.0.1",
     ///   "build": 7,
-    ///   "downloadURL": "https://superdimmer.app/releases/SuperDimmer-v1.0.1.dmg",
-    ///   "releaseNotesURL": "https://superdimmer.app/release-notes/v1.0.1.html",
+    ///   "downloadURL": "https://superdimmer.com/releases/SuperDimmer-v1.0.1.dmg",
+    ///   "releaseNotesURL": "https://superdimmer.com/release-notes/v1.0.1.html",
     ///   "minSystemVersion": "13.0",
     ///   "releaseDate": "2026-01-19"
     /// }

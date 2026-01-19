@@ -386,7 +386,7 @@ final class SettingsManager: ObservableObject {
         case excludedAppBundleIDs = "superdimmer.excludedAppBundleIDs"
         
         // Per-Feature App Exclusions (2.2.1.12) - UNIFIED exclusion list
-        case appExclusions = "superdimmer.appExclusions"
+        case appExclusions = "superdimmer.comExclusions"
         case exclusionsMigrated = "superdimmer.exclusionsMigrated"
         
         // Auto-Hide Inactive Apps (APP-LEVEL)
@@ -424,7 +424,7 @@ final class SettingsManager: ObservableObject {
         case wallpaperDimLevel = "superdimmer.wallpaperDimLevel"
         
         // Appearance Mode System (2.2.1.1)
-        case appearanceMode = "superdimmer.appearanceMode"
+        case appearanceMode = "superdimmer.comearanceMode"
         case darkModeProfile = "superdimmer.darkModeProfile"
         case lightModeProfile = "superdimmer.lightModeProfile"
     }

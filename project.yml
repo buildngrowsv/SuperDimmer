@@ -35,7 +35,7 @@ options:
 settings:
   base:
     PRODUCT_NAME: SuperDimmer
-    PRODUCT_BUNDLE_IDENTIFIER: com.superdimmer.app
+    PRODUCT_BUNDLE_IDENTIFIER: com.superdimmer.com
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""  # Fill in your team ID
@@ -66,7 +66,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: SuperDimmer
-        PRODUCT_BUNDLE_IDENTIFIER: com.superdimmer.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.superdimmer.com
         INFOPLIST_FILE: SuperDimmer/Supporting Files/Info.plist
         CODE_SIGN_ENTITLEMENTS: SuperDimmer/Supporting Files/SuperDimmer.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -100,7 +100,7 @@ targets:
     settings:
       base:
         BUNDLE_LOADER: "$(TEST_HOST)"
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/SuperDimmer.app/Contents/MacOS/SuperDimmer"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/superdimmer.com/Contents/MacOS/SuperDimmer"
 
 # =====================================================================
 # Schemes

@@ -60,7 +60,7 @@
 		037D115986E52FD0778CDF1C /* OverlayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayManager.swift; sourceTree = "<group>"; };
 		03E06F14D1A62C96A81A599C /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		075047FB28A493C3CFAF7035 /* AppearanceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceManager.swift; sourceTree = "<group>"; };
-		15182B36183FA683F3EF6E20 /* SuperDimmer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SuperDimmer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		15182B36183FA683F3EF6E20 /* superdimmer.com */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = superdimmer.com; sourceTree = BUILT_PRODUCTS_DIR; };
 		1650EB9DF5649F71564D6C4D /* AppExclusionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExclusionsView.swift; sourceTree = "<group>"; };
 		1786CD87303B63162133E819 /* DimOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DimOverlayWindow.swift; sourceTree = "<group>"; };
 		1BB93951703F6D09744CAB95 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -246,7 +246,7 @@
 		AE2D4BE8B412A08EF9A7B5F7 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				15182B36183FA683F3EF6E20 /* SuperDimmer.app */,
+				15182B36183FA683F3EF6E20 /* superdimmer.com */,
 				F17205C30B76A224ED5805C1 /* SuperDimmerTests.xctest */,
 			);
 			name = Products;
@@ -318,7 +318,7 @@
 			);
 			name = SuperDimmer;
 			productName = SuperDimmer;
-			productReference = 15182B36183FA683F3EF6E20 /* SuperDimmer.app */;
+			productReference = 15182B36183FA683F3EF6E20 /* superdimmer.com */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -458,7 +458,7 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 			};
@@ -530,7 +530,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -550,7 +550,7 @@
 					"@loader_path/../Frameworks",
 				);
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SuperDimmer.app/Contents/MacOS/SuperDimmer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/superdimmer.com/Contents/MacOS/SuperDimmer";
 			};
 			name = Debug;
 		};
@@ -565,7 +565,7 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 			};
@@ -630,7 +630,7 @@
 				MARKETING_VERSION = 1.0.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -650,7 +650,7 @@
 					"@loader_path/../Frameworks",
 				);
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SuperDimmer.app/Contents/MacOS/SuperDimmer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/superdimmer.com/Contents/MacOS/SuperDimmer";
 			};
 			name = Release;
 		};

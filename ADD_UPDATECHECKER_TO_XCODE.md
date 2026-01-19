@@ -39,7 +39,7 @@
 **Console output:**
 ```
 🔍 UpdateChecker: Running automatic update check...
-   Fetching version.json from https://superdimmer.app/version.json
+   Fetching version.json from https://superdimmer.com/version.json
    HTTP 200
    📱 Current version: 1.0.1 (build 7)
    🌐 Remote version:  1.0.0 (build 1)

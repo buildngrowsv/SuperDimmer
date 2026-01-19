@@ -29,7 +29,7 @@ Each phase contains:
 ### 0.2 Create Xcode Project
 - [x] Create new macOS App project in Xcode
 - [x] Set Product Name: `SuperDimmer`
-- [x] Set Bundle Identifier: `com.superdimmer.app`
+- [x] Set Bundle Identifier: `com.superdimmer.com`
 - [x] Set Interface: SwiftUI
 - [x] Set Language: Swift
 - [x] Set minimum deployment target: macOS 13.0
@@ -1720,7 +1720,7 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
 
 **How It Works:**
 ```
-1. App launches → checks https://superdimmer.app/version.json
+1. App launches → checks https://superdimmer.com/version.json
 2. Compares with current version
 3. If newer → shows alert "Update Available"
 4. User clicks "Download" → opens download URL in browser
@@ -1733,8 +1733,8 @@ File: `SuperDimmer-Website/version.json`
 {
   "version": "1.0.0",
   "build": 1,
-  "downloadURL": "https://superdimmer.app/releases/SuperDimmer-v1.0.0.dmg",
-  "releaseNotesURL": "https://superdimmer.app/release-notes/v1.0.0.html",
+  "downloadURL": "https://superdimmer.com/releases/SuperDimmer-v1.0.0.dmg",
+  "releaseNotesURL": "https://superdimmer.com/release-notes/v1.0.0.html",
   "minSystemVersion": "13.0"
 }
 ```
@@ -1938,8 +1938,8 @@ cd /Users/ak/UserRoot/Github/SuperDimmer/SuperDimmer-Website/packaging
 **DMG Files:** `SuperDimmer-Website/releases/`
 
 #### 🧪 TEST CHECK 6.2
-- [ ] Visit https://superdimmer.app/version.json - JSON loads with correct version
-- [ ] Visit https://superdimmer.app/releases/ - DMG downloadable
+- [ ] Visit https://superdimmer.com/version.json - JSON loads with correct version
+- [ ] Visit https://superdimmer.com/releases/ - DMG downloadable
 - [ ] Install old version → "Check for Updates" → Alert shows new version
 - [ ] Click "Download" → Browser opens download URL
 

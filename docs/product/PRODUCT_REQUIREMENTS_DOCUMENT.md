@@ -809,7 +809,7 @@ final class ColorTemperatureEngine {
 <dict>
     <!-- Bundle Identity -->
     <key>CFBundleIdentifier</key>
-    <string>com.superdimmer.app</string>
+    <string>com.superdimmer.com</string>
     <key>CFBundleName</key>
     <string>SuperDimmer</string>
     <key>CFBundleDisplayName</key>

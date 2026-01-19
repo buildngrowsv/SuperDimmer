@@ -230,7 +230,7 @@ xcodebuild -scheme SuperDimmer \
            clean build
 
 # 3. Find the built app
-ls build/Build/Products/Release/SuperDimmer.app
+ls build/Build/Products/Release/superdimmer.com
 ```
 
 ### 2.2 Code Sign and Notarize
@@ -239,15 +239,15 @@ ls build/Build/Products/Release/SuperDimmer.app
 # Sign with Developer ID (required for distribution outside Mac App Store)
 codesign --force --deep --options runtime \
          --sign "Developer ID Application: Your Name (TEAM_ID)" \
-         build/Build/Products/Release/SuperDimmer.app
+         build/Build/Products/Release/superdimmer.com
 
 # Verify signing
 codesign --verify --deep --strict --verbose=2 \
-         build/Build/Products/Release/SuperDimmer.app
+         build/Build/Products/Release/superdimmer.com
 
 # Create ZIP for notarization
 ditto -c -k --keepParent \
-     build/Build/Products/Release/SuperDimmer.app \
+     build/Build/Products/Release/superdimmer.com \
      SuperDimmer-v1.1.0.zip
 
 # Submit for notarization
@@ -258,7 +258,7 @@ xcrun notarytool submit SuperDimmer-v1.1.0.zip \
                         --wait
 
 # Staple notarization ticket (for DMG)
-xcrun stapler staple SuperDimmer.app
+xcrun stapler staple superdimmer.com
 ```
 
 ### 2.3 Create DMG (Optional but Professional)
@@ -488,7 +488,7 @@ xcodebuild -scheme SuperDimmer -configuration Release -derivedDataPath build cle
 echo "✍️ Signing with Developer ID..."
 codesign --force --deep --options runtime \
          --sign "Developer ID Application: Your Name (TEAM_ID)" \
-         "$BUILD_DIR/SuperDimmer.app"
+         "$BUILD_DIR/superdimmer.com"
 
 echo "📋 Creating DMG..."
 ./packaging/create-dmg.sh
