@@ -1746,11 +1746,27 @@ Simple Swift class that:
 - Compares versions
 - Shows alert if update available
 - Opens download URL when user clicks "Download"
+- Supports beta channel (version-beta.json)
+- Changelog link functionality
 
-- [ ] Created `UpdateChecker.swift`
-- [ ] Added to Xcode project
-- [ ] Called on app launch (AppDelegate or SuperDimmerApp)
-- [ ] Added "Check for Updates..." menu item
+- [x] Created `UpdateChecker.swift` ✅
+- [ ] Added to Xcode project (MANUAL STEP REQUIRED - see below)
+- [x] Called on app launch (SuperDimmerApp.init()) ✅
+- [x] Added "Check for Updates" button in Preferences ✅
+- [x] Added "Check for Updates" button in menu bar popover ✅
+- [x] Added "View Update Log" button (opens changelog) ✅
+- [x] Added beta channel toggle in Preferences ✅
+
+**MANUAL STEP REQUIRED:**
+User must add UpdateChecker.swift to Xcode project:
+1. Open SuperDimmer.xcodeproj in Xcode
+2. Right-click on Services folder
+3. Select "Add Files to SuperDimmer..."
+4. Navigate to SuperDimmer/Services/UpdateChecker.swift
+5. UNCHECK "Copy items if needed"
+6. CHECK "SuperDimmer" target
+7. Click Add
+8. Build and test
 
 **5.7.3 Release Workflow (Each Release)**
 ```bash
@@ -1767,14 +1783,23 @@ The script handles: build → sign → DMG → notarize → update version.json
 ```bash
 xcodebuild -scheme SuperDimmer -configuration Debug build
 ```
-- [ ] Build succeeds
-- [ ] Sparkle framework linked (no import errors)
-- [ ] SUPublicEDKey in Info.plist
+- [ ] Build succeeds (BLOCKED: Need to add UpdateChecker.swift to Xcode project first)
+- [x] No third-party frameworks needed (simple JSON approach) ✅
+- [x] version.json and version-beta.json on website ✅
 
 #### 🧪 TEST CHECK 5.7
-- [ ] "Check for Updates" menu item works
-- [ ] Sparkle shows "up to date" or update dialog
-- [ ] Test full update: install old version → check → update installs
+After adding UpdateChecker.swift to Xcode project:
+- [ ] Build succeeds without errors
+- [ ] App launches and checks for updates automatically
+- [ ] Console shows: "🔍 UpdateChecker: Running automatic update check..."
+- [ ] "Check for Updates" button in Preferences works
+- [ ] "Check for Updates" button in menu bar popover works
+- [ ] "View Update Log" button opens changelog in browser
+- [ ] Beta toggle in Preferences works
+- [ ] Switching channels updates console output
+- [ ] Manual check shows "You're Up to Date" alert
+- [ ] Test with fake version.json (v2.0.0) shows "Update Available"
+- [ ] "Download" button opens browser to DMG
 
 ---
 
