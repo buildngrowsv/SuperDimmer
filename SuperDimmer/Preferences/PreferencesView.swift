@@ -201,6 +201,53 @@ struct GeneralPreferencesTab: View {
             }
             
             // ========================================================
+            // Updates Section
+            // ========================================================
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Receive beta updates", isOn: $settings.betaUpdatesEnabled)
+                        .help("Get early access to new features (may have bugs)")
+                    
+                    if settings.betaUpdatesEnabled {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                            Text("Beta versions may be unstable")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.leading, 20)
+                    }
+                    
+                    HStack {
+                        Button(action: {
+                            UpdateChecker.shared.checkForUpdatesManually()
+                        }) {
+                            Label("Check for Updates", systemImage: "arrow.down.circle")
+                        }
+                        
+                        Button(action: {
+                            UpdateChecker.shared.openChangelog()
+                        }) {
+                            Label("View Update Log", systemImage: "doc.text")
+                        }
+                    }
+                    
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Current channel: \(settings.betaUpdatesEnabled ? "Beta" : "Stable")")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } header: {
+                Label("Software Updates", systemImage: "arrow.triangle.2.circlepath")
+            }
+            
+            // ========================================================
             // Permissions Section
             // ========================================================
             Section("Permissions") {

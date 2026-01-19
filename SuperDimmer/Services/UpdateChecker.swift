@@ -59,10 +59,17 @@ final class UpdateChecker {
     
     // MARK: - Configuration
     
-    /// URL to version.json on our Cloudflare-hosted website
-    /// This file is automatically updated by our release script when we push to GitHub
-    /// Format: { "version": "1.0.1", "build": 7, "downloadURL": "...", ... }
-    private let versionURL = URL(string: "https://superdimmer.app/version.json")!
+    /// Base URL for update feeds
+    private let baseURL = "https://superdimmer.app"
+    
+    /// Stable release version feed (default for most users)
+    private var stableVersionURL: URL { URL(string: "\(baseURL)/version.json")! }
+    
+    /// Beta release version feed (for users who opt into beta)
+    private var betaVersionURL: URL { URL(string: "\(baseURL)/version-beta.json")! }
+    
+    /// Changelog/update log URL that opens in browser
+    private let changelogURL = URL(string: "https://superdimmer.app/changelog.html")!
     
     /// How often to automatically check for updates (24 hours)
     /// This prevents excessive requests to our server and respects user bandwidth
@@ -72,6 +79,28 @@ final class UpdateChecker {
     /// UserDefaults key for storing last check date
     /// We track this to implement the check interval
     private let lastCheckKey = "lastUpdateCheckDate"
+    
+    /// UserDefaults key for beta channel opt-in
+    /// When true, checks version-beta.json instead of version.json
+    private let betaChannelKey = "updateChannelBeta"
+    
+    // MARK: - Beta Channel
+    
+    /// Whether user has opted into beta updates
+    /// When true, UpdateChecker fetches version-beta.json which may have newer/unstable releases
+    /// When false (default), UpdateChecker fetches version.json with stable releases only
+    var isBetaChannelEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: betaChannelKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: betaChannelKey)
+            print("   🔄 Update channel changed to: \(newValue ? "BETA" : "STABLE")")
+        }
+    }
+    
+    /// The current version feed URL based on beta channel setting
+    private var currentVersionURL: URL {
+        isBetaChannelEnabled ? betaVersionURL : stableVersionURL
+    }
     
     // MARK: - Types
     
@@ -144,8 +173,17 @@ final class UpdateChecker {
     /// Shows result even if up to date (so user gets feedback)
     /// Called from "Check for Updates..." menu item
     func checkForUpdatesManually() {
-        print("🔍 UpdateChecker: Running manual update check (user-initiated)...")
+        let channel = isBetaChannelEnabled ? "BETA" : "STABLE"
+        print("🔍 UpdateChecker: Running manual update check (user-initiated, channel: \(channel))...")
         checkForUpdates(showUpToDateAlert: true)
+    }
+    
+    /// Opens the changelog page in the default browser
+    /// Shows full update history for both stable and beta releases
+    /// Called from "View Update Log" menu item or button
+    func openChangelog() {
+        print("📜 UpdateChecker: Opening changelog in browser...")
+        NSWorkspace.shared.open(changelogURL)
     }
     
     // MARK: - Private Methods
@@ -177,11 +215,13 @@ final class UpdateChecker {
     /// - Parameter showUpToDateAlert: If true, show alert even when app is up to date
     ///                                 (used for manual checks so user gets feedback)
     private func checkForUpdates(showUpToDateAlert: Bool) {
-        print("   Fetching version.json from \(versionURL.absoluteString)")
+        let feedURL = currentVersionURL
+        let channel = isBetaChannelEnabled ? "beta" : "stable"
+        print("   Fetching \(feedURL.lastPathComponent) from \(feedURL.absoluteString) [channel: \(channel)]")
         
         // Create URL request with cache-busting to always get fresh data
         // Without this, URLSession might return cached version.json
-        var request = URLRequest(url: versionURL)
+        var request = URLRequest(url: feedURL)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 10  // Fail fast if server unreachable
         
@@ -267,9 +307,10 @@ final class UpdateChecker {
     /// This runs on main thread (must be called via DispatchQueue.main)
     private func showUpdateAlert(version: VersionInfo, currentVersion: String) {
         let alert = NSAlert()
-        alert.messageText = "Update Available"
+        let channel = isBetaChannelEnabled ? " (Beta Channel)" : ""
+        alert.messageText = "Update Available\(channel)"
         alert.informativeText = """
-        SuperDimmer \(version.version) is now available.
+        SuperDimmer \(version.version) is now available\(channel.isEmpty ? "" : " in the beta channel").
         You're currently using version \(currentVersion).
         
         Would you like to download the update?

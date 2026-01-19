@@ -910,45 +910,83 @@ struct MenuBarView: View {
     // ================================================================
     
     /**
-     Quick action buttons - preferences and quit.
+     Quick action buttons - preferences, updates, and quit.
      NOTE: contentShape(Rectangle()) ensures full button area is clickable, not just text.
      */
     private var footerSection: some View {
-        HStack(spacing: 16) {
-            // Preferences button - full area clickable
-            Button(action: {
-                openPreferences()
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "gear")
-                    Text("Preferences")
+        VStack(spacing: 8) {
+            // Top row: Main actions
+            HStack(spacing: 16) {
+                // Preferences button - full area clickable
+                Button(action: {
+                    openPreferences()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "gear")
+                        Text("Preferences")
+                    }
+                    .font(.subheadline)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .contentShape(Rectangle())
                 }
-                .font(.subheadline)
-                .padding(.vertical, 4)
-                .padding(.horizontal, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(.primary)
-            
-            Spacer()
-            
-            // Quit button - full area clickable
-            Button(action: {
-                quitApp()
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "power")
-                    Text("Quit")
+                .buttonStyle(.plain)
+                .foregroundColor(.primary)
+                
+                Spacer()
+                
+                // Quit button - full area clickable
+                Button(action: {
+                    quitApp()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "power")
+                        Text("Quit")
+                    }
+                    .font(.subheadline)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .contentShape(Rectangle())
                 }
-                .font(.subheadline)
-                .padding(.vertical, 4)
-                .padding(.horizontal, 8)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+                .keyboardShortcut("q", modifiers: .command)
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
-            .keyboardShortcut("q", modifiers: .command)
+            
+            // Bottom row: Update actions
+            HStack(spacing: 12) {
+                Button(action: {
+                    checkForUpdates()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle")
+                        Text("Check for Updates")
+                    }
+                    .font(.caption)
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+                
+                Button(action: {
+                    openChangelog()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                        Text("Update Log")
+                    }
+                    .font(.caption)
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+                
+                Spacer()
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -1060,6 +1098,22 @@ struct MenuBarView: View {
      */
     private func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+    
+    /**
+     Checks for app updates manually.
+     Shows result even if up to date (so user gets feedback).
+     */
+    private func checkForUpdates() {
+        UpdateChecker.shared.checkForUpdatesManually()
+    }
+    
+    /**
+     Opens the changelog/update log in the browser.
+     Shows full release history for both stable and beta versions.
+     */
+    private func openChangelog() {
+        UpdateChecker.shared.openChangelog()
     }
 }
 

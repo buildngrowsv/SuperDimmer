@@ -353,6 +353,7 @@ final class SettingsManager: ObservableObject {
         // General
         case isFirstLaunch = "superdimmer.isFirstLaunch"
         case launchAtLogin = "superdimmer.launchAtLogin"
+        case betaUpdatesEnabled = "superdimmer.betaUpdatesEnabled"
         
         // Dimming
         case isDimmingEnabled = "superdimmer.isDimmingEnabled"
@@ -464,6 +465,31 @@ final class SettingsManager: ObservableObject {
         didSet {
             defaults.set(launchAtLogin, forKey: Keys.launchAtLogin.rawValue)
             // TODO: Actually update login item via LaunchAtLoginManager
+        }
+    }
+    
+    /**
+     Whether to receive beta updates instead of stable releases.
+     
+     BETA CHANNEL:
+     - When true: UpdateChecker fetches version-beta.json (may have pre-release versions)
+     - When false (default): UpdateChecker fetches version.json (stable releases only)
+     
+     BEHAVIOR:
+     Beta versions are typically:
+     - Released more frequently
+     - May have new features not yet in stable
+     - May have bugs or incomplete features
+     - Good for power users who want early access
+     
+     Default: false (stable channel)
+     */
+    @Published var betaUpdatesEnabled: Bool {
+        didSet {
+            defaults.set(betaUpdatesEnabled, forKey: Keys.betaUpdatesEnabled.rawValue)
+            // Sync with UpdateChecker's setting
+            UpdateChecker.shared.isBetaChannelEnabled = betaUpdatesEnabled
+            print("📍 Update channel: \(betaUpdatesEnabled ? "BETA" : "STABLE")")
         }
     }
     
@@ -1469,6 +1495,8 @@ final class SettingsManager: ObservableObject {
             true : defaults.bool(forKey: Keys.isFirstLaunch.rawValue)
         
         self.launchAtLogin = defaults.bool(forKey: Keys.launchAtLogin.rawValue)
+        
+        self.betaUpdatesEnabled = defaults.bool(forKey: Keys.betaUpdatesEnabled.rawValue)
         
         // ============================================================
         // Load Dimming Settings
