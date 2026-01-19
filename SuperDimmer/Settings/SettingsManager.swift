@@ -1684,9 +1684,28 @@ final class SettingsManager: ObservableObject {
         // ============================================================
         // Initialize AppearanceManager (2.2.1.1)
         // ============================================================
-        // Set up appearance monitoring AFTER all settings are loaded
-        // This will immediately detect current appearance and load the appropriate profile
+        // IMPORTANT: The settings we just loaded from UserDefaults are the user's SAVED state.
+        // We must preserve them! The appearance system should only kick in when appearance CHANGES,
+        // not on every startup.
+        //
+        // FIXED (Jan 16, 2026): Don't overwrite user's settings on startup.
+        // Instead:
+        // 1. Settings are loaded from UserDefaults (user's last state)
+        // 2. Initialize AppearanceManager (but don't start it yet)
+        // 3. Save current settings to the appropriate profile
+        // 4. Start monitoring for appearance changes
+        // 5. Only when appearance CHANGES do we load a different profile
+        
+        // Initialize AppearanceManager first (but don't start monitoring yet)
         self.appearanceManager = AppearanceManager()
+        
+        // Save current loaded settings to the active profile
+        // This ensures the profile system has the user's current preferences
+        saveCurrentSettingsToActiveProfile()
+        let activeAppearance = getCurrentActiveAppearance()
+        print("💾 Saved current settings to \(activeAppearance.displayName) profile (preserving user state)")
+        
+        // Now set up appearance monitoring for FUTURE changes only
         self.appearanceManager?.onAppearanceChanged = { [weak self] newAppearance in
             print("🌓 System appearance changed to: \(newAppearance.displayName)")
             self?.loadProfileForCurrentAppearance()
@@ -1695,6 +1714,7 @@ final class SettingsManager: ObservableObject {
         
         print("✓ SettingsManager loaded from UserDefaults")
         print("🎨 Appearance Mode: \(appearanceMode.displayName)")
+        print("🎨 Active Appearance: \(activeAppearance.displayName)")
     }
     
     // ================================================================
