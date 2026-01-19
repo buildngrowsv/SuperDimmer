@@ -96,6 +96,30 @@ struct SuperDimmerApp: App {
     @StateObject private var settingsManager = SettingsManager.shared
     
     // ================================================================
+    // MARK: - Initialization
+    // ================================================================
+    
+    /**
+     Initialize the app and start automatic update checking.
+     
+     WHY IN INIT:
+     - We want to check for updates as soon as the app launches
+     - UpdateChecker respects 24-hour interval so won't spam checks
+     - Silent check - only shows alert if update available
+     
+     BETA CHANNEL:
+     - Users can toggle beta updates in Preferences → General
+     - Beta users get early access to new features (may have bugs)
+     - Stable users (default) get tested, production-ready releases only
+     */
+    init() {
+        // Check for updates automatically on launch
+        // This is silent unless an update is available
+        // Respects 24-hour check interval to avoid excessive requests
+        UpdateChecker.shared.checkForUpdatesAutomatically()
+    }
+    
+    // ================================================================
     // MARK: - App Body
     // ================================================================
     
