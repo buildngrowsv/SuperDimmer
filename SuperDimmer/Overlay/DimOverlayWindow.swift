@@ -222,6 +222,12 @@ final class DimOverlayWindow: NSWindow {
         let clampedLevel = max(0.0, min(1.0, initialDimLevel))
         view.layer?.backgroundColor = NSColor.black.withAlphaComponent(clampedLevel).cgColor
         
+        // FEATURE 2.8.2b: Apply corner radius for rounded edges
+        // This provides a softer, more polished look than hard rectangular edges.
+        // Uses GPU-accelerated layer.cornerRadius for performance.
+        // The radius is configurable in settings (default 8pt, can be 0 for sharp edges).
+        applyCornerRadius()
+        
         // DEBUG MODE: Add visible borders when enabled
         // This helps diagnose positioning issues - shows exactly where overlays are
         updateDebugBorders()
@@ -285,6 +291,34 @@ final class DimOverlayWindow: NSWindow {
             layer.borderWidth = 0.0
             layer.borderColor = nil
         }
+    }
+    
+    /**
+     Applies corner radius to the overlay for rounded edges.
+     
+     FEATURE 2.8.2b: Rounded Corners for Overlays
+     
+     This provides a softer, more polished look compared to hard rectangular edges.
+     The corner radius is configurable in settings (default 8pt).
+     
+     IMPLEMENTATION:
+     - Uses CALayer.cornerRadius (GPU-accelerated, no performance impact)
+     - Works perfectly with debug borders
+     - No visual artifacts during animations or window resize
+     - Setting radius to 0 gives sharp corners for users who prefer that
+     
+     Call this when:
+     - Creating a new overlay (in setupDimView)
+     - Corner radius setting changes (via notification observer)
+     */
+    func applyCornerRadius() {
+        guard let layer = dimView?.layer else { return }
+        
+        let radius = CGFloat(SettingsManager.shared.overlayCornerRadius)
+        layer.cornerRadius = radius
+        layer.masksToBounds = true  // Required to clip content to rounded corners
+        
+        print("🔘 Applied corner radius: \(radius)pt to \(overlayID)")
     }
     
     // ================================================================

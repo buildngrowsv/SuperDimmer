@@ -1053,6 +1053,32 @@ final class OverlayManager {
     }
     
     /**
+     Updates corner radius on all existing overlays.
+     
+     FEATURE 2.8.2b: Rounded Corners for Overlays
+     
+     Call this when the overlayCornerRadius setting changes to update
+     all visible overlays without recreating them.
+     */
+    func updateAllCornerRadius() {
+        for (_, overlay) in windowOverlays {
+            overlay.applyCornerRadius()
+        }
+        for (_, overlay) in displayOverlays {
+            overlay.applyCornerRadius()
+        }
+        for (_, overlay) in regionOverlays {
+            overlay.applyCornerRadius()
+        }
+        for (_, overlay) in decayOverlays {
+            overlay.applyCornerRadius()
+        }
+        let total = windowOverlays.count + displayOverlays.count + regionOverlays.count + decayOverlays.count
+        let radius = SettingsManager.shared.overlayCornerRadius
+        print("🔘 Updated corner radius (\(radius)pt) on all \(total) overlays")
+    }
+    
+    /**
      Shows all previously hidden overlays.
      */
     func showAllOverlays() {
@@ -1537,6 +1563,26 @@ final class OverlayManager {
                 self?.updateAllOverlayLevels(newLevel)
             }
             .store(in: &cancellables)
+        
+        // Observe corner radius changes (2.8.2b)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCornerRadiusChanged),
+            name: .overlayCornerRadiusChanged,
+            object: nil
+        )
+    }
+    
+    /**
+     Handles corner radius setting changes.
+     
+     FEATURE 2.8.2b: Rounded Corners for Overlays
+     
+     When the user changes the corner radius setting, this updates all
+     existing overlays immediately without recreating them.
+     */
+    @objc private func handleCornerRadiusChanged(_ notification: Notification) {
+        updateAllCornerRadius()
     }
     
     // ================================================================

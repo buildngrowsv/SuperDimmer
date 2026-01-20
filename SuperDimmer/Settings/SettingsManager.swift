@@ -376,6 +376,9 @@ final class SettingsManager: ObservableObject {
         // Debug mode (shows colored borders on overlays)
         case debugOverlayBorders = "superdimmer.debugOverlayBorders"
         
+        // Overlay Corner Radius (2.8.2b - Rounded Corners)
+        case overlayCornerRadius = "superdimmer.overlayCornerRadius"
+        
         // Inactivity Decay Dimming
         case inactivityDecayEnabled = "superdimmer.inactivityDecayEnabled"
         case decayRate = "superdimmer.decayRate"
@@ -752,6 +755,38 @@ final class SettingsManager: ObservableObject {
     @Published var debugOverlayBorders: Bool {
         didSet {
             defaults.set(debugOverlayBorders, forKey: Keys.debugOverlayBorders.rawValue)
+        }
+    }
+    
+    /**
+     Corner radius for overlay windows (in points).
+     
+     FEATURE: 2.8.2b - Rounded Corners for Overlays
+     
+     Provides a softer, more polished look than hard rectangular edges.
+     Uses CALayer.cornerRadius which is GPU-accelerated and performant.
+     
+     Range: 0.0 (sharp corners) to 20.0 (very rounded)
+     Default: 8.0 points
+     
+     WHY THIS APPROACH:
+     - Simple and reliable (just layer.cornerRadius)
+     - GPU-accelerated (no performance impact)
+     - Works perfectly with debug borders
+     - No visual artifacts during animations
+     - Cleaner than mask-based feathered edges
+     
+     Setting to 0 gives sharp edges for users who prefer that look.
+     */
+    @Published var overlayCornerRadius: Double {
+        didSet {
+            defaults.set(overlayCornerRadius, forKey: Keys.overlayCornerRadius.rawValue)
+            // Notify overlay manager to update all existing overlays
+            NotificationCenter.default.post(
+                name: .overlayCornerRadiusChanged,
+                object: nil,
+                userInfo: ["radius": overlayCornerRadius]
+            )
         }
     }
     
@@ -1565,6 +1600,10 @@ final class SettingsManager: ObservableObject {
         // Debug mode - shows red borders on overlays for positioning verification
         self.debugOverlayBorders = defaults.bool(forKey: Keys.debugOverlayBorders.rawValue)
         
+        // Overlay corner radius (2.8.2b - Rounded Corners)
+        self.overlayCornerRadius = defaults.object(forKey: Keys.overlayCornerRadius.rawValue) != nil ?
+            defaults.double(forKey: Keys.overlayCornerRadius.rawValue) : 8.0  // 8pt default
+        
         // ============================================================
         // Load Inactivity Decay Settings
         // ============================================================
@@ -2181,6 +2220,9 @@ extension Notification.Name {
     
     /// Posted when colorTemperature value changes
     static let colorTemperatureChanged = Notification.Name("superdimmer.colorTemperatureChanged")
+    
+    /// Posted when overlayCornerRadius changes (2.8.2b)
+    static let overlayCornerRadiusChanged = Notification.Name("superdimmer.overlayCornerRadiusChanged")
 }
 
 // NOTE: DetectionMode enum moved to top of file (before DimmingProfile) for Codable synthesis
