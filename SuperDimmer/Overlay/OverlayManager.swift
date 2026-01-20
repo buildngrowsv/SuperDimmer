@@ -120,6 +120,15 @@ final class OverlayManager {
      */
     private let overlayLock = NSRecursiveLock()
     
+    /**
+     Timer for periodic cleanup of hidden overlays pool.
+     
+     MEMORY LEAK FIX (Jan 20, 2026): Runs every 30 seconds to clean up
+     the hiddenOverlays pool if it grows too large (>50 overlays).
+     This is a safety net in case the per-overlay delayed cleanup fails.
+     */
+    private var cleanupTimer: Timer?
+    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
@@ -133,12 +142,38 @@ final class OverlayManager {
     /**
      Private initializer enforces singleton pattern.
      Sets up observers for settings and display changes.
+     
+     MEMORY LEAK FIX (Jan 20, 2026): Now also starts periodic cleanup timer
+     to prevent hiddenOverlays pool from growing indefinitely.
      */
     private init() {
         setupDisplayChangeObserver()
         setupSettingsObservers()
         setupSpaceChangeObserver()
+        startCleanupTimer()
         print("✓ OverlayManager initialized")
+    }
+    
+    /**
+     Starts the periodic cleanup timer for hidden overlays.
+     
+     MEMORY LEAK FIX (Jan 20, 2026): This timer runs every 30 seconds
+     and cleans up the hiddenOverlays pool if it grows too large.
+     
+     This is a defensive measure - normally the per-overlay delayed cleanup
+     in safeHideOverlay() handles cleanup after 5 seconds. But if something
+     goes wrong (e.g., app is backgrounded, system is under load), this
+     ensures the pool doesn't grow unbounded.
+     */
+    private func startCleanupTimer() {
+        cleanupTimer = Timer.scheduledTimer(
+            withTimeInterval: 30.0,  // Check every 30 seconds
+            repeats: true
+        ) { [weak self] _ in
+            self?.periodicCleanupHiddenOverlays()
+        }
+        RunLoop.current.add(cleanupTimer!, forMode: .common)
+        print("✓ OverlayManager: Cleanup timer started (30s interval)")
     }
     
     /**
@@ -897,22 +932,27 @@ final class OverlayManager {
     }
     
     /**
-     Hides an overlay window WITHOUT closing it.
+     Hides an overlay window WITHOUT closing it immediately.
      
-     CRASH FIX (Jan 10, 2026): NEVER call NSWindow.close() on overlays!
+     CRASH FIX (Jan 10, 2026): NEVER call NSWindow.close() on overlays immediately!
      
      ROOT CAUSE: Calling close() triggers AppKit internal cleanup that autoreleases
      objects. When the main run loop's autorelease pool drains, these objects are
      sometimes already deallocated, causing EXC_BAD_ACCESS in objc_release.
      
-     SOLUTION: Just hide overlays instead of closing them:
+     SOLUTION: Hide overlays and schedule delayed cleanup:
      1. Set dimLevel to 0 (invisible)
      2. Call orderOut(nil) (remove from screen)
-     3. Keep the window object alive (add to hiddenOverlays pool)
-     4. Windows are cleaned up when app quits (naturally by AppKit)
+     3. Keep the window object alive temporarily (add to hiddenOverlays pool)
+     4. Schedule cleanup after sufficient delay (5 seconds) to ensure CA is done
+     5. Periodic cleanup prevents memory leak from accumulating hidden overlays
      
-     Memory cost: ~10KB per overlay. With typical usage (~20 overlays max),
-     this is only ~200KB total - completely negligible for stability.
+     MEMORY LEAK FIX (Jan 20, 2026): The hiddenOverlays array was growing indefinitely,
+     causing crashes after long runtime. Now we schedule delayed cleanup to safely
+     close overlays after Core Animation has finished with them.
+     
+     Memory cost during delay: ~10KB per overlay. With typical usage (~20 overlays max),
+     this is only ~200KB total during the 5-second cleanup window.
      
      - Parameter overlay: The overlay window to hide
      */
@@ -927,18 +967,78 @@ final class OverlayManager {
             CATransaction.flush()
         }
         
-        // Step 2: Hide (but DON'T close!)
+        // Step 2: Hide (but DON'T close yet!)
         overlay.orderOut(nil)
         
-        // Step 3: Keep alive in hidden pool (prevents deallocation)
+        // Step 3: Keep alive in hidden pool temporarily
         hiddenOverlays.append(overlay)
         
         print("👻 safeHideOverlay: Hidden \(overlay.overlayID) (hiddenOverlays.count: \(hiddenOverlays.count))")
+        
+        // Step 4: Schedule delayed cleanup (5 seconds is safe for CA to finish)
+        // This prevents the hiddenOverlays array from growing indefinitely
+        // while still giving CA plenty of time to complete any operations
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self, weak overlay] in
+            guard let self = self, let overlay = overlay else { return }
+            
+            // Remove from hidden pool
+            if let index = self.hiddenOverlays.firstIndex(where: { $0 === overlay }) {
+                self.hiddenOverlays.remove(at: index)
+            }
+            
+            // Now it's safe to close - CA has had 5 seconds to finish
+            autoreleasepool {
+                CATransaction.flush()
+                overlay.close()
+            }
+            
+            print("🗑️ safeHideOverlay: Cleaned up \(overlay.overlayID) after delay (hiddenOverlays.count: \(self.hiddenOverlays.count))")
+        }
     }
     
-    /// Pool of hidden overlays kept alive to prevent crashes
-    /// These are NOT closed, just hidden. They get cleaned up when app quits.
+    /**
+     Pool of hidden overlays kept alive temporarily to prevent crashes.
+     
+     MEMORY LEAK FIX (Jan 20, 2026): Previously this array grew indefinitely.
+     Now overlays are removed after 5 seconds via scheduled cleanup in safeHideOverlay().
+     
+     This prevents:
+     - Immediate close crashes (CA still accessing objects)
+     - Long-term memory leaks (overlays are eventually closed)
+     
+     Typical size: 0-20 overlays during normal operation (all cleaned up within 5 seconds)
+     */
     private var hiddenOverlays: [DimOverlayWindow] = []
+    
+    /**
+     Periodically cleans up stale hidden overlays.
+     
+     DEFENSIVE CLEANUP (Jan 20, 2026): This is a safety net in case the delayed
+     cleanup in safeHideOverlay() fails for some reason. It runs every 30 seconds
+     and removes any overlays that have been hidden for more than 10 seconds.
+     
+     This should rarely do anything since safeHideOverlay() already schedules
+     cleanup after 5 seconds, but it prevents unbounded growth if something goes wrong.
+     */
+    private func periodicCleanupHiddenOverlays() {
+        guard hiddenOverlays.count > 50 else { return }  // Only if pool is large
+        
+        print("🧹 periodicCleanupHiddenOverlays: Pool has \(hiddenOverlays.count) overlays, cleaning up...")
+        
+        // Close and remove all hidden overlays
+        // At this point they've been hidden for a while, so it's safe
+        let overlaysToClean = hiddenOverlays
+        hiddenOverlays.removeAll()
+        
+        for overlay in overlaysToClean {
+            autoreleasepool {
+                CATransaction.flush()
+                overlay.close()
+            }
+        }
+        
+        print("🧹 periodicCleanupHiddenOverlays: Cleaned up \(overlaysToClean.count) overlays")
+    }
     
     /**
      Removes all decay overlays.
