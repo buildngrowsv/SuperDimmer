@@ -807,3 +807,104 @@ Started in `init()` with 30-second interval.
 3. **Delayed cleanup is safe**: 5 seconds is plenty of time for Core Animation to finish
 4. **Defense in depth**: Primary cleanup + safety net timer provides robustness
 5. **Weak references are critical**: Prevents keeping objects alive in async blocks
+
+---
+
+## [Jan 20, 2026 - REVISED] The Real Fix: NEVER Call close() At All
+
+### Problem with Previous Fix
+
+The delayed cleanup approach (close after 5 seconds) made things WORSE:
+- Crash happened even sooner than before
+- The delay didn't help because the issue isn't timing
+- Calling close() at ANY point triggers AppKit autoreleases that can crash
+
+### The Real Root Cause
+
+**NSWindow.close() is fundamentally unsafe for overlay windows**
+
+When you call `NSWindow.close()`:
+1. AppKit triggers internal cleanup
+2. Many internal objects are autoreleased
+3. Core Animation may still have references to layers
+4. When autorelease pool drains, objects are freed
+5. CA tries to access freed objects → `EXC_BAD_ACCESS`
+
+**No amount of delay fixes this** because the problem is the close() call itself, not the timing.
+
+### The REAL Solution
+
+**NEVER call close() - let ARC deallocate overlays naturally**
+
+```swift
+private func safeHideOverlay(_ overlay: DimOverlayWindow) {
+    // 1. Stop all animations
+    autoreleasepool {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        overlay.contentView?.layer?.removeAllAnimations()
+        overlay.setDimLevel(0.0, animated: false)
+        CATransaction.commit()
+        CATransaction.flush()
+    }
+    
+    // 2. Hide the window
+    overlay.orderOut(nil)
+    
+    // 3. That's it! No close(), no pool, no cleanup timer.
+    // Caller removes overlay from dictionaries.
+    // Swift ARC deallocates it naturally and safely.
+}
+```
+
+**In deinit (DimOverlayWindow):**
+```swift
+deinit {
+    // Clean up without calling close()
+    if let layer = dimView?.layer {
+        layer.removeAllAnimations()
+    }
+    dimView = nil
+    // Let AppKit handle window cleanup naturally
+}
+```
+
+### Why This Works
+
+1. **No close() = no AppKit autorelease issues**: We never trigger the problematic cleanup path
+2. **ARC handles deallocation safely**: Swift's ARC deallocates objects in the correct order
+3. **No memory leak**: Once removed from dictionaries, overlays are deallocated immediately
+4. **No pool needed**: No hidden overlays array, no cleanup timer, no complexity
+5. **Simple and robust**: Fewer moving parts = fewer failure modes
+
+### Changes Made
+
+**OverlayManager.swift:**
+- Removed `hiddenOverlays` array (not needed)
+- Removed `cleanupTimer` property (not needed)
+- Removed `startCleanupTimer()` method (not needed)
+- Removed `periodicCleanupHiddenOverlays()` method (not needed)
+- Simplified `safeHideOverlay()` to just hide, no cleanup
+- Updated comments explaining why we never call close()
+
+**DimOverlayWindow.swift:**
+- Updated `deinit` to clean up without calling close()
+- Updated `close()` override comments (kept for safety but shouldn't be called)
+
+### Testing This Fix
+
+1. **Run the app** - it should build and run normally
+2. **Watch console** - you should see "deallocated by ARC" messages instead of close() calls
+3. **Monitor memory** - should stay stable, no accumulation
+4. **Test stability** - no more EXC_BAD_ACCESS crashes
+
+### Key Insight
+
+**The solution to "calling close() crashes" is not "call close() later" - it's "never call close()"**
+
+AppKit will clean up the window when it's deallocated. We just need to:
+- Remove animations (so CA isn't accessing it)
+- Hide it (orderOut)
+- Remove all references (let ARC deallocate)
+
+This is how macOS apps should handle overlay windows that are frequently created/destroyed.

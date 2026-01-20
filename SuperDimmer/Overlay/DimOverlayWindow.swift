@@ -470,9 +470,13 @@ final class DimOverlayWindow: NSWindow {
     /**
      Safe close that prevents double-close crashes.
      
-     FIX (Jan 8, 2026): Added to prevent EXC_BAD_ACCESS crash.
-     NSWindow.close() is not idempotent - calling it twice can crash.
-     This override:
+     FIX (Jan 20, 2026): We should NEVER call close() on overlays anymore.
+     This override is kept for safety but should rarely be called.
+     
+     The new strategy is to let ARC deallocate overlays naturally without
+     calling close(), which avoids all the AppKit autorelease issues.
+     
+     If close() is called (e.g., from removeAllOverlays on app quit):
      1. Checks if already closing (prevents double-close)
      2. Flushes Core Animation transactions before closing
      3. Clears layer references to help avoid use-after-free
@@ -500,10 +504,14 @@ final class DimOverlayWindow: NSWindow {
     }
     
     deinit {
-        // Only log deinit if we weren't in the middle of closing
-        // (reduces log noise from normal cleanup)
-        if !isClosing {
-            print("📦 DimOverlayWindow destroyed (unexpected): \(overlayID)")
+        // Clean up without calling close()
+        // Just remove animations and clear references
+        // Let AppKit handle the window cleanup naturally
+        if let layer = dimView?.layer {
+            layer.removeAllAnimations()
         }
+        dimView = nil
+        
+        print("📦 DimOverlayWindow deallocated by ARC: \(overlayID)")
     }
 }
