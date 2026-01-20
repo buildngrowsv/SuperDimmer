@@ -194,23 +194,25 @@ final class PermissionManager: NSObject, ObservableObject {
     /**
      Checks if Screen Recording permission is granted.
      
-     IMPLEMENTATION:
-     On macOS 10.15+, CGPreflightScreenCaptureAccess() tells us if we
-     have permission. On older macOS, we try a capture and see if it works.
+     IMPLEMENTATION FIX (Jan 19, 2026):
+     CGPreflightScreenCaptureAccess() is UNRELIABLE - it can return false
+     even after the user grants permission in System Settings. This is a
+     known macOS bug/quirk documented in ScreenCaptureService.
+     
+     SOLUTION:
+     Use ScreenCaptureService.shared.hasPermission which does an actual
+     capture test (1x1 pixel) to verify permission. This is the most
+     reliable method.
      
      WHY THIS APPROACH:
-     There's no direct API to check Screen Recording permission status.
-     CGPreflightScreenCaptureAccess() is the closest thing - it returns
-     true if permission is granted or if no permission is needed.
+     ScreenCaptureService already implements the reliable permission check
+     with caching (checks every 5 seconds). We should use that instead of
+     duplicating the logic here.
      */
     func checkScreenRecordingPermission() -> Bool {
-        // CGPreflightScreenCaptureAccess available macOS 10.15+
-        if #available(macOS 10.15, *) {
-            return CGPreflightScreenCaptureAccess()
-        } else {
-            // Older macOS - try a capture to see if it works
-            return testScreenCapture()
-        }
+        // Use ScreenCaptureService's reliable permission check
+        // It does an actual capture test if CGPreflightScreenCaptureAccess() returns false
+        return ScreenCaptureService.shared.hasPermission
     }
     
     /**
