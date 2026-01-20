@@ -458,7 +458,7 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 			};
@@ -530,7 +530,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -565,7 +565,7 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 			};
@@ -630,7 +630,7 @@
 				MARKETING_VERSION = 1.0.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.com;
+				PRODUCT_BUNDLE_IDENTIFIER = com.superdimmer.app;
 				PRODUCT_NAME = SuperDimmer;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;

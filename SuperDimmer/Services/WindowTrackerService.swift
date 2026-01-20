@@ -87,7 +87,7 @@ final class WindowTrackerService {
         "com.apple.notificationcenterui",
         "com.apple.Spotlight",
         "com.apple.SystemUIServer",
-        "com.superdimmer.com",  // Our own app!
+        "com.superdimmer.app",  // Our own app!
     ]
     
     /**
