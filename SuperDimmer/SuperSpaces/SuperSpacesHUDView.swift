@@ -77,6 +77,9 @@ struct SuperSpacesHUDView: View {
     @FocusState private var isNameFieldFocused: Bool
     @FocusState private var isEmojiFieldFocused: Bool
     
+    /// Maximum button width for equal-width buttons (PHASE 2.1)
+    @State private var maxButtonWidth: CGFloat = 100
+    
     /// Show quick settings popover
     @State private var showQuickSettings = false
     
@@ -124,6 +127,9 @@ struct SuperSpacesHUDView: View {
         .onAppear {
             // Load display mode from settings
             displayMode = displayModeFromString(settings.superSpacesDisplayMode)
+            
+            // Calculate initial button width (PHASE 2.1)
+            updateButtonWidth()
         }
         .onChange(of: settings.superSpacesDisplayMode) { newValue in
             // Sync when settings change
@@ -132,6 +138,18 @@ struct SuperSpacesHUDView: View {
         .onChange(of: displayMode) { newValue in
             // Save to settings when mode changes
             settings.superSpacesDisplayMode = displayModeToString(newValue)
+        }
+        .onChange(of: settings.spaceNames) { _ in
+            // Recalculate button width when names change (PHASE 2.1)
+            updateButtonWidth()
+        }
+        .onChange(of: settings.spaceEmojis) { _ in
+            // Recalculate button width when emojis change (PHASE 2.1)
+            updateButtonWidth()
+        }
+        .onChange(of: viewModel.allSpaces) { _ in
+            // Recalculate button width when Spaces change (PHASE 2.1)
+            updateButtonWidth()
         }
         // Emoji picker popover
         .popover(
@@ -241,6 +259,7 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Creates a compact Space button with number, emoji, and name
+    /// PHASE 2.1: Uses fixed width for all buttons (equal-width sizing)
     private func compactSpaceButton(for space: SpaceDetector.SpaceInfo) -> some View {
         Button(action: {
             handleSpaceClick(space.index)
@@ -271,7 +290,7 @@ struct SuperSpacesHUDView: View {
                         .frame(width: 4, height: 4)
                 }
             }
-            .padding(.horizontal, 10)
+            .frame(width: maxButtonWidth)  // PHASE 2.1: Fixed width for all buttons
             .padding(.vertical, 8)
             .background(
                 space.index == viewModel.currentSpaceNumber ?
@@ -812,6 +831,57 @@ struct SuperSpacesHUDView: View {
         if viewModel.currentSpaceNumber < viewModel.allSpaces.count {
             viewModel.switchToSpace(viewModel.currentSpaceNumber + 1)
         }
+    }
+    
+    // MARK: - Button Sizing (Phase 2.1)
+    
+    /// Calculates maximum button width based on longest Space name
+    /// Ensures all buttons have equal width for clean, aligned appearance
+    private func calculateMaxButtonWidth() -> CGFloat {
+        var maxWidth: CGFloat = 100  // Minimum width
+        
+        // Iterate through all Spaces and measure their content
+        for space in viewModel.allSpaces {
+            let spaceNumber = space.index
+            
+            // Get name (custom or default)
+            guard let name = getSpaceName(spaceNumber) else { continue }
+            
+            // Calculate width components:
+            // - Number: ~20pt
+            // - Emoji: ~20pt (if present)
+            // - Name text: measured
+            // - Note indicator: ~10pt (if present)
+            // - Spacing: 6pt between each element
+            // - Horizontal padding: removed (using frame width directly)
+            
+            let numberWidth: CGFloat = 20
+            let emojiWidth: CGFloat = getSpaceEmoji(spaceNumber) != nil ? 20 : 0
+            let noteWidth: CGFloat = hasNote(spaceNumber) ? 10 : 0
+            let spacing: CGFloat = 6
+            
+            // Measure text width using NSString
+            let font = NSFont.systemFont(ofSize: 12)
+            let attributes: [NSAttributedString.Key: Any] = [.font: font]
+            let textSize = (name as NSString).size(withAttributes: attributes)
+            let textWidth = ceil(textSize.width)
+            
+            // Calculate total width for this Space
+            let totalWidth = numberWidth + emojiWidth + textWidth + noteWidth + (spacing * 3) + 20  // +20 for padding
+            
+            // Update max if this is wider
+            if totalWidth > maxWidth {
+                maxWidth = totalWidth
+            }
+        }
+        
+        // Cap at reasonable maximum
+        return min(maxWidth, 200)
+    }
+    
+    /// Updates button width when Space names or emojis change
+    private func updateButtonWidth() {
+        maxButtonWidth = calculateMaxButtonWidth()
     }
 }
 

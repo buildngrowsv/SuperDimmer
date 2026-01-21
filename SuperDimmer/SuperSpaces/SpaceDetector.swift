@@ -63,7 +63,7 @@ final class SpaceDetector {
     // MARK: - Types
     
     /// Information about a detected Space
-    struct SpaceInfo {
+    struct SpaceInfo: Equatable {
         /// Space index/number (1-based, per display)
         let index: Int
         
