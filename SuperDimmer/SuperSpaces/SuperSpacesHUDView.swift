@@ -36,12 +36,37 @@ struct SuperSpacesHUDView: View {
     /// Currently hovered Space (for hover effects)
     @State private var hoveredSpace: Int?
     
+    /// Settings manager for accessing Space customizations
+    @EnvironmentObject var settings: SettingsManager
+    
     /// Display modes for the HUD
     enum DisplayMode {
         case mini       // Minimal: Just arrows and current number
         case compact    // Compact: Numbered buttons in a row
         case expanded   // Expanded: Grid with Space names
     }
+    
+    /// HUD modes for different interactions
+    enum HUDMode {
+        case space  // Click to switch Spaces (default)
+        case note   // Click to edit notes, double-click to switch
+    }
+    
+    /// Current HUD mode
+    @State private var hudMode: HUDMode = .space
+    
+    /// Space being edited (for note mode)
+    @State private var editingNoteForSpace: Int?
+    
+    /// Note text being edited
+    @State private var noteText: String = ""
+    
+    /// Show quick settings popover
+    @State private var showQuickSettings = false
+    
+    /// Show emoji picker popover
+    @State private var showEmojiPicker = false
+    @State private var emojiPickerForSpace: Int?
     
     // MARK: - Body
     
@@ -76,17 +101,76 @@ struct SuperSpacesHUDView: View {
         )
         .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: displayMode)
+        // Note editor popover
+        .popover(
+            isPresented: Binding(
+                get: { editingNoteForSpace != nil },
+                set: { if !$0 { editingNoteForSpace = nil } }
+            ),
+            arrowEdge: .bottom
+        ) {
+            if let spaceNumber = editingNoteForSpace {
+                SuperSpacesNoteEditor(
+                    spaceNumber: spaceNumber,
+                    spaceName: getSpaceName(spaceNumber),
+                    spaceEmoji: getSpaceEmoji(spaceNumber),
+                    noteText: $noteText,
+                    onSwitchToSpace: {
+                        viewModel.switchToSpace(spaceNumber)
+                        editingNoteForSpace = nil
+                    },
+                    onNoteSaved: { text in
+                        settings.spaceNotes[spaceNumber] = text.isEmpty ? nil : text
+                    }
+                )
+            }
+        }
+        // Emoji picker popover
+        .popover(
+            isPresented: $showEmojiPicker,
+            arrowEdge: .bottom
+        ) {
+            if let spaceNumber = emojiPickerForSpace {
+                SuperSpacesEmojiPicker(
+                    spaceNumber: spaceNumber,
+                    selectedEmoji: Binding(
+                        get: { getSpaceEmoji(spaceNumber) },
+                        set: { newEmoji in
+                            if let emoji = newEmoji {
+                                settings.spaceEmojis[spaceNumber] = emoji
+                            } else {
+                                settings.spaceEmojis.removeValue(forKey: spaceNumber)
+                            }
+                        }
+                    ),
+                    onEmojiSelected: { emoji in
+                        if let emoji = emoji {
+                            settings.spaceEmojis[spaceNumber] = emoji
+                        } else {
+                            settings.spaceEmojis.removeValue(forKey: spaceNumber)
+                        }
+                        showEmojiPicker = false
+                    }
+                )
+            }
+        }
     }
     
     // MARK: - Header
     
     private var headerView: some View {
         HStack {
-            // Current Space indicator
+            // Current Space indicator with emoji
             HStack(spacing: 8) {
-                Image(systemName: "square.grid.3x3")
-                    .font(.system(size: 16))
-                    .foregroundColor(.secondary)
+                // Emoji if set
+                if let emoji = getSpaceEmoji(viewModel.currentSpaceNumber) {
+                    Text(emoji)
+                        .font(.system(size: 16))
+                } else {
+                    Image(systemName: "square.grid.3x3")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
+                }
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Space \(viewModel.currentSpaceNumber)")
@@ -101,6 +185,15 @@ struct SuperSpacesHUDView: View {
             }
             
             Spacer()
+            
+            // Mode toggle (Space/Note)
+            Picker("", selection: $hudMode) {
+                Label("Space", systemImage: "square.grid.3x3").tag(HUDMode.space)
+                Label("Note", systemImage: "note.text").tag(HUDMode.note)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 140)
+            .help("Switch between Space mode and Note mode")
             
             // Display mode toggle button
             Button(action: cycleDisplayMode) {
@@ -166,23 +259,60 @@ struct SuperSpacesHUDView: View {
     private var compactSpacesView: some View {
         HStack(spacing: 8) {
             ForEach(viewModel.allSpaces, id: \.index) { space in
-                Button(action: { viewModel.switchToSpace(space.index) }) {
-                    Text("\(space.index)")
-                        .font(.system(size: 14, weight: space.index == viewModel.currentSpaceNumber ? .bold : .regular))
-                        .frame(width: 32, height: 32)
-                        .background(
-                            space.index == viewModel.currentSpaceNumber ?
-                                Color.accentColor : Color.secondary.opacity(0.2)
-                        )
-                        .foregroundColor(
-                            space.index == viewModel.currentSpaceNumber ? .white : .primary
-                        )
-                        .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-                .help("Switch to Space \(space.index)")
+                spaceButton(for: space, compact: true)
             }
         }
+    }
+    
+    /// Creates a Space button (handles both modes and interactions)
+    private func spaceButton(for space: SpaceDetector.SpaceInfo, compact: Bool) -> some View {
+        Button(action: {
+            handleSpaceClick(space.index)
+        }) {
+            if compact {
+                // Compact mode: Number with optional emoji overlay
+                ZStack(alignment: .topTrailing) {
+                    // Main button content
+                    VStack(spacing: 2) {
+                        if let emoji = getSpaceEmoji(space.index) {
+                            Text(emoji)
+                                .font(.system(size: 14))
+                        } else {
+                            Text("\(space.index)")
+                                .font(.system(size: 14, weight: space.index == viewModel.currentSpaceNumber ? .bold : .regular))
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .background(
+                        space.index == viewModel.currentSpaceNumber ?
+                            Color.accentColor : Color.secondary.opacity(0.2)
+                    )
+                    .foregroundColor(
+                        space.index == viewModel.currentSpaceNumber ? .white : .primary
+                    )
+                    .cornerRadius(8)
+                    
+                    // Note indicator
+                    if hasNote(space.index) {
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 6, height: 6)
+                            .offset(x: 2, y: -2)
+                    }
+                }
+            } else {
+                // Expanded mode handled separately
+                EmptyView()
+            }
+        }
+        .buttonStyle(.plain)
+        .help(getSpaceTooltip(space.index))
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                // Double-click always switches to Space
+                viewModel.switchToSpace(space.index)
+            }
+        )
     }
     
     /// Expanded display mode: Grid with Space names
@@ -196,17 +326,32 @@ struct SuperSpacesHUDView: View {
             spacing: 12
         ) {
             ForEach(viewModel.allSpaces, id: \.index) { space in
-                Button(action: { viewModel.switchToSpace(space.index) }) {
+                Button(action: {
+                    handleSpaceClick(space.index)
+                }) {
                     VStack(spacing: 6) {
-                        // Space number with current indicator
+                        // Emoji and Space number with current indicator
                         HStack(spacing: 4) {
                             if space.index == viewModel.currentSpaceNumber {
                                 Circle()
                                     .fill(Color.accentColor)
                                     .frame(width: 6, height: 6)
                             }
-                            Text("\(space.index)")
-                                .font(.system(size: 20, weight: .bold))
+                            
+                            if let emoji = getSpaceEmoji(space.index) {
+                                Text(emoji)
+                                    .font(.system(size: 20))
+                            } else {
+                                Text("\(space.index)")
+                                    .font(.system(size: 20, weight: .bold))
+                            }
+                            
+                            // Note indicator
+                            if hasNote(space.index) {
+                                Image(systemName: "note.text")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.orange)
+                            }
                         }
                         
                         // Space name
@@ -238,9 +383,27 @@ struct SuperSpacesHUDView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .help("Switch to Space \(space.index)")
+                .help(getSpaceTooltip(space.index))
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        // Double-click always switches to Space
+                        viewModel.switchToSpace(space.index)
+                    }
+                )
                 .onHover { hovering in
                     hoveredSpace = hovering ? space.index : nil
+                }
+                .contextMenu {
+                    // Right-click menu for customization
+                    Button("Edit Name & Emoji...") {
+                        showEmojiPickerForSpace(space.index)
+                    }
+                    
+                    if hudMode == .note {
+                        Button("Edit Note...") {
+                            editNote(for: space.index)
+                        }
+                    }
                 }
             }
         }
@@ -257,11 +420,23 @@ struct SuperSpacesHUDView: View {
             
             Spacer()
             
-            Button(action: { /* TODO: Open preferences */ }) {
-                Text("Settings")
-                    .font(.system(size: 10))
+            Button(action: {
+                showQuickSettings.toggle()
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "gear")
+                    Text("Settings")
+                }
+                .font(.system(size: 10))
             }
             .buttonStyle(.plain)
+            .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
+                SuperSpacesQuickSettings(viewModel: viewModel) { position in
+                    // Handle position change
+                    viewModel.onPositionChange?(position)
+                }
+                .environmentObject(settings)
+            }
         }
     }
     
@@ -302,16 +477,52 @@ struct SuperSpacesHUDView: View {
     
     /// Gets custom name for a Space
     private func getSpaceName(_ spaceNumber: Int) -> String? {
-        // TODO: Get custom Space names from SettingsManager
-        let defaultNames: [Int: String] = [
-            1: "Email",
-            2: "Browse",
-            3: "Development",
-            4: "Design",
-            5: "Music",
-            6: "Chat"
-        ]
-        return defaultNames[spaceNumber]
+        return settings.spaceNames[spaceNumber]
+    }
+    
+    /// Gets custom emoji for a Space
+    private func getSpaceEmoji(_ spaceNumber: Int) -> String? {
+        return settings.spaceEmojis[spaceNumber]
+    }
+    
+    /// Checks if a Space has a note
+    private func hasNote(_ spaceNumber: Int) -> Bool {
+        guard let note = settings.spaceNotes[spaceNumber] else { return false }
+        return !note.isEmpty
+    }
+    
+    /// Gets tooltip text for a Space button
+    private func getSpaceTooltip(_ spaceNumber: Int) -> String {
+        if hudMode == .note {
+            return hasNote(spaceNumber) ?
+                "Click to edit note, double-click to switch" :
+                "Click to add note, double-click to switch"
+        } else {
+            return "Switch to Space \(spaceNumber)"
+        }
+    }
+    
+    /// Handles Space button click (mode-dependent behavior)
+    private func handleSpaceClick(_ spaceNumber: Int) {
+        if hudMode == .space {
+            // Space mode: Click to switch
+            viewModel.switchToSpace(spaceNumber)
+        } else {
+            // Note mode: Click to edit note
+            editNote(for: spaceNumber)
+        }
+    }
+    
+    /// Opens note editor for a Space
+    private func editNote(for spaceNumber: Int) {
+        editingNoteForSpace = spaceNumber
+        noteText = settings.spaceNotes[spaceNumber] ?? ""
+    }
+    
+    /// Shows emoji picker for a Space
+    private func showEmojiPickerForSpace(_ spaceNumber: Int) {
+        emojiPickerForSpace = spaceNumber
+        showEmojiPicker = true
     }
     
     /// Cycles through display modes

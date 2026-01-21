@@ -429,8 +429,11 @@ final class SettingsManager: ObservableObject {
         // Super Spaces (Jan 21, 2026)
         case superSpacesEnabled = "superdimmer.superSpacesEnabled"
         case spaceNames = "superdimmer.spaceNames"
+        case spaceEmojis = "superdimmer.spaceEmojis"
+        case spaceNotes = "superdimmer.spaceNotes"
         case superSpacesDisplayMode = "superdimmer.superSpacesDisplayMode"
         case superSpacesAutoHide = "superdimmer.superSpacesAutoHide"
+        case superSpacesPosition = "superdimmer.superSpacesPosition"
         
         // Appearance Mode System (2.2.1.1)
         case appearanceMode = "superdimmer.comearanceMode"
@@ -1454,6 +1457,58 @@ final class SettingsManager: ObservableObject {
     }
     
     /**
+     Custom emojis/icons for Spaces.
+     
+     FEATURE: 5.5.5 - Space Name & Emoji Customization
+     
+     Dictionary mapping Space number (1-based) to emoji string.
+     Example: [1: "📧", 2: "🌐", 3: "💻"]
+     
+     USAGE:
+     - Displayed alongside Space names in HUD
+     - Helps visually identify Spaces quickly
+     - User can pick from emoji picker or type directly
+     
+     DEFAULT: Empty (no emojis)
+     */
+    @Published var spaceEmojis: [Int: String] {
+        didSet {
+            // Convert Int keys to String keys for UserDefaults
+            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceEmojis.map { (String($0.key), $0.value) })
+            defaults.set(stringKeyDict, forKey: Keys.spaceEmojis.rawValue)
+        }
+    }
+    
+    /**
+     Notes for Spaces.
+     
+     FEATURE: 5.5.6 - Note Mode
+     
+     Dictionary mapping Space number (1-based) to note text.
+     Example: [1: "Check emails and calendar", 2: "Research tasks", 3: "Current project work"]
+     
+     USAGE:
+     - User can switch HUD to "Note Mode"
+     - Single-click on Space shows/edits note
+     - Double-click switches to that Space
+     - Notes auto-save on text change (debounced)
+     
+     WHY THIS FEATURE:
+     - Helps users remember what each Space is for
+     - Useful for context switching (what was I working on?)
+     - Can include quick reminders or task lists per Space
+     
+     DEFAULT: Empty (no notes)
+     */
+    @Published var spaceNotes: [Int: String] {
+        didSet {
+            // Convert Int keys to String keys for UserDefaults
+            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceNotes.map { (String($0.key), $0.value) })
+            defaults.set(stringKeyDict, forKey: Keys.spaceNotes.rawValue)
+        }
+    }
+    
+    /**
      Display mode for Super Spaces HUD.
      
      VALUES:
@@ -1480,6 +1535,30 @@ final class SettingsManager: ObservableObject {
     @Published var superSpacesAutoHide: Bool {
         didSet {
             defaults.set(superSpacesAutoHide, forKey: Keys.superSpacesAutoHide.rawValue)
+        }
+    }
+    
+    /**
+     Position preset for Super Spaces HUD.
+     
+     FEATURE: 5.5.4 - Settings Button Functionality
+     
+     VALUES:
+     - "topLeft": Top-left corner
+     - "topRight": Top-right corner (default)
+     - "bottomLeft": Bottom-left corner
+     - "bottomRight": Bottom-right corner
+     - "custom": User has manually positioned (don't auto-reposition)
+     
+     BEHAVIOR:
+     When user selects a preset in quick settings, HUD moves to that corner.
+     When user manually drags HUD, position becomes "custom" and won't auto-reposition.
+     
+     DEFAULT: "topRight"
+     */
+    @Published var superSpacesPosition: String {
+        didSet {
+            defaults.set(superSpacesPosition, forKey: Keys.superSpacesPosition.rawValue)
         }
     }
     
@@ -1804,8 +1883,31 @@ final class SettingsManager: ObservableObject {
             self.spaceNames = [:]
         }
         
+        // Load Space emojis dictionary
+        if let emojisDict = defaults.dictionary(forKey: Keys.spaceEmojis.rawValue) as? [String: String] {
+            // Convert String keys to Int keys
+            self.spaceEmojis = Dictionary(uniqueKeysWithValues: emojisDict.compactMap { key, value in
+                guard let intKey = Int(key) else { return nil }
+                return (intKey, value)
+            })
+        } else {
+            self.spaceEmojis = [:]
+        }
+        
+        // Load Space notes dictionary
+        if let notesDict = defaults.dictionary(forKey: Keys.spaceNotes.rawValue) as? [String: String] {
+            // Convert String keys to Int keys
+            self.spaceNotes = Dictionary(uniqueKeysWithValues: notesDict.compactMap { key, value in
+                guard let intKey = Int(key) else { return nil }
+                return (intKey, value)
+            })
+        } else {
+            self.spaceNotes = [:]
+        }
+        
         self.superSpacesDisplayMode = defaults.string(forKey: Keys.superSpacesDisplayMode.rawValue) ?? "compact"
         self.superSpacesAutoHide = defaults.bool(forKey: Keys.superSpacesAutoHide.rawValue)
+        self.superSpacesPosition = defaults.string(forKey: Keys.superSpacesPosition.rawValue) ?? "topRight"
         
         // ============================================================
         // Load Appearance Mode System (2.2.1.1)
@@ -2289,8 +2391,11 @@ final class SettingsManager: ObservableObject {
         // ============================================================
         superSpacesEnabled = true  // Enabled by default
         spaceNames = [:]
+        spaceEmojis = [:]
+        spaceNotes = [:]
         superSpacesDisplayMode = "compact"
         superSpacesAutoHide = false
+        superSpacesPosition = "topRight"
         
         print("✓ Settings reset to defaults (2.2.1.7)")
         print("   Super Dimming: ON with Auto mode")

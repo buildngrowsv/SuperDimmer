@@ -50,6 +50,9 @@ final class SuperSpacesViewModel: ObservableObject {
     /// Callback for closing HUD
     var onClose: (() -> Void)?
     
+    /// Callback for position changes
+    var onPositionChange: ((String) -> Void)?
+    
     func switchToSpace(_ spaceNumber: Int) {
         onSpaceSwitch?(spaceNumber)
     }
@@ -160,9 +163,13 @@ final class SuperSpacesHUD: NSPanel {
         viewModel.onClose = { [weak self] in
             self?.hide()
         }
+        viewModel.onPositionChange = { [weak self] position in
+            self?.moveToPosition(position)
+        }
         
-        // Create SwiftUI view with view model
+        // Create SwiftUI view with view model and inject settings
         let hudView = SuperSpacesHUDView(viewModel: viewModel)
+            .environmentObject(SettingsManager.shared)
         
         // Wrap in NSHostingView
         let hostingView = NSHostingView(rootView: hudView)
@@ -283,6 +290,53 @@ final class SuperSpacesHUD: NSPanel {
         let y = screenFrame.maxY - windowFrame.height - 20
         
         setFrameOrigin(NSPoint(x: x, y: y))
+    }
+    
+    /// Moves HUD to specified position preset
+    /// Called when user selects a position in quick settings
+    func moveToPosition(_ position: String) {
+        guard let screen = NSScreen.main else { return }
+        
+        let screenFrame = screen.visibleFrame
+        let windowFrame = frame
+        let margin: CGFloat = 20
+        
+        let origin: NSPoint
+        
+        switch position {
+        case "topLeft":
+            origin = NSPoint(
+                x: screenFrame.minX + margin,
+                y: screenFrame.maxY - windowFrame.height - margin
+            )
+        case "topRight":
+            origin = NSPoint(
+                x: screenFrame.maxX - windowFrame.width - margin,
+                y: screenFrame.maxY - windowFrame.height - margin
+            )
+        case "bottomLeft":
+            origin = NSPoint(
+                x: screenFrame.minX + margin,
+                y: screenFrame.minY + margin
+            )
+        case "bottomRight":
+            origin = NSPoint(
+                x: screenFrame.maxX - windowFrame.width - margin,
+                y: screenFrame.minY + margin
+            )
+        default:
+            // Unknown position, don't move
+            return
+        }
+        
+        // Animate the move
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animator().setFrameOrigin(origin)
+        }
+        
+        print("✓ SuperSpacesHUD: Moved to \(position)")
     }
     
     // MARK: - Public Interface

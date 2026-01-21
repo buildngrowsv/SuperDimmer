@@ -46,6 +46,9 @@
 		SS1000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift */; };
 		SS1000000003SUPERSPACEHUD /* SuperSpacesHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000003SUPERSPACEHUD /* SuperSpacesHUD.swift */; };
 		SS1000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */; };
+		SS1000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift */; };
+		SS1000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift */; };
+		SS1000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -102,6 +105,9 @@
 		SS2000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceChangeMonitor.swift; sourceTree = "<group>"; };
 		SS2000000003SUPERSPACEHUD /* SuperSpacesHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesHUD.swift; sourceTree = "<group>"; };
 		SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesHUDView.swift; sourceTree = "<group>"; };
+		SS2000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesQuickSettings.swift; sourceTree = "<group>"; };
+		SS2000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesEmojiPicker.swift; sourceTree = "<group>"; };
+		SS2000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesNoteEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,6 +164,9 @@
 				SS2000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift */,
 				SS2000000003SUPERSPACEHUD /* SuperSpacesHUD.swift */,
 				SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */,
+				SS2000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift */,
+				SS2000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift */,
+				SS2000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift */,
 			);
 			path = SuperSpaces;
 			sourceTree = "<group>";
@@ -452,6 +461,9 @@
 				SS1000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift in Sources */,
 				SS1000000003SUPERSPACEHUD /* SuperSpacesHUD.swift in Sources */,
 				SS1000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift in Sources */,
+				SS1000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift in Sources */,
+				SS1000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift in Sources */,
+				SS1000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift in Sources */,
 				7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */,
 				7DF9E65F077D8883C984AD7F /* TemporaryDisableManager.swift in Sources */,
 				UC1234567890ABCDEF123456 /* UpdateChecker.swift in Sources */,
