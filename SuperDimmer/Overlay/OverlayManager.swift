@@ -1021,15 +1021,18 @@ final class OverlayManager {
      - Major configuration change
      */
     func removeAllOverlays() {
+        // CRASH FIX (Jan 21, 2026): NEVER call overlay.close() - use safeHideOverlay()
+        // Calling close() causes EXC_BAD_ACCESS crashes in Core Animation
+        
         // Remove window overlays
         for (_, overlay) in windowOverlays {
-            overlay.close()
+            safeHideOverlay(overlay)
         }
         windowOverlays.removeAll()
         
         // Remove display overlays
         for (_, overlay) in displayOverlays {
-            overlay.close()
+            safeHideOverlay(overlay)
         }
         displayOverlays.removeAll()
         
@@ -1741,10 +1744,12 @@ final class OverlayManager {
         let currentDisplayIDs = Set(NSScreen.screens.compactMap { $0.displayID })
         
         // Remove overlays for disconnected displays
+        // CRASH FIX (Jan 21, 2026): Use safeHideOverlay() instead of close()
         let disconnectedDisplays = Set(displayOverlays.keys).subtracting(currentDisplayIDs)
         for displayID in disconnectedDisplays {
-            displayOverlays[displayID]?.close()
-            displayOverlays.removeValue(forKey: displayID)
+            if let overlay = displayOverlays.removeValue(forKey: displayID) {
+                safeHideOverlay(overlay)
+            }
             print("🖥️ Removed overlay for disconnected display \(displayID)")
         }
         

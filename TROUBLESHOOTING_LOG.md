@@ -304,6 +304,57 @@ originalOverlayFrames.removeValue(forKey: overlayID)
 
 ---
 
+### CRASH FIX: EXC_BAD_ACCESS in removeAllOverlays()
+
+**Date:** January 21, 2026 (same day, discovered after optimization)
+
+**PROBLEM:**
+App was crashing with EXC_BAD_ACCESS (Thread 1) when removing overlays. The crash occurred in Core Animation code during overlay cleanup.
+
+**ROOT CAUSE:**
+The `removeAllOverlays()` function and display change handler were still calling `overlay.close()` directly, which triggers AppKit internal cleanup that causes EXC_BAD_ACCESS crashes. This was a leftover from before the `safeHideOverlay()` fix was implemented.
+
+**LOCATIONS:**
+1. `removeAllOverlays()` - Lines 1026, 1032: Called `overlay.close()` on window and display overlays
+2. Display change handler - Line 1749: Called `close()` when display disconnected
+
+**WHY THIS CAUSES CRASHES:**
+Calling `NSWindow.close()` triggers:
+1. AppKit internal cleanup that autoreleases objects
+2. Core Animation may still have references to the layer
+3. When autorelease pool drains, objects are freed
+4. CA tries to access freed objects → EXC_BAD_ACCESS crash
+
+**FIX APPLIED:**
+Replaced all `overlay.close()` calls with `safeHideOverlay()`:
+
+```swift
+// Before (CRASHES):
+for (_, overlay) in windowOverlays {
+    overlay.close()  // ❌ Causes EXC_BAD_ACCESS
+}
+
+// After (SAFE):
+for (_, overlay) in windowOverlays {
+    safeHideOverlay(overlay)  // ✅ Safe cleanup
+}
+```
+
+**safeHideOverlay() Process:**
+1. Remove all animations (stops CA from accessing layer)
+2. Set dimLevel to 0 (invisible)
+3. Call orderOut(nil) (remove from screen)
+4. Let Swift ARC deallocate naturally (no close())
+
+**FILES MODIFIED:**
+- `OverlayManager.swift` lines 1024-1033: Fixed `removeAllOverlays()`
+- `OverlayManager.swift` lines 1747-1752: Fixed display change handler
+
+### Status (Final - Crash Fixed)
+✅ **CRASH FIXED** - All overlay cleanup now uses safeHideOverlay(), no more EXC_BAD_ACCESS, build succeeded
+
+---
+
 ## Issue: Toggle Dimming Crashes/Freezes App
 
 **Date:** January 7, 2026
