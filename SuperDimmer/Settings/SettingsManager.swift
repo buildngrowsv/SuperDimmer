@@ -426,6 +426,12 @@ final class SettingsManager: ObservableObject {
         case wallpaperDimEnabled = "superdimmer.wallpaperDimEnabled"
         case wallpaperDimLevel = "superdimmer.wallpaperDimLevel"
         
+        // Super Spaces (Jan 21, 2026)
+        case superSpacesEnabled = "superdimmer.superSpacesEnabled"
+        case spaceNames = "superdimmer.spaceNames"
+        case superSpacesDisplayMode = "superdimmer.superSpacesDisplayMode"
+        case superSpacesAutoHide = "superdimmer.superSpacesAutoHide"
+        
         // Appearance Mode System (2.2.1.1)
         case appearanceMode = "superdimmer.comearanceMode"
         case darkModeProfile = "superdimmer.darkModeProfile"
@@ -1412,6 +1418,72 @@ final class SettingsManager: ObservableObject {
     }
     
     // ================================================================
+    // MARK: - Super Spaces Settings (Jan 21, 2026)
+    // ================================================================
+    
+    /**
+     Whether Super Spaces HUD is enabled.
+     
+     FEATURE: Super Spaces - Floating HUD for Space navigation
+     
+     When true, users can toggle the Super Spaces HUD with a keyboard shortcut
+     to see current Space and switch between Spaces.
+     
+     DEFAULT: false (opt-in feature)
+     */
+    @Published var superSpacesEnabled: Bool {
+        didSet {
+            defaults.set(superSpacesEnabled, forKey: Keys.superSpacesEnabled.rawValue)
+        }
+    }
+    
+    /**
+     Custom names for Spaces.
+     
+     Dictionary mapping Space number (1-based) to custom name.
+     Example: [1: "Email", 2: "Browse", 3: "Development"]
+     
+     DEFAULT: Empty (uses default names)
+     */
+    @Published var spaceNames: [Int: String] {
+        didSet {
+            // Convert Int keys to String keys for UserDefaults
+            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceNames.map { (String($0.key), $0.value) })
+            defaults.set(stringKeyDict, forKey: Keys.spaceNames.rawValue)
+        }
+    }
+    
+    /**
+     Display mode for Super Spaces HUD.
+     
+     VALUES:
+     - "mini": Minimal (arrows and number)
+     - "compact": Numbered buttons (default)
+     - "expanded": Grid with names
+     
+     DEFAULT: "compact"
+     */
+    @Published var superSpacesDisplayMode: String {
+        didSet {
+            defaults.set(superSpacesDisplayMode, forKey: Keys.superSpacesDisplayMode.rawValue)
+        }
+    }
+    
+    /**
+     Whether Super Spaces HUD should auto-hide after switching.
+     
+     When true, HUD automatically hides after user switches Spaces.
+     When false, HUD stays visible until manually closed.
+     
+     DEFAULT: false (stays visible)
+     */
+    @Published var superSpacesAutoHide: Bool {
+        didSet {
+            defaults.set(superSpacesAutoHide, forKey: Keys.superSpacesAutoHide.rawValue)
+        }
+    }
+    
+    // ================================================================
     // MARK: - Appearance Mode System (2.2.1.1)
     // ================================================================
     
@@ -1715,6 +1787,25 @@ final class SettingsManager: ObservableObject {
         
         self.wallpaperDimLevel = defaults.object(forKey: Keys.wallpaperDimLevel.rawValue) != nil ?
             defaults.double(forKey: Keys.wallpaperDimLevel.rawValue) : 0.3
+        
+        // ============================================================
+        // Load Super Spaces Settings (Jan 21, 2026)
+        // ============================================================
+        self.superSpacesEnabled = defaults.bool(forKey: Keys.superSpacesEnabled.rawValue)
+        
+        // Load Space names dictionary
+        if let namesDict = defaults.dictionary(forKey: Keys.spaceNames.rawValue) as? [String: String] {
+            // Convert String keys to Int keys
+            self.spaceNames = Dictionary(uniqueKeysWithValues: namesDict.compactMap { key, value in
+                guard let intKey = Int(key) else { return nil }
+                return (intKey, value)
+            })
+        } else {
+            self.spaceNames = [:]
+        }
+        
+        self.superSpacesDisplayMode = defaults.string(forKey: Keys.superSpacesDisplayMode.rawValue) ?? "compact"
+        self.superSpacesAutoHide = defaults.bool(forKey: Keys.superSpacesAutoHide.rawValue)
         
         // ============================================================
         // Load Appearance Mode System (2.2.1.1)
@@ -2192,6 +2283,14 @@ final class SettingsManager: ObservableObject {
         wallpaperAutoSwitchEnabled = false
         wallpaperDimEnabled = false
         wallpaperDimLevel = 0.3
+        
+        // ============================================================
+        // Super Spaces (Jan 21, 2026)
+        // ============================================================
+        superSpacesEnabled = false
+        spaceNames = [:]
+        superSpacesDisplayMode = "compact"
+        superSpacesAutoHide = false
         
         print("✓ Settings reset to defaults (2.2.1.7)")
         print("   Super Dimming: ON with Auto mode")

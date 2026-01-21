@@ -112,6 +112,14 @@ struct MenuBarView: View {
                 .padding(.horizontal)
             
             // ========================================================
+            // Super Spaces - Space Navigation HUD
+            // ========================================================
+            superSpacesSection
+            
+            Divider()
+                .padding(.horizontal)
+            
+            // ========================================================
             // Color Temperature Controls
             // ========================================================
             colorTemperatureSection
@@ -856,15 +864,20 @@ struct MenuBarView: View {
             if settings.colorTemperatureEnabled {
                 VStack(spacing: 12) {
                     // Temperature slider
+                    // Note: We invert the slider so right = warmer (lower Kelvin)
+                    // This matches user expectations: sliding right makes it more orange/red
                     HStack {
                         Image(systemName: "sun.max")
-                            .foregroundColor(.yellow)
+                            .foregroundColor(.white)
                             .font(.caption)
                         
-                        Slider(value: $settings.colorTemperature, in: 1900...6500)
+                        Slider(value: Binding(
+                            get: { 8400 - settings.colorTemperature }, // Invert: 6500K→1900, 1900K→6500
+                            set: { settings.colorTemperature = 8400 - $0 }
+                        ), in: 1900...6500)
                             .tint(temperatureColor)
                         
-                        Image(systemName: "moon.fill")
+                        Image(systemName: "flame.fill")
                             .foregroundColor(.orange)
                             .font(.caption)
                     }
@@ -898,6 +911,60 @@ struct MenuBarView: View {
                         }
                     }
                 }
+                .padding(.leading, 28) // Align with toggle text
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+    
+    // ================================================================
+    // MARK: - Super Spaces Section
+    // ================================================================
+    
+    /**
+     Super Spaces - Floating HUD for Space navigation and switching.
+     Shows current desktop Space and allows quick switching between Spaces.
+     */
+    private var superSpacesSection: some View {
+        VStack(spacing: 16) {
+            // Super Spaces toggle
+            HStack {
+                Image(systemName: "square.grid.3x3")
+                    .foregroundColor(.secondary)
+                    .frame(width: 20)
+                
+                Text("Super Spaces")
+                    .font(.subheadline)
+                
+                Spacer()
+                
+                Toggle("", isOn: $settings.superSpacesEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            
+            // Show HUD button (only when enabled)
+            if settings.superSpacesEnabled {
+                Button(action: {
+                    SuperSpacesHUD.shared.toggle()
+                }) {
+                    HStack {
+                        Image(systemName: "eye")
+                            .font(.caption)
+                        Text("Show/Hide HUD")
+                            .font(.caption)
+                        Spacer()
+                        Text("⌘⇧S")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
                 .padding(.leading, 28) // Align with toggle text
             }
         }

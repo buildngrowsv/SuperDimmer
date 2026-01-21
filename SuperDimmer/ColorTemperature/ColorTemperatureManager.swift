@@ -137,6 +137,22 @@ final class ColorTemperatureManager {
      Applies a specific color temperature to all displays.
      
      - Parameter kelvin: The color temperature in Kelvin (1900-6500)
+     
+     HOW THIS WORKS:
+     We create gamma lookup tables (LUTs) for each RGB channel and multiply
+     each value by the color temperature's RGB multiplier. This directly
+     affects the color output of the display.
+     
+     The gamma table is an array of 256 values (0.0 to 1.0) that map input
+     pixel values to output values. By scaling the table with our RGB multipliers,
+     we effectively tint the entire display.
+     
+     For example, at 3000K (warm/orange):
+     - Red multiplier ≈ 1.0 (full red)
+     - Green multiplier ≈ 0.7 (reduced green)
+     - Blue multiplier ≈ 0.4 (heavily reduced blue)
+     
+     This reduces blue light and creates the warm orange tint.
      */
     func applyTemperature(_ kelvin: Double) {
         let clampedKelvin = max(1900, min(6500, kelvin))
@@ -156,22 +172,43 @@ final class ColorTemperatureManager {
             return
         }
         
+        // Create gamma tables (256 entries, standard for macOS)
+        // Each table maps input values (0-255) to output values (0.0-1.0)
+        let tableSize = 256
+        var redTable = [CGGammaValue](repeating: 0, count: tableSize)
+        var greenTable = [CGGammaValue](repeating: 0, count: tableSize)
+        var blueTable = [CGGammaValue](repeating: 0, count: tableSize)
+        
+        // Build the gamma tables with color temperature applied
+        // We use a standard gamma curve (2.2) and multiply by RGB multipliers
+        // The formula is: output = (input / 255) ^ gamma * rgbMultiplier
+        let gamma = 2.2
+        for i in 0..<tableSize {
+            let normalized = Double(i) / Double(tableSize - 1)
+            let gammaAdjusted = pow(normalized, 1.0 / gamma)
+            
+            // Apply color temperature multipliers
+            redTable[i] = Float(gammaAdjusted * rgb.red)
+            greenTable[i] = Float(gammaAdjusted * rgb.green)
+            blueTable[i] = Float(gammaAdjusted * rgb.blue)
+        }
+        
+        // Apply the gamma tables to all displays
         for i in 0..<Int(displayCount) {
             let displayID = onlineDisplays[i]
             
             // Save original gamma if not already saved
             saveOriginalGamma(for: displayID)
             
-            // Apply the gamma adjustment using formula
-            // The formula is: output = min + (max - min) * pow(input, gamma)
-            // For color temperature, we adjust the min (black point) and keep gamma at 1.0
-            // We use the RGB multipliers as the "max" value
-            // Note: CGGammaValue is Float, not CGFloat
-            let result = CGSetDisplayTransferByFormula(
+            // Apply the gamma tables
+            // CGSetDisplayTransferByTable directly sets the lookup table
+            // This is the same method used by f.lux and similar apps
+            let result = CGSetDisplayTransferByTable(
                 displayID,
-                0.0, 1.0, Float(rgb.red),    // Red: min, gamma, max
-                0.0, 1.0, Float(rgb.green),  // Green: min, gamma, max
-                0.0, 1.0, Float(rgb.blue)    // Blue: min, gamma, max
+                UInt32(tableSize),
+                &redTable,
+                &greenTable,
+                &blueTable
             )
             
             if result == .success {

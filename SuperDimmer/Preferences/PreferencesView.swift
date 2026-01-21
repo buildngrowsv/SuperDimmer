@@ -994,15 +994,20 @@ struct ColorPreferencesTab: View {
                                 .foregroundColor(.secondary)
                         }
                         
+                        // Inverted slider: right = warmer (lower Kelvin internally)
+                        // This matches user expectations: sliding right makes display more orange/red
                         HStack {
                             Image(systemName: "sun.max.fill")
                                 .foregroundColor(.white)
-                            Slider(value: $settings.colorTemperature, in: 1900...6500)
+                            Slider(value: Binding(
+                                get: { 8400 - settings.colorTemperature }, // Invert: 6500K→1900, 1900K→6500
+                                set: { settings.colorTemperature = 8400 - $0 }
+                            ), in: 1900...6500)
                             Image(systemName: "flame.fill")
                                 .foregroundColor(.orange)
                         }
                         
-                        Text("Lower values = warmer colors, less blue light")
+                        Text("Slide right for warmer colors (less blue light)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }

@@ -42,10 +42,6 @@
 		E8EF0C3464404E46E80A158F /* SuperDimmerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA7A645622AB3F65E274F /* SuperDimmerTests.swift */; };
 		F2C90FE8A0272489D2F5EF02 /* BrightRegionDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */; };
 		UC1234567890ABCDEF123456 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = UC9876543210FEDCBA987654 /* UpdateChecker.swift */; };
-		SS1000000001SPACEDETECTOR /* SpaceDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000001SPACEDETECTOR /* SpaceDetector.swift */; };
-		SS1000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift */; };
-		SS1000000003SUPERSPACEHUD /* SuperSpacesHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000003SUPERSPACEHUD /* SuperSpacesHUD.swift */; };
-		SS1000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -98,10 +94,6 @@
 		F66E8844DCCCD25531199A7D /* AutoHideManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoHideManager.swift; sourceTree = "<group>"; };
 		FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		UC9876543210FEDCBA987654 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
-		SS2000000001SPACEDETECTOR /* SpaceDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceDetector.swift; sourceTree = "<group>"; };
-		SS2000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceChangeMonitor.swift; sourceTree = "<group>"; };
-		SS2000000003SUPERSPACEHUD /* SuperSpacesHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesHUD.swift; sourceTree = "<group>"; };
-		SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesHUDView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -149,17 +141,6 @@
 				3B4E7AF858AB9888AA55A487 /* SettingsManager.swift */,
 			);
 			path = Settings;
-			sourceTree = "<group>";
-		};
-		SS3000000000SUPERSPACES00 /* SuperSpaces */ = {
-			isa = PBXGroup;
-			children = (
-				SS2000000001SPACEDETECTOR /* SpaceDetector.swift */,
-				SS2000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift */,
-				SS2000000003SUPERSPACEHUD /* SuperSpacesHUD.swift */,
-				SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */,
-			);
-			path = SuperSpaces;
 			sourceTree = "<group>";
 		};
 		275E6CDD37DBCB74962B9CCB /* Resources */ = {
@@ -221,7 +202,6 @@
 				275E6CDD37DBCB74962B9CCB /* Resources */,
 				D1EB4FF3BCEC41A74119B510 /* Services */,
 				17EAFFC9A6765DF8C3168EF8 /* Settings */,
-				SS3000000000SUPERSPACES00 /* SuperSpaces */,
 				55F6BDE792AB3D5CEA6AA2BA /* Supporting Files */,
 			);
 			path = SuperDimmer;
@@ -448,10 +428,6 @@
 				C951F27A7FB2798886F56E12 /* ScheduleManager.swift in Sources */,
 				2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */,
 				9DF14CF8F541D544FC005E3B /* SettingsManager.swift in Sources */,
-				SS1000000001SPACEDETECTOR /* SpaceDetector.swift in Sources */,
-				SS1000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift in Sources */,
-				SS1000000003SUPERSPACEHUD /* SuperSpacesHUD.swift in Sources */,
-				SS1000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift in Sources */,
 				7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */,
 				7DF9E65F077D8883C984AD7F /* TemporaryDisableManager.swift in Sources */,
 				UC1234567890ABCDEF123456 /* UpdateChecker.swift in Sources */,
