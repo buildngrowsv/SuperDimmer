@@ -73,8 +73,9 @@ struct SuperSpacesQuickSettings: View {
                     Text("Mini").tag("mini")
                     Text("Compact").tag("compact")
                     Text("Expanded").tag("expanded")
+                    Text("Note").tag("note")
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .labelsHidden()
             }
             
