@@ -2287,7 +2287,7 @@ final class SettingsManager: ObservableObject {
         // ============================================================
         // Super Spaces (Jan 21, 2026)
         // ============================================================
-        superSpacesEnabled = false
+        superSpacesEnabled = true  // Enabled by default
         spaceNames = [:]
         superSpacesDisplayMode = "compact"
         superSpacesAutoHide = false

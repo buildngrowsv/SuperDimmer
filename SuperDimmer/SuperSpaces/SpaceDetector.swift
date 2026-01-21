@@ -146,29 +146,26 @@ final class SpaceDetector {
             return nil
         }
         
-        // Build array of (ManagedSpaceID, SpaceDict) tuples for sorting
-        var spacesWithIDs: [(id: Int, dict: [String: Any])] = []
-        for spaceDict in spacesArray {
-            guard let managedID = spaceDict["ManagedSpaceID"] as? Int else { continue }
-            spacesWithIDs.append((id: managedID, dict: spaceDict))
-        }
+        // CRITICAL: Mission Control displays Spaces in PLIST ARRAY ORDER, not sorted by ManagedSpaceID!
+        // When you rearrange Spaces in Mission Control, it updates the array order.
+        // ManagedSpaceIDs stay the same but their position in the array changes.
+        // We must use the array index directly to match Mission Control's display.
         
-        // Sort by ManagedSpaceID to match Mission Control display order
-        spacesWithIDs.sort { $0.id < $1.id }
+        let displayIdentifier = mainMonitor["Display Identifier"] as? String ?? "Main"
         
         // Find the current Space by matching ManagedSpaceID from CGS
-        for (index, item) in spacesWithIDs.enumerated() {
-            if item.id == currentManagedSpaceID {
+        for (index, spaceDict) in spacesArray.enumerated() {
+            guard let managedID = spaceDict["ManagedSpaceID"] as? Int else { continue }
+            
+            if managedID == currentManagedSpaceID {
                 // Found it!
-                guard let uuid = item.dict["uuid"] as? String else {
+                guard let uuid = spaceDict["uuid"] as? String else {
                     print("⚠️ SpaceDetector: Space has no UUID")
                     continue
                 }
                 
-                let displayIdentifier = mainMonitor["Display Identifier"] as? String ?? "Main"
-                
                 return CurrentSpaceInfo(
-                    spaceNumber: index + 1,  // 1-based indexing, in Mission Control order
+                    spaceNumber: index + 1,  // 1-based indexing, in plist array order = Mission Control order
                     spaceUUID: uuid,
                     displayUUID: displayIdentifier
                 )
@@ -225,33 +222,23 @@ final class SpaceDetector {
         let currentSpaceUUID = (mainMonitor["Current Space"] as? [String: Any])?["uuid"] as? String
         let displayIdentifier = mainMonitor["Display Identifier"] as? String ?? "Main"
         
-        // CRITICAL: The Spaces array is NOT in display order!
-        // It's in creation order. Mission Control displays them sorted by ManagedSpaceID.
-        // We must sort by ManagedSpaceID to get the correct Space numbers.
-        
-        // Build array of (ManagedSpaceID, SpaceDict) tuples for sorting
-        var spacesWithIDs: [(id: Int, dict: [String: Any])] = []
-        for spaceDict in spacesArray {
-            guard let managedID = spaceDict["ManagedSpaceID"] as? Int else { continue }
-            spacesWithIDs.append((id: managedID, dict: spaceDict))
-        }
-        
-        // Sort by ManagedSpaceID to match Mission Control display order
-        spacesWithIDs.sort { $0.id < $1.id }
+        // CRITICAL: Mission Control displays Spaces in PLIST ARRAY ORDER!
+        // When you rearrange Spaces in Mission Control, it updates the array order.
+        // We must use the array index directly (NOT sort by ManagedSpaceID).
         
         var spaces: [SpaceInfo] = []
         
-        // Parse each Space (now in correct display order)
-        for (index, item) in spacesWithIDs.enumerated() {
-            guard let uuid = item.dict["uuid"] as? String else {
+        // Parse each Space in plist array order (= Mission Control display order)
+        for (index, spaceDict) in spacesArray.enumerated() {
+            guard let uuid = spaceDict["uuid"] as? String else {
                 continue
             }
             
-            let spaceType = item.dict["type"] as? Int ?? 0
+            let spaceType = spaceDict["type"] as? Int ?? 0
             let isCurrent = (uuid == currentSpaceUUID)
             
             let spaceInfo = SpaceInfo(
-                index: index + 1,  // 1-based indexing, now in Mission Control order
+                index: index + 1,  // 1-based indexing, in plist array order = Mission Control order
                 uuid: uuid,
                 displayUUID: displayIdentifier,
                 isCurrent: isCurrent,
