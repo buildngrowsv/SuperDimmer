@@ -106,6 +106,11 @@ final class SuperSpacesHUD: NSPanel {
         setupContent()
         setupSpaceMonitoring()
         
+        // Show HUD by default on launch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.show()
+        }
+        
         print("✓ SuperSpacesHUD: Initialized")
     }
     
