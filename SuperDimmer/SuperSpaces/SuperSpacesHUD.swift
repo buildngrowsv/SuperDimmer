@@ -97,12 +97,14 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     private init() {
         // Create panel with HUD style
         // PHASE 1.2 FIX: Use .borderless to remove title bar artifact
+        // PHASE 1.3 FIX: Increased initial height to prevent clipping, window is resizable
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 450),
             styleMask: [
                 .nonactivatingPanel,  // Doesn't steal focus from other apps
                 .borderless,          // No title bar or borders (fixes artifact)
-                .fullSizeContentView  // Content extends to edges
+                .fullSizeContentView, // Content extends to edges
+                .resizable            // Allow user to resize if needed
             ],
             backing: .buffered,       // Double-buffered for smooth rendering
             defer: false              // Create window immediately
@@ -139,6 +141,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         
         // HUD style appearance
         // PHASE 1.2: Borderless window, no title bar artifacts
+        // PHASE 1.3: Added resizable capability for user flexibility
         isMovableByWindowBackground = true       // Drag anywhere to move
         backgroundColor = .clear                 // Clear (content has blur)
         
@@ -147,6 +150,12 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         
         // Utility window animations (faster, lighter)
         animationBehavior = .utilityWindow
+        
+        // Set minimum and maximum size constraints
+        // Minimum: Enough for compact mode
+        // Maximum: Reasonable upper bound for note mode
+        minSize = NSSize(width: 400, height: 120)
+        maxSize = NSSize(width: 800, height: 600)
         
         // Position in top-right corner
         positionInTopRight()

@@ -112,8 +112,12 @@ struct SuperSpacesHUDView: View {
             .padding(16)
         }
         .frame(
-            width: calculateWidth(),
-            height: calculateHeight()
+            minWidth: calculateMinWidth(),
+            idealWidth: calculateWidth(),
+            maxWidth: .infinity,
+            minHeight: calculateMinHeight(),
+            idealHeight: calculateHeight(),
+            maxHeight: .infinity
         )
         .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: displayMode)
@@ -305,56 +309,79 @@ struct SuperSpacesHUDView: View {
                         .foregroundColor(.secondary)
                     
                     if isEditingSpaceName {
-                        // Editing mode
-                        HStack(spacing: 8) {
-                            // Emoji field
-                            TextField("Emoji", text: $editingSpaceEmoji)
-                                .font(.system(size: 20))
-                                .frame(width: 50, height: 36)
-                                .multilineTextAlignment(.center)
-                                .textFieldStyle(.plain)
-                                .background(Color(NSColor.textBackgroundColor))
-                                .cornerRadius(6)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.accentColor, lineWidth: 2)
-                                )
-                                .focused($isEmojiFieldFocused)
-                            
-                            // Name field
-                            TextField("Space Name", text: $editingSpaceNameText)
-                                .font(.system(size: 14))
-                                .textFieldStyle(.plain)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(Color(NSColor.textBackgroundColor))
-                                .cornerRadius(6)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.accentColor, lineWidth: 2)
-                                )
-                                .focused($isNameFieldFocused)
-                                .onSubmit {
-                                    saveSpaceNameAndEmoji()
+                        // Editing mode with character counter
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                // Emoji field
+                                TextField("Emoji", text: $editingSpaceEmoji)
+                                    .font(.system(size: 20))
+                                    .frame(width: 50, height: 36)
+                                    .multilineTextAlignment(.center)
+                                    .textFieldStyle(.plain)
+                                    .background(Color(NSColor.textBackgroundColor))
+                                    .cornerRadius(6)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.accentColor, lineWidth: 2)
+                                    )
+                                    .focused($isEmojiFieldFocused)
+                                
+                                // Name field
+                                TextField("Space Name", text: $editingSpaceNameText)
+                                    .font(.system(size: 14))
+                                    .textFieldStyle(.plain)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(Color(NSColor.textBackgroundColor))
+                                    .cornerRadius(6)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(
+                                                editingSpaceNameText.count > settings.maxSpaceNameLength ? Color.red : Color.accentColor,
+                                                lineWidth: 2
+                                            )
+                                    )
+                                    .focused($isNameFieldFocused)
+                                    .onSubmit {
+                                        saveSpaceNameAndEmoji()
+                                    }
+                                    .onChange(of: editingSpaceNameText) { newValue in
+                                        // Enforce character limit
+                                        if newValue.count > settings.maxSpaceNameLength {
+                                            editingSpaceNameText = String(newValue.prefix(settings.maxSpaceNameLength))
+                                        }
+                                    }
+                                
+                                // Save button
+                                Button(action: saveSpaceNameAndEmoji) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.green)
                                 }
-                            
-                            // Save button
-                            Button(action: saveSpaceNameAndEmoji) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.green)
+                                .buttonStyle(.plain)
+                                .help("Save (Enter)")
+                                
+                                // Cancel button
+                                Button(action: cancelSpaceNameEditing) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Cancel (Esc)")
                             }
-                            .buttonStyle(.plain)
-                            .help("Save (Enter)")
                             
-                            // Cancel button
-                            Button(action: cancelSpaceNameEditing) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.secondary)
+                            // Character counter (PHASE 2.2)
+                            HStack {
+                                Spacer()
+                                Text("\(editingSpaceNameText.count)/\(settings.maxSpaceNameLength)")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(
+                                        editingSpaceNameText.count > settings.maxSpaceNameLength - 5 ?
+                                            (editingSpaceNameText.count >= settings.maxSpaceNameLength ? .red : .orange) :
+                                            .secondary
+                                    )
                             }
-                            .buttonStyle(.plain)
-                            .help("Cancel (Esc)")
                         }
                     } else {
                         // Display mode (double-click to edit)
@@ -556,7 +583,12 @@ struct SuperSpacesHUDView: View {
     
     // MARK: - Helper Methods
     
-    /// Calculates appropriate width based on display mode and number of Spaces
+    /// Calculates minimum width based on display mode
+    private func calculateMinWidth() -> CGFloat {
+        return 400
+    }
+    
+    /// Calculates ideal width based on display mode and number of Spaces
     private func calculateWidth() -> CGFloat {
         switch displayMode {
         case .compact:
@@ -568,25 +600,52 @@ struct SuperSpacesHUDView: View {
         }
     }
     
-    /// Calculates appropriate height based on display mode
-    private func calculateHeight() -> CGFloat {
+    /// Calculates minimum height based on display mode
+    /// This ensures content is never clipped
+    private func calculateMinHeight() -> CGFloat {
         switch displayMode {
         case .compact:
             return 120
         case .note:
+            // Minimum height for note mode to prevent clipping
+            return 360
+        }
+    }
+    
+    /// Calculates ideal height based on display mode
+    /// This is the preferred height that gives comfortable spacing
+    private func calculateHeight() -> CGFloat {
+        switch displayMode {
+        case .compact:
+            return 140  // Slightly taller for better spacing
+        case .note:
             // Taller to accommodate Space selector + name/emoji editor + note
-            return isEditingSpaceName ? 380 : 360
+            // Added extra padding to prevent any clipping
+            return isEditingSpaceName ? 420 : 400
         }
     }
     
     /// Gets custom name for a Space
+    /// Gets Space name (custom or default)
+    /// PHASE 2.2: Returns default "Desktop X" if no custom name set
     private func getSpaceName(_ spaceNumber: Int) -> String? {
-        return settings.spaceNames[spaceNumber]
+        // Check for custom name first
+        if let customName = settings.spaceNames[spaceNumber] {
+            return customName
+        }
+        // Return default name
+        return settings.generateDefaultSpaceName(for: spaceNumber)
     }
     
-    /// Gets custom emoji for a Space
+    /// Gets Space emoji (custom or default)
+    /// PHASE 2.3: Returns preset emoji if no custom emoji set
     private func getSpaceEmoji(_ spaceNumber: Int) -> String? {
-        return settings.spaceEmojis[spaceNumber]
+        // Check for custom emoji first
+        if let customEmoji = settings.spaceEmojis[spaceNumber] {
+            return customEmoji
+        }
+        // Return default emoji (for Spaces 1-16)
+        return settings.getDefaultEmoji(for: spaceNumber)
     }
     
     /// Checks if a Space has a note
@@ -677,19 +736,25 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Saves the edited Space name and emoji
+    /// PHASE 2.2: Validates and enforces character limit
     private func saveSpaceNameAndEmoji() {
         guard let spaceNumber = selectedNoteSpace else { return }
         
-        // Save name
-        if editingSpaceNameText.isEmpty {
+        // Validate and save name with character limit
+        let trimmedName = editingSpaceNameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName.isEmpty {
+            // Empty name: remove custom name, will show default
             settings.spaceNames.removeValue(forKey: spaceNumber)
         } else {
-            settings.spaceNames[spaceNumber] = editingSpaceNameText
+            // Validate and truncate to character limit
+            let validatedName = settings.validateSpaceName(trimmedName)
+            settings.spaceNames[spaceNumber] = validatedName
         }
         
-        // Save emoji (limit to first character/emoji)
-        let trimmedEmoji = String(editingSpaceEmoji.prefix(2))
+        // Save emoji (limit to first 2 characters to handle multi-byte emojis)
+        let trimmedEmoji = String(editingSpaceEmoji.prefix(2)).trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedEmoji.isEmpty {
+            // Empty emoji: remove custom emoji, will show default
             settings.spaceEmojis.removeValue(forKey: spaceNumber)
         } else {
             settings.spaceEmojis[spaceNumber] = trimmedEmoji
