@@ -37,6 +37,7 @@ struct SuperSpacesHUDView: View {
     private func displayModeFromString(_ string: String) -> DisplayMode {
         switch string {
         case "note": return .note
+        case "overview": return .overview  // PHASE 4
         default: return .compact
         }
     }
@@ -46,6 +47,7 @@ struct SuperSpacesHUDView: View {
         switch mode {
         case .compact: return "compact"
         case .note: return "note"
+        case .overview: return "overview"  // PHASE 4
         }
     }
     
@@ -59,6 +61,7 @@ struct SuperSpacesHUDView: View {
     enum DisplayMode {
         case compact    // Compact: Numbered buttons with emoji/name in a row
         case note       // Note mode: Persistent note editor with Space selector and inline editing
+        case overview   // Overview: Grid showing all Spaces with notes, all editable (PHASE 4)
     }
     
     /// Space whose note is currently being viewed/edited in note mode
@@ -271,6 +274,8 @@ struct SuperSpacesHUDView: View {
             compactSpacesView
         case .note:
             noteDisplayView
+        case .overview:
+            overviewDisplayView  // PHASE 4
         }
     }
     
@@ -640,6 +645,125 @@ struct SuperSpacesHUDView: View {
         }
     }
     
+    // MARK: - Overview Display Mode (Phase 4)
+    
+    /// Overview display mode: Grid showing all Spaces with their notes, all editable
+    /// Single click on any Space button switches to that Space
+    private var overviewDisplayView: some View {
+        ScrollView {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ], spacing: 12) {
+                ForEach(viewModel.allSpaces, id: \.index) { space in
+                    overviewSpaceCard(for: space)
+                }
+            }
+            .padding(12)
+        }
+    }
+    
+    /// Creates a card for each Space in overview mode
+    private func overviewSpaceCard(for space: SpaceDetector.SpaceInfo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header: Number, emoji, name, switch button
+            HStack(spacing: 8) {
+                // Number badge
+                Text("\(space.index)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        space.index == viewModel.currentSpaceNumber ?
+                            Color.accentColor : Color.secondary
+                    )
+                    .cornerRadius(6)
+                
+                // Emoji
+                if let emoji = getSpaceEmoji(space.index) {
+                    Text(emoji)
+                        .font(.system(size: 16))
+                }
+                
+                // Name
+                Text(getSpaceName(space.index) ?? "Unnamed")
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                // Switch button
+                Button(action: {
+                    viewModel.switchToSpace(space.index)
+                }) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(
+                            space.index == viewModel.currentSpaceNumber ?
+                                .accentColor : .secondary
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Switch to Space \(space.index)")
+            }
+            
+            Divider()
+            
+            // Note editor (inline, always visible)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Note")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                TextEditor(text: Binding(
+                    get: { settings.spaceNotes[space.index] ?? "" },
+                    set: { newValue in
+                        if newValue.isEmpty {
+                            settings.spaceNotes.removeValue(forKey: space.index)
+                        } else {
+                            settings.spaceNotes[space.index] = newValue
+                        }
+                    }
+                ))
+                .font(.system(size: 11))
+                .frame(height: 80)
+                .padding(6)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                )
+                
+                // Placeholder when empty
+                if (settings.spaceNotes[space.index] ?? "").isEmpty {
+                    Text("Add note...")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.top, -70)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(
+                    space.index == viewModel.currentSpaceNumber ?
+                        Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(
+                    space.index == viewModel.currentSpaceNumber ?
+                        Color.accentColor.opacity(0.3) : Color.clear,
+                    lineWidth: 2
+                )
+        )
+    }
+    
     // MARK: - Helper Methods
     
     /// Calculates minimum width based on display mode
@@ -656,6 +780,9 @@ struct SuperSpacesHUDView: View {
         case .note:
             // Wider for note editing and inline name/emoji editing
             return 480
+        case .overview:
+            // PHASE 4: Wide enough for 2-column grid
+            return 600
         }
     }
     
@@ -668,6 +795,9 @@ struct SuperSpacesHUDView: View {
         case .note:
             // Minimum height for note mode to prevent clipping
             return 360
+        case .overview:
+            // PHASE 4: Minimum for grid view
+            return 400
         }
     }
     
@@ -681,6 +811,14 @@ struct SuperSpacesHUDView: View {
             // Taller to accommodate Space selector + name/emoji editor + note
             // Added extra padding to prevent any clipping
             return isEditingSpaceName ? 420 : 400
+        case .overview:
+            // PHASE 4: Dynamic height based on number of Spaces
+            // Each card is ~150pt tall, 2 columns, plus padding
+            let rows = CGFloat((viewModel.allSpaces.count + 1) / 2)
+            let cardHeight: CGFloat = 150
+            let spacing: CGFloat = 12
+            let padding: CGFloat = 24
+            return min(rows * cardHeight + (rows - 1) * spacing + padding, 550)
         }
     }
     
@@ -829,12 +967,14 @@ struct SuperSpacesHUDView: View {
         editingSpaceEmoji = ""
     }
     
-    /// Cycles through display modes (only 2 modes now)
+    /// Cycles through display modes (PHASE 4: Now 3 modes)
     private func cycleDisplayMode() {
         switch displayMode {
         case .compact:
             displayMode = .note
         case .note:
+            displayMode = .overview
+        case .overview:
             displayMode = .compact
         }
     }
@@ -845,6 +985,8 @@ struct SuperSpacesHUDView: View {
         case .compact:
             return "note.text"
         case .note:
+            return "square.grid.2x2"
+        case .overview:
             return "list.bullet"
         }
     }
@@ -855,6 +997,8 @@ struct SuperSpacesHUDView: View {
         case .compact:
             return "Note Mode"
         case .note:
+            return "Overview Mode"
+        case .overview:
             return "Compact Mode"
         }
     }

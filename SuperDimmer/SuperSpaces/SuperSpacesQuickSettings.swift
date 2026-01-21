@@ -63,7 +63,7 @@ struct SuperSpacesQuickSettings: View {
             
             Divider()
             
-            // Display Mode Picker
+            // Display Mode Picker (PHASE 4: Added Overview)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Display Mode")
                     .font(.system(size: 11))
@@ -72,6 +72,7 @@ struct SuperSpacesQuickSettings: View {
                 Picker("", selection: $settings.superSpacesDisplayMode) {
                     Text("Compact").tag("compact")
                     Text("Note").tag("note")
+                    Text("Overview").tag("overview")
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
