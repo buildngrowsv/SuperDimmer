@@ -83,9 +83,12 @@ struct SuperSpacesHUDView: View {
     /// Show quick settings popover
     @State private var showQuickSettings = false
     
-    /// Show emoji picker popover
+    /// Show emoji picker popover (for context menu)
     @State private var showEmojiPicker = false
     @State private var emojiPickerForSpace: Int?
+    
+    /// Show inline emoji picker (for note mode editing) - PHASE 3.1
+    @State private var showInlineEmojiPicker = false
     
     // MARK: - Body
     
@@ -151,7 +154,7 @@ struct SuperSpacesHUDView: View {
             // Recalculate button width when Spaces change (PHASE 2.1)
             updateButtonWidth()
         }
-        // Emoji picker popover
+        // Emoji picker popover (context menu)
         .popover(
             isPresented: $showEmojiPicker,
             arrowEdge: .bottom
@@ -176,6 +179,31 @@ struct SuperSpacesHUDView: View {
                             settings.spaceEmojis.removeValue(forKey: spaceNumber)
                         }
                         showEmojiPicker = false
+                    }
+                )
+            }
+        }
+        // Inline emoji picker popover (PHASE 3.1: Note mode editing)
+        .popover(
+            isPresented: $showInlineEmojiPicker,
+            arrowEdge: .bottom
+        ) {
+            if let spaceNumber = selectedNoteSpace {
+                SuperSpacesEmojiPicker(
+                    spaceNumber: spaceNumber,
+                    selectedEmoji: Binding(
+                        get: { editingSpaceEmoji.isEmpty ? nil : editingSpaceEmoji },
+                        set: { newEmoji in
+                            editingSpaceEmoji = newEmoji ?? ""
+                        }
+                    ),
+                    onEmojiSelected: { emoji in
+                        editingSpaceEmoji = emoji ?? ""
+                        showInlineEmojiPicker = false
+                        // Auto-focus name field after emoji selection
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isNameFieldFocused = true
+                        }
                     }
                 )
             }
@@ -329,21 +357,33 @@ struct SuperSpacesHUDView: View {
                     
                     if isEditingSpaceName {
                         // Editing mode with character counter
+                        // PHASE 3.1: Emoji button instead of text field
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 8) {
-                                // Emoji field
-                                TextField("Emoji", text: $editingSpaceEmoji)
-                                    .font(.system(size: 20))
+                                // Emoji button (PHASE 3.1: Visual picker instead of text field)
+                                Button(action: {
+                                    showInlineEmojiPicker = true
+                                }) {
+                                    HStack {
+                                        if editingSpaceEmoji.isEmpty {
+                                            Image(systemName: "face.smiling")
+                                                .font(.system(size: 18))
+                                                .foregroundColor(.secondary)
+                                        } else {
+                                            Text(editingSpaceEmoji)
+                                                .font(.system(size: 20))
+                                        }
+                                    }
                                     .frame(width: 50, height: 36)
-                                    .multilineTextAlignment(.center)
-                                    .textFieldStyle(.plain)
                                     .background(Color(NSColor.textBackgroundColor))
                                     .cornerRadius(6)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.accentColor, lineWidth: 2)
+                                            .stroke(showInlineEmojiPicker ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 2)
                                     )
-                                    .focused($isEmojiFieldFocused)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Click to choose emoji")
                                 
                                 // Name field
                                 TextField("Space Name", text: $editingSpaceNameText)
