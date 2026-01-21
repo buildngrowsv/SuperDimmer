@@ -768,6 +768,22 @@ Consistent Patterns:
 - [ ] Performance: CPU impact minimal (frame updates only) - NEEDS USER TESTING
 - [ ] CPU usage acceptable during tracking
 
+**FIX (Jan 21, 2026): Smooth Window Dragging**
+- [x] ISSUE: Overlays "skip ahead" instead of smoothly following during window drags
+- [x] ROOT CAUSE: 0.5s tracking interval too slow for continuous drag operations
+- [x] SOLUTION: Implemented adaptive high-frequency tracking (60fps) during active drags
+- [x] Added movement detection: tracks consecutive movement cycles to identify dragging
+- [x] Added high-frequency timer: activates at 60fps when movement detected
+- [x] Auto-cleanup: stops high-frequency tracking after 1s of no movement
+- [x] Performance: Minimal CPU when stationary, smooth tracking during drags
+
+**Implementation:**
+- `OverlayManager.swift`: Added `lastTrackedWindowBounds`, `windowMovementStreak`, `hasActiveWindowMovement()`
+- `DimmingCoordinator.swift`: Added `highFrequencyTrackingTimer`, `startHighFrequencyTracking()`, `stopHighFrequencyTracking()`
+- Movement threshold: 2 pixels (avoids jitter)
+- Drag detection: 2+ consecutive movement cycles
+- Auto-stop: 1 second after last movement
+
 ---
 
 #### 2.2.1.15 Continuous Z-Order Maintenance

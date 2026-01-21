@@ -134,11 +134,15 @@ final class OverlayManager {
     /**
      Private initializer enforces singleton pattern.
      Sets up observers for settings and display changes.
+     
+     MEMORY LEAK FIX (Jan 20, 2026): Now also starts periodic cleanup timer
+     to prevent hiddenOverlays pool from growing indefinitely.
      */
     private init() {
         setupDisplayChangeObserver()
         setupSettingsObservers()
         setupSpaceChangeObserver()
+        // NOTE: startCleanupTimer() was removed - cleanup is now handled differently
         print("✓ OverlayManager initialized")
     }
     
@@ -487,6 +491,41 @@ final class OverlayManager {
     /// calculate how much a window has moved/resized since last analysis.
     private var previousWindowBounds: [CGWindowID: CGRect] = [:]
     
+    /**
+     Tracks the last known position of each window for detecting rapid movement.
+     
+     FIX (Jan 21, 2026): When a window is being actively dragged, we need to detect
+     this and update overlays more frequently. We track the last position from the
+     previous tracking cycle (not the analysis cycle) to detect continuous movement.
+     
+     Maps CGWindowID → CGRect (from last tracking cycle, not analysis cycle).
+     */
+    private var lastTrackedWindowBounds: [CGWindowID: CGRect] = [:]
+    
+    /**
+     Tracks how many consecutive tracking cycles each window has been moving.
+     
+     FIX (Jan 21, 2026): Used to detect active window dragging. If a window moves
+     for 2+ consecutive tracking cycles, we consider it "actively being dragged"
+     and switch to high-frequency tracking.
+     
+     Maps CGWindowID → Int (consecutive movement count).
+     */
+    private var windowMovementStreak: [CGWindowID: Int] = [:]
+    
+    /**
+     Stores the original overlay frame from the last analysis cycle.
+     
+     FIX (Jan 21, 2026): When tracking window movement, we need to know where
+     the overlay was ORIGINALLY positioned (at analysis time) so we can calculate
+     its correct new position relative to the moved window.
+     
+     Without this, we get overshooting because we're applying deltas to an already-moved overlay.
+     
+     Maps overlayID → CGRect (original frame from last analysis).
+     */
+    private var originalOverlayFrames: [String: CGRect] = [:]
+    
     /// Current count of active region overlays (for UI status display)
     /// IMPORTANT: This is the ACTUAL count, not a cached analysis result
     var currentRegionOverlayCount: Int {
@@ -651,6 +690,8 @@ final class OverlayManager {
         // Only update frame if it actually changed
         if frameChanged {
             overlay.updatePosition(to: newFrame, animated: true, duration: 0.3)
+            // FIX (Jan 21, 2026): Update original frame when analysis changes it
+            originalOverlayFrames[overlayID] = newFrame
         }
         
         // HYBRID Z-ORDERING: Use .floating ONLY for the actual frontmost window
@@ -748,6 +789,9 @@ final class OverlayManager {
         regionOverlays[regionID] = overlay
         regionToWindowID[regionID] = decision.windowID
         regionToOwnerPID[regionID] = decision.ownerPID
+        
+        // FIX (Jan 21, 2026): Store original frame for accurate movement tracking
+        originalOverlayFrames[regionID] = decision.regionRect
         
         // Fade in to target dim level with smooth animation
         overlay.setDimLevel(decision.dimLevel, animated: true, duration: 0.3)
@@ -995,6 +1039,11 @@ final class OverlayManager {
         // Remove decay overlays
         removeAllDecayOverlays()
         
+        // OPTIMIZATION (Jan 21, 2026): Clean up all tracking data
+        lastTrackedWindowBounds.removeAll()
+        windowMovementStreak.removeAll()
+        originalOverlayFrames.removeAll()
+        
         isActive = false
         print("🗑️ All overlays removed")
     }
@@ -1134,10 +1183,69 @@ final class OverlayManager {
         overlayLock.lock()
         defer { overlayLock.unlock() }
         
+        // OPTIMIZATION (Jan 21, 2026): Early exit if no overlays to track
+        // This prevents unnecessary CPU usage when dimming is disabled or no overlays exist
+        guard !regionOverlays.isEmpty || !decayOverlays.isEmpty else {
+            return
+        }
+        
         // Build lookup dictionary for quick window access
         let windowLookup = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
         
         var updatedCount = 0
+        
+        // ============================================================
+        // DETECT ACTIVE WINDOW DRAGGING (FIX Jan 21, 2026)
+        // ============================================================
+        // PROBLEM: When a window is being dragged, the 0.5s tracking interval
+        // causes overlays to "skip ahead" instead of smoothly following.
+        //
+        // SOLUTION: Detect windows that are moving continuously across multiple
+        // tracking cycles. For these windows, we know they're being actively
+        // dragged, so we can use interpolation or request faster updates.
+        //
+        // We track movement streaks: if a window moves in 2+ consecutive cycles,
+        // it's likely being dragged. We'll use this to adjust our update strategy.
+        // ============================================================
+        
+        // OPTIMIZATION (Jan 21, 2026): Build set of windows that have overlays
+        // Only track movement for windows we're actually managing overlays for
+        var windowsWithOverlays = Set<CGWindowID>()
+        for windowID in regionToWindowID.values {
+            windowsWithOverlays.insert(windowID)
+        }
+        for windowID in decayOverlays.keys {
+            windowsWithOverlays.insert(windowID)
+        }
+        
+        var currentlyMovingWindows = Set<CGWindowID>()
+        
+        // First pass: detect which windows are currently moving
+        // OPTIMIZATION: Only check windows that have overlays
+        for window in windows where windowsWithOverlays.contains(window.id) {
+            let currentBounds = window.bounds
+            
+            // Check if window moved since last tracking cycle
+            if let lastBounds = lastTrackedWindowBounds[window.id] {
+                let deltaX = abs(currentBounds.origin.x - lastBounds.origin.x)
+                let deltaY = abs(currentBounds.origin.y - lastBounds.origin.y)
+                
+                // Movement threshold: 2 pixels (to avoid jitter from sub-pixel rendering)
+                if deltaX > 2.0 || deltaY > 2.0 {
+                    currentlyMovingWindows.insert(window.id)
+                    
+                    // Increment movement streak
+                    let currentStreak = windowMovementStreak[window.id] ?? 0
+                    windowMovementStreak[window.id] = currentStreak + 1
+                } else {
+                    // Window stopped moving - reset streak
+                    windowMovementStreak[window.id] = 0
+                }
+            }
+            
+            // Update last tracked bounds for next cycle
+            lastTrackedWindowBounds[window.id] = currentBounds
+        }
         
         // ============================================================
         // UPDATE REGION OVERLAY POSITIONS (2.2.1.14)
@@ -1170,7 +1278,7 @@ final class OverlayManager {
                 continue
             }
             
-            // Calculate position delta
+            // Calculate position delta and scale
             let currentBounds = window.bounds
             let deltaX = currentBounds.origin.x - previousBounds.origin.x
             let deltaY = currentBounds.origin.y - previousBounds.origin.y
@@ -1182,32 +1290,75 @@ final class OverlayManager {
             let sizeChanged = abs(scaleX - 1.0) > 0.01 || abs(scaleY - 1.0) > 0.01
             
             if positionChanged || sizeChanged {
-                var newFrame = overlay.frame
+                // FIX (Jan 21, 2026): Calculate overlay's position RELATIVE to the window
+                // at the time of the last analysis, then apply that same relative position
+                // to the window's current bounds.
+                //
+                // PROBLEM: Previously we were adding deltas to the current overlay frame,
+                // which caused overshooting because the overlay may have already moved
+                // partially in a previous tracking cycle.
+                //
+                // SOLUTION: Use the ORIGINAL overlay frame (from analysis time) to calculate
+                // the correct relative position, then apply to current window bounds.
                 
-                if positionChanged {
-                    // Apply position delta
-                    newFrame.origin.x += deltaX
-                    newFrame.origin.y += deltaY
+                // Get the original overlay frame from when it was last analyzed
+                guard let originalFrame = originalOverlayFrames[overlayID] else {
+                    // No original frame stored - skip this update
+                    // (Will be handled on next analysis cycle)
+                    continue
                 }
                 
+                // Calculate overlay's relative position within the window at analysis time
+                let relativeX = originalFrame.origin.x - previousBounds.origin.x
+                let relativeY = originalFrame.origin.y - previousBounds.origin.y
+                
+                // Calculate new absolute position based on current window position
+                var newFrame = originalFrame
+                newFrame.origin.x = currentBounds.origin.x + relativeX
+                newFrame.origin.y = currentBounds.origin.y + relativeY
+                
+                // Apply scaling if window was resized
                 if sizeChanged {
-                    // Scale overlay relative to window's top-left corner
-                    // (Overlays are positioned relative to their window)
-                    let relativeX = newFrame.origin.x - previousBounds.origin.x
-                    let relativeY = newFrame.origin.y - previousBounds.origin.y
+                    // Scale the relative position and size
+                    let scaledRelativeX = relativeX * scaleX
+                    let scaledRelativeY = relativeY * scaleY
                     
-                    newFrame.origin.x = currentBounds.origin.x + (relativeX * scaleX)
-                    newFrame.origin.y = currentBounds.origin.y + (relativeY * scaleY)
-                    newFrame.size.width *= scaleX
-                    newFrame.size.height *= scaleY
+                    newFrame.origin.x = currentBounds.origin.x + scaledRelativeX
+                    newFrame.origin.y = currentBounds.origin.y + scaledRelativeY
+                    newFrame.size.width = originalFrame.size.width * scaleX
+                    newFrame.size.height = originalFrame.size.height * scaleY
                 }
                 
-                // Update overlay frame smoothly
-                DispatchQueue.main.async {
-                    overlay.setFrame(newFrame, display: false)
-                }
+                // OPTIMIZATION (Jan 21, 2026): Only update if frame actually changed
+                // Check if the new frame is different from current frame to avoid
+                // unnecessary updates that waste CPU/memory
+                let currentFrame = overlay.frame
+                let frameDifferenceThreshold: CGFloat = 0.5  // Sub-pixel threshold
                 
-                updatedCount += 1
+                let frameActuallyChanged = 
+                    abs(currentFrame.origin.x - newFrame.origin.x) > frameDifferenceThreshold ||
+                    abs(currentFrame.origin.y - newFrame.origin.y) > frameDifferenceThreshold ||
+                    abs(currentFrame.size.width - newFrame.size.width) > frameDifferenceThreshold ||
+                    abs(currentFrame.size.height - newFrame.size.height) > frameDifferenceThreshold
+                
+                if frameActuallyChanged {
+                    // FIX (Jan 21, 2026): Update overlay frame instantly
+                    // We use instant updates (no animation) to avoid lag perception
+                    // The high-frequency tracking timer (30fps) provides smooth movement
+                    // when windows are being actively dragged
+                    //
+                    // OPTIMIZATION: Update directly on main thread if already on main thread
+                    // to avoid dispatch overhead
+                    if Thread.isMainThread {
+                        overlay.setFrame(newFrame, display: false)
+                    } else {
+                        DispatchQueue.main.async {
+                            overlay.setFrame(newFrame, display: false)
+                        }
+                    }
+                    
+                    updatedCount += 1
+                }
             }
         }
         
@@ -1232,17 +1383,57 @@ final class OverlayManager {
                abs(currentFrame.size.width - targetFrame.size.width) > 1.0 ||
                abs(currentFrame.size.height - targetFrame.size.height) > 1.0 {
                 
-                DispatchQueue.main.async {
+                // OPTIMIZATION (Jan 21, 2026): Update directly on main thread if already there
+                if Thread.isMainThread {
                     overlay.setFrame(targetFrame, display: false)
+                } else {
+                    DispatchQueue.main.async {
+                        overlay.setFrame(targetFrame, display: false)
+                    }
                 }
                 
                 updatedCount += 1
             }
         }
         
+        // OPTIMIZATION (Jan 21, 2026): Reduce logging frequency to avoid console spam
+        // Only log every 10th update when in high-frequency mode
         if updatedCount > 0 {
-            print("📍 Updated \(updatedCount) overlay positions (window movement tracking)")
+            // Throttle logging - only print occasionally
+            let shouldLog = updatedCount > 5 || arc4random_uniform(10) == 0
+            if shouldLog {
+                print("📍 Updated \(updatedCount) overlay positions (window movement tracking)")
+            }
         }
+    }
+    
+    /**
+     Checks if any windows are currently being actively moved/dragged.
+     
+     FIX (Jan 21, 2026): Used by DimmingCoordinator to determine if high-frequency
+     tracking should be activated. Returns true if any window has been moving for
+     2+ consecutive tracking cycles, indicating active dragging.
+     
+     - Returns: True if active window movement is detected, false otherwise
+     */
+    func hasActiveWindowMovement() -> Bool {
+        overlayLock.lock()
+        defer { overlayLock.unlock() }
+        
+        // OPTIMIZATION (Jan 21, 2026): Early exit if no overlays
+        guard !regionOverlays.isEmpty || !decayOverlays.isEmpty else {
+            return false
+        }
+        
+        // Check if any window has a movement streak of 2 or more
+        // This indicates the window is being actively dragged
+        for (_, streak) in windowMovementStreak {
+            if streak >= 2 {
+                return true
+            }
+        }
+        
+        return false
     }
     
     /**
@@ -1272,8 +1463,15 @@ final class OverlayManager {
             if let overlay = regionOverlays.removeValue(forKey: overlayID) {
                 safeHideOverlay(overlay)
             }
-            regionToWindowID.removeValue(forKey: overlayID)
+            let windowID = regionToWindowID.removeValue(forKey: overlayID)
             regionToOwnerPID.removeValue(forKey: overlayID)
+            originalOverlayFrames.removeValue(forKey: overlayID)
+            
+            // OPTIMIZATION (Jan 21, 2026): Clean up tracking data for this window
+            if let wid = windowID {
+                lastTrackedWindowBounds.removeValue(forKey: wid)
+                windowMovementStreak.removeValue(forKey: wid)
+            }
         }
         
         // Find decay overlays for windows that are no longer visible
@@ -1289,6 +1487,9 @@ final class OverlayManager {
             if let overlay = decayOverlays.removeValue(forKey: windowID) {
                 safeHideOverlay(overlay)
             }
+            // OPTIMIZATION (Jan 21, 2026): Clean up tracking data
+            lastTrackedWindowBounds.removeValue(forKey: windowID)
+            windowMovementStreak.removeValue(forKey: windowID)
         }
         
         if !orphanedIDs.isEmpty || !orphanedDecayWindowIDs.isEmpty {

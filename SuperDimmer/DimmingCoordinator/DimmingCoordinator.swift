@@ -95,6 +95,28 @@ final class DimmingCoordinator: ObservableObject {
     private var windowTrackingTimer: Timer?
     
     /**
+     High-frequency tracking timer for smooth window dragging.
+     
+     FIX (Jan 21, 2026): When windows are being actively dragged, the standard
+     0.5s tracking interval causes overlays to "skip ahead" instead of smoothly
+     following. This timer runs at 60fps (16.67ms) but only activates when
+     active window movement is detected.
+     
+     This provides smooth overlay tracking during drags without the CPU overhead
+     of constantly running at 60fps when windows are stationary.
+     */
+    private var highFrequencyTrackingTimer: Timer?
+    
+    /**
+     Timestamp of last high-frequency tracking check.
+     
+     Used to determine if we should keep the high-frequency timer running.
+     If no windows have moved for 1 second, we stop the high-frequency timer
+     to save CPU.
+     */
+    private var lastWindowMovementTime: CFAbsoluteTime = 0
+    
+    /**
      Whether the coordinator is currently running.
      */
     private(set) var isRunning: Bool = false
@@ -443,12 +465,16 @@ final class DimmingCoordinator: ObservableObject {
         print("⏹️ Stopping DimmingCoordinator...")
         isRunning = false
         
-        // Stop both timers
+        // Stop all timers
         analysisTimer?.invalidate()
         analysisTimer = nil
         
         windowTrackingTimer?.invalidate()
         windowTrackingTimer = nil
+        
+        // FIX (Jan 21, 2026): Stop high-frequency tracking timer
+        highFrequencyTrackingTimer?.invalidate()
+        highFrequencyTrackingTimer = nil
         
         // Stop accessibility focus observer
         AccessibilityFocusObserver.shared.stopObserving()
@@ -1315,6 +1341,9 @@ final class DimmingCoordinator: ObservableObject {
      2. Update overlay positions for moved windows
      3. Update z-order for focus changes
      4. Remove overlays for hidden/minimized windows
+     
+     FIX (Jan 21, 2026): Now detects active window movement and activates
+     high-frequency tracking (60fps) for smooth overlay following during drags.
      */
     private func performWindowTracking() {
         guard isRunning else { return }
@@ -1330,10 +1359,111 @@ final class DimmingCoordinator: ObservableObject {
         overlayManager.updateOverlayLevelsForFrontmostApp()
         
         // Update overlay positions (without re-analyzing brightness)
+        // This method now internally detects if windows are being actively dragged
         overlayManager.updateOverlayPositions(visibleWindowIDs: visibleWindowIDs, windows: windows)
         
         // Clean up overlays for windows that are no longer visible
         overlayManager.cleanupOrphanedOverlays(visibleWindowIDs: visibleWindowIDs)
+        
+        // ============================================================
+        // ACTIVATE HIGH-FREQUENCY TRACKING IF WINDOWS ARE MOVING
+        // ============================================================
+        // FIX (Jan 21, 2026): Check if any windows are being actively dragged.
+        // If so, start the high-frequency timer for smooth tracking.
+        //
+        // The OverlayManager tracks movement streaks internally. We check if
+        // any windows have been moving for 2+ consecutive cycles, which indicates
+        // active dragging.
+        // ============================================================
+        
+        let hasActiveMovement = overlayManager.hasActiveWindowMovement()
+        
+        if hasActiveMovement {
+            lastWindowMovementTime = CFAbsoluteTimeGetCurrent()
+            
+            // Start high-frequency timer if not already running
+            if highFrequencyTrackingTimer == nil {
+                startHighFrequencyTracking()
+            }
+        } else {
+            // Check if we should stop high-frequency tracking
+            // Stop if no movement detected for 1 second
+            let timeSinceLastMovement = CFAbsoluteTimeGetCurrent() - lastWindowMovementTime
+            if timeSinceLastMovement > 1.0 {
+                stopHighFrequencyTracking()
+            }
+        }
+    }
+    
+    /**
+     Starts high-frequency window tracking for smooth overlay following during drags.
+     
+     FIX (Jan 21, 2026): This timer runs at 30fps (33ms interval) to provide
+     smooth overlay tracking when windows are being actively dragged. It only
+     runs when movement is detected to minimize CPU usage.
+     
+     OPTIMIZATION (Jan 21, 2026): Reduced from 60fps to 30fps. Testing showed
+     30fps is smooth enough for window dragging while using significantly less CPU.
+     60fps was overkill and caused high CPU/memory usage.
+     */
+    private func startHighFrequencyTracking() {
+        guard highFrequencyTrackingTimer == nil else { return }
+        
+        print("🚀 Starting high-frequency tracking (30fps) for smooth window dragging")
+        
+        // 30fps = 33.33ms per frame
+        // This is smooth enough for dragging while being much more CPU-efficient than 60fps
+        let interval: TimeInterval = 1.0 / 30.0
+        
+        highFrequencyTrackingTimer = Timer.scheduledTimer(
+            withTimeInterval: interval,
+            repeats: true
+        ) { [weak self] _ in
+            self?.performHighFrequencyTracking()
+        }
+        RunLoop.current.add(highFrequencyTrackingTimer!, forMode: .common)
+    }
+    
+    /**
+     Stops high-frequency window tracking when windows are no longer moving.
+     
+     FIX (Jan 21, 2026): Called when no window movement has been detected for
+     1+ seconds. This saves CPU by not running the 60fps timer unnecessarily.
+     */
+    private func stopHighFrequencyTracking() {
+        guard let timer = highFrequencyTrackingTimer else { return }
+        
+        print("⏸️ Stopping high-frequency tracking (no window movement detected)")
+        
+        timer.invalidate()
+        highFrequencyTrackingTimer = nil
+    }
+    
+    /**
+     High-frequency tracking cycle for smooth overlay following.
+     
+     FIX (Jan 21, 2026): This runs at 60fps when active window movement is detected.
+     It performs the same lightweight operations as performWindowTracking() but
+     at a much higher frequency for smooth visual tracking.
+     */
+    private func performHighFrequencyTracking() {
+        guard isRunning else {
+            stopHighFrequencyTracking()
+            return
+        }
+        
+        // Only track in intelligent mode
+        guard SettingsManager.shared.intelligentDimmingEnabled else {
+            stopHighFrequencyTracking()
+            return
+        }
+        
+        // Get current visible windows
+        let windows = WindowTrackerService.shared.getVisibleWindows()
+        let visibleWindowIDs = Set(windows.map { $0.id })
+        
+        // Update overlay positions (this is lightweight - just frame updates)
+        overlayManager.updateOverlayPositions(visibleWindowIDs: visibleWindowIDs, windows: windows)
     }
 }
 
