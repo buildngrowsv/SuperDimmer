@@ -434,6 +434,8 @@ final class SettingsManager: ObservableObject {
         case superSpacesDisplayMode = "superdimmer.superSpacesDisplayMode"
         case superSpacesAutoHide = "superdimmer.superSpacesAutoHide"
         case superSpacesPosition = "superdimmer.superSpacesPosition"
+        case lastHUDPositionX = "superdimmer.lastHUDPositionX"
+        case lastHUDPositionY = "superdimmer.lastHUDPositionY"
         
         // Appearance Mode System (2.2.1.1)
         case appearanceMode = "superdimmer.comearanceMode"
@@ -1562,6 +1564,38 @@ final class SettingsManager: ObservableObject {
         }
     }
     
+    /**
+     Last known position of Super Spaces HUD window.
+     
+     FEATURE: Phase 1.1 - Position Persistence
+     
+     Stores the window's origin (top-left corner) as CGPoint.
+     When HUD is reopened, it appears at this position if valid.
+     
+     PERSISTENCE:
+     - X and Y stored separately in UserDefaults
+     - Position validated on load (must be on-screen)
+     - If invalid (e.g., monitor disconnected), falls back to default
+     
+     BEHAVIOR:
+     - Saved when window moves (debounced to avoid excessive writes)
+     - Restored when HUD opens
+     - Validated against current screen configuration
+     
+     DEFAULT: nil (use default position on first launch)
+     */
+    @Published var lastHUDPosition: CGPoint? {
+        didSet {
+            if let position = lastHUDPosition {
+                defaults.set(Double(position.x), forKey: Keys.lastHUDPositionX.rawValue)
+                defaults.set(Double(position.y), forKey: Keys.lastHUDPositionY.rawValue)
+            } else {
+                defaults.removeObject(forKey: Keys.lastHUDPositionX.rawValue)
+                defaults.removeObject(forKey: Keys.lastHUDPositionY.rawValue)
+            }
+        }
+    }
+    
     // ================================================================
     // MARK: - Appearance Mode System (2.2.1.1)
     // ================================================================
@@ -1908,6 +1942,14 @@ final class SettingsManager: ObservableObject {
         self.superSpacesDisplayMode = defaults.string(forKey: Keys.superSpacesDisplayMode.rawValue) ?? "compact"
         self.superSpacesAutoHide = defaults.bool(forKey: Keys.superSpacesAutoHide.rawValue)
         self.superSpacesPosition = defaults.string(forKey: Keys.superSpacesPosition.rawValue) ?? "topRight"
+        
+        // Load last HUD position
+        if let x = defaults.object(forKey: Keys.lastHUDPositionX.rawValue) as? Double,
+           let y = defaults.object(forKey: Keys.lastHUDPositionY.rawValue) as? Double {
+            self.lastHUDPosition = CGPoint(x: x, y: y)
+        } else {
+            self.lastHUDPosition = nil
+        }
         
         // ============================================================
         // Load Appearance Mode System (2.2.1.1)
@@ -2287,6 +2329,101 @@ final class SettingsManager: ObservableObject {
      IMPORTANT: This does NOT clear isFirstLaunch intentionally, so users
      won't see the onboarding flow again after reset.
      */
+    // ================================================================
+    // MARK: - Super Spaces Helper Methods
+    // ================================================================
+    
+    /**
+     Default emoji set for Spaces 1-16.
+     
+     FEATURE: Phase 2.3 - Default Space Emojis
+     
+     Chosen to represent common desktop use cases:
+     - Work/productivity (💻, 📧, 📝, 📊)
+     - Creative/media (🎨, 🎵, 🎬)
+     - Communication (💬, 📱)
+     - Learning/research (📚, 🔬)
+     - Entertainment (🎮, 🌐)
+     - Organization (🛠️, 🏠, 🌟)
+     */
+    private let defaultSpaceEmojis = [
+        "💻", // 1: Work/Computer
+        "🌐", // 2: Web/Internet
+        "📧", // 3: Email/Communication
+        "🎨", // 4: Design/Creative
+        "🎵", // 5: Music/Media
+        "💬", // 6: Chat/Social
+        "📊", // 7: Data/Analytics
+        "📝", // 8: Notes/Writing
+        "🎮", // 9: Gaming
+        "📚", // 10: Reading/Learning
+        "🏠", // 11: Personal/Home
+        "🛠️", // 12: Tools/Utilities
+        "📱", // 13: Mobile/Apps
+        "🎬", // 14: Video/Entertainment
+        "🔬", // 15: Research/Science
+        "🌟"  // 16: Misc/Other
+    ]
+    
+    /**
+     Maximum character length for Space names.
+     
+     FEATURE: Phase 2.2 - Character Limit
+     
+     RATIONALE:
+     - Long enough for descriptive names ("Development & Testing")
+     - Short enough to fit in buttons without excessive width
+     - Prevents UI layout issues
+     - Default names ("Desktop 1") are well within limit
+     */
+    let maxSpaceNameLength = 30
+    
+    /**
+     Generates default name for a Space.
+     
+     FEATURE: Phase 2.2 - Default Space Names
+     
+     Returns "Desktop 1", "Desktop 2", etc.
+     These are generated on-the-fly and not stored in UserDefaults.
+     */
+    func generateDefaultSpaceName(for spaceNumber: Int) -> String {
+        return "Desktop \(spaceNumber)"
+    }
+    
+    /**
+     Gets default emoji for a Space (1-16).
+     
+     FEATURE: Phase 2.3 - Default Space Emojis
+     
+     Returns emoji from preset array if valid index.
+     Returns nil for Spaces > 16 (or could cycle through array).
+     */
+    func getDefaultEmoji(for spaceNumber: Int) -> String? {
+        guard spaceNumber >= 1 && spaceNumber <= defaultSpaceEmojis.count else {
+            return nil
+        }
+        return defaultSpaceEmojis[spaceNumber - 1]  // Convert 1-based to 0-based index
+    }
+    
+    /**
+     Validates and truncates Space name to character limit.
+     
+     FEATURE: Phase 2.2 - Character Limit
+     
+     Ensures name doesn't exceed maxSpaceNameLength.
+     Returns truncated string if necessary.
+     */
+    func validateSpaceName(_ name: String) -> String {
+        if name.count > maxSpaceNameLength {
+            return String(name.prefix(maxSpaceNameLength))
+        }
+        return name
+    }
+    
+    // ================================================================
+    // MARK: - Reset Settings
+    // ================================================================
+    
     func resetToDefaults() {
         // ============================================================
         // General Settings
@@ -2396,6 +2533,7 @@ final class SettingsManager: ObservableObject {
         superSpacesDisplayMode = "compact"
         superSpacesAutoHide = false
         superSpacesPosition = "topRight"
+        lastHUDPosition = nil  // Reset position
         
         print("✓ Settings reset to defaults (2.2.1.7)")
         print("   Super Dimming: ON with Auto mode")
