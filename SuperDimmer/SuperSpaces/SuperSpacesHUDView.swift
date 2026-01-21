@@ -71,8 +71,8 @@ struct SuperSpacesHUDView: View {
             .padding(16)
         }
         .frame(
-            width: displayMode == .expanded ? 400 : 300,
-            height: displayMode == .expanded ? 400 : 120
+            width: calculateWidth(),
+            height: calculateHeight()
         )
         .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: displayMode)
@@ -266,6 +266,39 @@ struct SuperSpacesHUDView: View {
     }
     
     // MARK: - Helper Methods
+    
+    /// Calculates appropriate width based on display mode and number of Spaces
+    private func calculateWidth() -> CGFloat {
+        switch displayMode {
+        case .mini:
+            return 200
+        case .compact:
+            // Each Space button is ~40pt wide, add padding
+            let buttonWidth: CGFloat = 40
+            let spacing: CGFloat = 8
+            let padding: CGFloat = 32
+            let spaceCount = CGFloat(viewModel.allSpaces.count)
+            return min(max(spaceCount * buttonWidth + (spaceCount - 1) * spacing + padding, 300), 600)
+        case .expanded:
+            return 400
+        }
+    }
+    
+    /// Calculates appropriate height based on display mode
+    private func calculateHeight() -> CGFloat {
+        switch displayMode {
+        case .mini:
+            return 100
+        case .compact:
+            return 140
+        case .expanded:
+            // Calculate rows needed for grid (3 columns)
+            let rows = ceil(Double(viewModel.allSpaces.count) / 3.0)
+            let rowHeight: CGFloat = 82
+            let baseHeight: CGFloat = 180
+            return baseHeight + CGFloat(rows) * rowHeight
+        }
+    }
     
     /// Gets custom name for a Space
     private func getSpaceName(_ spaceNumber: Int) -> String? {

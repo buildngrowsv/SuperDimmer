@@ -124,11 +124,22 @@ final class SpaceChangeMonitor {
         
         // Start polling timer as fallback
         // Catches changes if notification is missed or delayed
-        pollingTimer = Timer.scheduledTimer(
-            withTimeInterval: 0.5,
-            repeats: true
-        ) { [weak self] _ in
-            self?.checkForSpaceChange()
+        // CRITICAL: Timer must be on main thread's RunLoop to fire
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.pollingTimer = Timer.scheduledTimer(
+                withTimeInterval: 0.5,
+                repeats: true
+            ) { [weak self] _ in
+                self?.checkForSpaceChange()
+            }
+            
+            // Ensure timer is added to RunLoop
+            if let timer = self.pollingTimer {
+                RunLoop.main.add(timer, forMode: .common)
+                print("✓ SpaceChangeMonitor: Polling timer scheduled on main RunLoop")
+            }
         }
         
         print("✓ SpaceChangeMonitor: Started monitoring")
@@ -177,8 +188,6 @@ final class SpaceChangeMonitor {
     ///
     /// @objc required for #selector
     @objc private func handleWorkspaceSpaceChange(_ notification: Notification) {
-        print("→ SpaceChangeMonitor: NSWorkspace notification received")
-        
         // Debounce to prevent rapid-fire notifications
         debounceTimer?.invalidate()
         debounceTimer = Timer.scheduledTimer(

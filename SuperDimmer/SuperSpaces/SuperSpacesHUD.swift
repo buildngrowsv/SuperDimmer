@@ -189,15 +189,12 @@ final class SuperSpacesHUD: NSPanel {
         if let currentSpace = SpaceDetector.getCurrentSpace() {
             viewModel.currentSpaceNumber = currentSpace.spaceNumber
         }
-        
-        print("✓ SuperSpacesHUD: Refreshed - \(viewModel.allSpaces.count) Spaces, current: \(viewModel.currentSpaceNumber)")
     }
     
     /// Handles Space change notification
     private func handleSpaceChange(_ spaceNumber: Int) {
         DispatchQueue.main.async { [weak self] in
             self?.viewModel.currentSpaceNumber = spaceNumber
-            print("✓ SuperSpacesHUD: Space changed to \(spaceNumber)")
         }
     }
     
@@ -220,11 +217,14 @@ final class SuperSpacesHUD: NSPanel {
         let count = abs(steps)
         
         // Build AppleScript to simulate Control+Arrow key presses
+        // NOTE: There's no public API to jump directly to a Space number
+        // We have to simulate arrow keys multiple times
+        // Using shorter delay (0.15s) for faster switching
         let script = """
         tell application "System Events"
             repeat \(count) times
                 key code \(keyCode) using {control down}
-                delay 0.3
+                delay 0.15
             end repeat
         end tell
         """

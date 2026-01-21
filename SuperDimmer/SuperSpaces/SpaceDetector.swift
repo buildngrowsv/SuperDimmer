@@ -38,8 +38,26 @@
 import Foundation
 import AppKit
 
+// MARK: - CGS Private API Declarations
+
+/// CoreGraphics Services connection type
+typealias CGSConnectionID = Int
+
+/// Get the default connection to the window server
+@_silgen_name("CGSMainConnectionID")
+func CGSMainConnectionID() -> CGSConnectionID
+
+/// Get the ID of the currently active Space
+/// Returns the ManagedSpaceID (same as in com.apple.spaces.plist)
+@_silgen_name("CGSGetActiveSpace")
+func CGSGetActiveSpace(_ cid: CGSConnectionID) -> Int
+
 /// Detects and provides information about macOS desktop Spaces (virtual desktops)
-/// by reading the com.apple.spaces.plist preference file.
+/// using CGS private APIs for real-time Space detection.
+///
+/// IMPORTANT: The plist file does NOT update in real-time when switching Spaces.
+/// We use CGSGetActiveSpace() to get the actual current Space ID, then match it
+/// with the plist data to get Space names and order.
 final class SpaceDetector {
     
     // MARK: - Types
@@ -86,65 +104,78 @@ final class SpaceDetector {
     /// Gets information about the currently active Space
     ///
     /// TECHNICAL APPROACH:
-    /// 1. Read com.apple.spaces.plist using PropertyListSerialization
-    /// 2. Navigate to SpacesDisplayConfiguration -> Management Data -> Spaces
-    /// 3. Find the Space marked as current (type 0 or specific flag)
+    /// 1. Use CGSGetActiveSpace() to get current Space's ManagedSpaceID (REAL-TIME)
+    /// 2. Read com.apple.spaces.plist to get Space UUIDs and display info
+    /// 3. Match ManagedSpaceID with plist data to get Space number
     /// 4. Return Space number, UUID, and display info
     ///
-    /// PERFORMANCE:
-    /// - File read: ~1-2ms
-    /// - Parsing: ~1-2ms
-    /// - Total: ~2-4ms per call
+    /// WHY CGS API:
+    /// - The plist file does NOT update in real-time when switching Spaces
+    /// - CGS API provides instant, accurate Space ID
+    /// - Used by many shipping Mac apps (Hammerspoon, BetterTouchTool)
     ///
-    /// ERROR HANDLING:
-    /// - Returns nil if plist doesn't exist (shouldn't happen on normal macOS)
-    /// - Returns nil if plist format is unexpected (future macOS changes)
-    /// - Logs errors for debugging
+    /// PERFORMANCE:
+    /// - CGS call: <1ms
+    /// - Plist read: ~2-4ms
+    /// - Total: ~3-5ms per call
     ///
     /// - Returns: CurrentSpaceInfo if successful, nil if detection fails
     static func getCurrentSpace() -> CurrentSpaceInfo? {
+        // Get current Space ID using CGS private API (REAL-TIME)
+        let connection = CGSMainConnectionID()
+        let currentManagedSpaceID = CGSGetActiveSpace(connection)
+        
+        // Read plist to get Space metadata
         guard let plist = readSpacesPlist() else {
             print("⚠️ SpaceDetector: Failed to read spaces plist")
             return nil
         }
         
         // Navigate to the Spaces configuration
-        // Structure: SpacesDisplayConfiguration -> Management Data -> Spaces
         guard let displayConfig = plist["SpacesDisplayConfiguration"] as? [String: Any],
               let managementData = displayConfig["Management Data"] as? [String: Any],
-              let spacesData = managementData["Spaces"] as? [[String: Any]] else {
+              let monitors = managementData["Monitors"] as? [[String: Any]] else {
             print("⚠️ SpaceDetector: Unexpected plist structure")
             return nil
         }
         
-        // Find current Space
-        // The current Space is typically the first one, or marked with specific flags
-        for (index, spaceDict) in spacesData.enumerated() {
-            // Get Space UUID
-            guard let uuid = spaceDict["uuid"] as? String else { continue }
-            
-            // Get display UUID
-            guard let displayUUID = spaceDict["Display"] as? String else { continue }
-            
-            // Check if this is the current Space
-            // Current Space is usually type 0 or has a specific flag
-            let type = spaceDict["type"] as? Int ?? -1
-            
-            // For now, we'll use a simple heuristic:
-            // The first Space in the list for the main display is often current
-            // A more robust approach would check additional flags
-            
-            // TODO: Improve current Space detection logic
-            // For now, return the first Space as a starting point
-            if index == 0 {
+        // Get the first (main) monitor
+        guard let mainMonitor = monitors.first,
+              let spacesArray = mainMonitor["Spaces"] as? [[String: Any]] else {
+            print("⚠️ SpaceDetector: Could not find Spaces array")
+            return nil
+        }
+        
+        // Build array of (ManagedSpaceID, SpaceDict) tuples for sorting
+        var spacesWithIDs: [(id: Int, dict: [String: Any])] = []
+        for spaceDict in spacesArray {
+            guard let managedID = spaceDict["ManagedSpaceID"] as? Int else { continue }
+            spacesWithIDs.append((id: managedID, dict: spaceDict))
+        }
+        
+        // Sort by ManagedSpaceID to match Mission Control display order
+        spacesWithIDs.sort { $0.id < $1.id }
+        
+        // Find the current Space by matching ManagedSpaceID from CGS
+        for (index, item) in spacesWithIDs.enumerated() {
+            if item.id == currentManagedSpaceID {
+                // Found it!
+                guard let uuid = item.dict["uuid"] as? String else {
+                    print("⚠️ SpaceDetector: Space has no UUID")
+                    continue
+                }
+                
+                let displayIdentifier = mainMonitor["Display Identifier"] as? String ?? "Main"
+                
                 return CurrentSpaceInfo(
-                    spaceNumber: index + 1,
+                    spaceNumber: index + 1,  // 1-based indexing, in Mission Control order
                     spaceUUID: uuid,
-                    displayUUID: displayUUID
+                    displayUUID: displayIdentifier
                 )
             }
         }
         
+        print("⚠️ SpaceDetector: ManagedSpaceID \(currentManagedSpaceID) not found in plist")
         return nil
     }
     
@@ -178,34 +209,58 @@ final class SpaceDetector {
         // Navigate to the Spaces configuration
         guard let displayConfig = plist["SpacesDisplayConfiguration"] as? [String: Any],
               let managementData = displayConfig["Management Data"] as? [String: Any],
-              let spacesData = managementData["Spaces"] as? [[String: Any]] else {
+              let monitors = managementData["Monitors"] as? [[String: Any]] else {
             print("⚠️ SpaceDetector: Unexpected plist structure")
             return []
         }
         
+        // Get the first (main) monitor
+        guard let mainMonitor = monitors.first,
+              let spacesArray = mainMonitor["Spaces"] as? [[String: Any]] else {
+            print("⚠️ SpaceDetector: Could not find Spaces array")
+            return []
+        }
+        
+        // Get current Space UUID for comparison
+        let currentSpaceUUID = (mainMonitor["Current Space"] as? [String: Any])?["uuid"] as? String
+        let displayIdentifier = mainMonitor["Display Identifier"] as? String ?? "Main"
+        
+        // CRITICAL: The Spaces array is NOT in display order!
+        // It's in creation order. Mission Control displays them sorted by ManagedSpaceID.
+        // We must sort by ManagedSpaceID to get the correct Space numbers.
+        
+        // Build array of (ManagedSpaceID, SpaceDict) tuples for sorting
+        var spacesWithIDs: [(id: Int, dict: [String: Any])] = []
+        for spaceDict in spacesArray {
+            guard let managedID = spaceDict["ManagedSpaceID"] as? Int else { continue }
+            spacesWithIDs.append((id: managedID, dict: spaceDict))
+        }
+        
+        // Sort by ManagedSpaceID to match Mission Control display order
+        spacesWithIDs.sort { $0.id < $1.id }
+        
         var spaces: [SpaceInfo] = []
         
-        // Parse each Space
-        for (index, spaceDict) in spacesData.enumerated() {
-            guard let uuid = spaceDict["uuid"] as? String,
-                  let displayUUID = spaceDict["Display"] as? String else {
+        // Parse each Space (now in correct display order)
+        for (index, item) in spacesWithIDs.enumerated() {
+            guard let uuid = item.dict["uuid"] as? String else {
                 continue
             }
             
-            let spaceType = spaceDict["type"] as? Int ?? 0
+            let spaceType = item.dict["type"] as? Int ?? 0
+            let isCurrent = (uuid == currentSpaceUUID)
             
             let spaceInfo = SpaceInfo(
-                index: index + 1,  // 1-based indexing
+                index: index + 1,  // 1-based indexing, now in Mission Control order
                 uuid: uuid,
-                displayUUID: displayUUID,
-                isCurrent: index == 0,  // TODO: Improve detection
+                displayUUID: displayIdentifier,
+                isCurrent: isCurrent,
                 type: spaceType
             )
             
             spaces.append(spaceInfo)
         }
         
-        print("✓ SpaceDetector: Found \(spaces.count) Spaces")
         return spaces
     }
     
