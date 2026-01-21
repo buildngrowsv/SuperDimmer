@@ -36,9 +36,6 @@ struct SuperSpacesHUDView: View {
     /// Converts string to DisplayMode
     private func displayModeFromString(_ string: String) -> DisplayMode {
         switch string {
-        case "mini": return .mini
-        case "compact": return .compact
-        case "expanded": return .expanded
         case "note": return .note
         default: return .compact
         }
@@ -47,9 +44,7 @@ struct SuperSpacesHUDView: View {
     /// Converts DisplayMode to string
     private func displayModeToString(_ mode: DisplayMode) -> String {
         switch mode {
-        case .mini: return "mini"
         case .compact: return "compact"
-        case .expanded: return "expanded"
         case .note: return "note"
         }
     }
@@ -62,10 +57,8 @@ struct SuperSpacesHUDView: View {
     
     /// Display modes for the HUD
     enum DisplayMode {
-        case mini       // Minimal: Just arrows and current number
-        case compact    // Compact: Numbered buttons in a row
-        case expanded   // Expanded: Grid with Space names
-        case note       // Note mode: Persistent note editor with Space selector
+        case compact    // Compact: Numbered buttons with emoji/name in a row
+        case note       // Note mode: Persistent note editor with Space selector and inline editing
     }
     
     /// Space whose note is currently being viewed/edited in note mode
@@ -76,6 +69,13 @@ struct SuperSpacesHUDView: View {
     
     /// Timer for debounced note saving
     @State private var noteSaveTimer: Timer?
+    
+    /// Editing state for inline Space name/emoji editing
+    @State private var isEditingSpaceName = false
+    @State private var editingSpaceNameText: String = ""
+    @State private var editingSpaceEmoji: String = ""
+    @FocusState private var isNameFieldFocused: Bool
+    @FocusState private var isEmojiFieldFocused: Bool
     
     /// Show quick settings popover
     @State private var showQuickSettings = false
@@ -217,180 +217,72 @@ struct SuperSpacesHUDView: View {
     @ViewBuilder
     private var spacesView: some View {
         switch displayMode {
-        case .mini:
-            miniSpacesView
         case .compact:
             compactSpacesView
-        case .expanded:
-            expandedSpacesView
         case .note:
             noteDisplayView
         }
     }
     
-    /// Mini display mode: Just arrows and current number
-    private var miniSpacesView: some View {
-        HStack(spacing: 16) {
-            Button(action: { switchToPreviousSpace() }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .disabled(viewModel.currentSpaceNumber <= 1)
-            .help("Previous Space")
-            
-            Text("\(viewModel.currentSpaceNumber)/\(viewModel.allSpaces.count)")
-                .font(.system(size: 20, weight: .bold))
-                .frame(width: 60)
-            
-            Button(action: { switchToNextSpace() }) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .disabled(viewModel.currentSpaceNumber >= viewModel.allSpaces.count)
-            .help("Next Space")
-        }
-    }
-    
-    /// Compact display mode: Numbered buttons in a row
+    /// Compact display mode: Numbered buttons with emoji and name in a scrollable row
     private var compactSpacesView: some View {
-        HStack(spacing: 8) {
-            ForEach(viewModel.allSpaces, id: \.index) { space in
-                spaceButton(for: space, compact: true)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(viewModel.allSpaces, id: \.index) { space in
+                    compactSpaceButton(for: space)
+                }
             }
+            .padding(.horizontal, 4)
         }
     }
     
-    /// Creates a Space button (handles both modes and interactions)
-    private func spaceButton(for space: SpaceDetector.SpaceInfo, compact: Bool) -> some View {
+    /// Creates a compact Space button with number, emoji, and name
+    private func compactSpaceButton(for space: SpaceDetector.SpaceInfo) -> some View {
         Button(action: {
             handleSpaceClick(space.index)
         }) {
-            if compact {
-                // Compact mode: Number with optional emoji overlay
-                ZStack(alignment: .topTrailing) {
-                    // Main button content
-                    VStack(spacing: 2) {
-                        if let emoji = getSpaceEmoji(space.index) {
-                            Text(emoji)
-                                .font(.system(size: 14))
-                        } else {
-                            Text("\(space.index)")
-                                .font(.system(size: 14, weight: space.index == viewModel.currentSpaceNumber ? .bold : .regular))
-                        }
-                    }
-                    .frame(width: 32, height: 32)
-                    .background(
-                        space.index == viewModel.currentSpaceNumber ?
-                            Color.accentColor : Color.secondary.opacity(0.2)
-                    )
-                    .foregroundColor(
-                        space.index == viewModel.currentSpaceNumber ? .white : .primary
-                    )
-                    .cornerRadius(8)
-                    
-                    // Note indicator
-                    if hasNote(space.index) {
-                        Circle()
-                            .fill(Color.orange)
-                            .frame(width: 6, height: 6)
-                            .offset(x: 2, y: -2)
-                    }
+            HStack(spacing: 6) {
+                // Number
+                Text("\(space.index)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 20)
+                
+                // Emoji if set
+                if let emoji = getSpaceEmoji(space.index) {
+                    Text(emoji)
+                        .font(.system(size: 14))
                 }
-            } else {
-                // Expanded mode handled separately
-                EmptyView()
+                
+                // Name if set
+                if let name = getSpaceName(space.index), !name.isEmpty {
+                    Text(name)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                }
+                
+                // Note indicator
+                if hasNote(space.index) {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 4, height: 4)
+                }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                space.index == viewModel.currentSpaceNumber ?
+                    Color.accentColor : Color.secondary.opacity(0.2)
+            )
+            .foregroundColor(
+                space.index == viewModel.currentSpaceNumber ? .white : .primary
+            )
+            .cornerRadius(8)
         }
         .buttonStyle(.plain)
         .help(getSpaceTooltip(space.index))
     }
     
-    /// Expanded display mode: Grid with Space names
-    private var expandedSpacesView: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ],
-            spacing: 12
-        ) {
-            ForEach(viewModel.allSpaces, id: \.index) { space in
-                Button(action: {
-                    handleSpaceClick(space.index)
-                }) {
-                    VStack(spacing: 6) {
-                        // Emoji and Space number with current indicator
-                        HStack(spacing: 4) {
-                            if space.index == viewModel.currentSpaceNumber {
-                                Circle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 6, height: 6)
-                            }
-                            
-                            if let emoji = getSpaceEmoji(space.index) {
-                                Text(emoji)
-                                    .font(.system(size: 20))
-                            } else {
-                                Text("\(space.index)")
-                                    .font(.system(size: 20, weight: .bold))
-                            }
-                            
-                            // Note indicator
-                            if hasNote(space.index) {
-                                Image(systemName: "note.text")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.orange)
-                            }
-                        }
-                        
-                        // Space name
-                        Text(getSpaceName(space.index) ?? "Desktop")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 70)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(
-                                space.index == viewModel.currentSpaceNumber ?
-                                    Color.accentColor.opacity(0.2) :
-                                    (hoveredSpace == space.index ?
-                                        Color.secondary.opacity(0.1) :
-                                        Color.clear)
-                            )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                space.index == viewModel.currentSpaceNumber ?
-                                    Color.accentColor :
-                                    Color.clear,
-                                lineWidth: 2
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
-                .help(getSpaceTooltip(space.index))
-                .onHover { hovering in
-                    hoveredSpace = hovering ? space.index : nil
-                }
-                .contextMenu {
-                    // Right-click menu for customization
-                    Button("Edit Name & Emoji...") {
-                        showEmojiPickerForSpace(space.index)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 8)
-    }
-    
-    /// Note display mode: Persistent note editor with Space selector
+    /// Note display mode: Persistent note editor with Space selector and inline editing
     private var noteDisplayView: some View {
         VStack(spacing: 12) {
             // Space selector row
@@ -400,9 +292,107 @@ struct SuperSpacesHUDView: View {
                         noteSpaceButton(for: space)
                     }
                 }
+                .padding(.horizontal, 4)
             }
             
             Divider()
+            
+            // Space name and emoji editor (inline, above note)
+            if let spaceNumber = selectedNoteSpace {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Space \(spaceNumber)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                    
+                    if isEditingSpaceName {
+                        // Editing mode
+                        HStack(spacing: 8) {
+                            // Emoji field
+                            TextField("Emoji", text: $editingSpaceEmoji)
+                                .font(.system(size: 20))
+                                .frame(width: 50, height: 36)
+                                .multilineTextAlignment(.center)
+                                .textFieldStyle(.plain)
+                                .background(Color(NSColor.textBackgroundColor))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.accentColor, lineWidth: 2)
+                                )
+                                .focused($isEmojiFieldFocused)
+                            
+                            // Name field
+                            TextField("Space Name", text: $editingSpaceNameText)
+                                .font(.system(size: 14))
+                                .textFieldStyle(.plain)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(Color(NSColor.textBackgroundColor))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.accentColor, lineWidth: 2)
+                                )
+                                .focused($isNameFieldFocused)
+                                .onSubmit {
+                                    saveSpaceNameAndEmoji()
+                                }
+                            
+                            // Save button
+                            Button(action: saveSpaceNameAndEmoji) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.green)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Save (Enter)")
+                            
+                            // Cancel button
+                            Button(action: cancelSpaceNameEditing) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Cancel (Esc)")
+                        }
+                    } else {
+                        // Display mode (double-click to edit)
+                        HStack(spacing: 8) {
+                            // Emoji display
+                            if let emoji = getSpaceEmoji(spaceNumber), !emoji.isEmpty {
+                                Text(emoji)
+                                    .font(.system(size: 20))
+                            } else {
+                                Text("➕")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            // Name display
+                            Text(getSpaceName(spaceNumber) ?? "Unnamed Space")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(getSpaceName(spaceNumber) == nil ? .secondary : .primary)
+                            
+                            Spacer()
+                            
+                            // Edit hint
+                            Text("Double-click to edit")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(6)
+                        .onTapGesture(count: 2) {
+                            startEditingSpaceName()
+                        }
+                    }
+                }
+                
+                Divider()
+            }
             
             // Note editor
             VStack(alignment: .leading, spacing: 8) {
@@ -423,7 +413,7 @@ struct SuperSpacesHUDView: View {
                 // Text editor
                 TextEditor(text: $noteText)
                     .font(.system(size: 12))
-                    .frame(height: 120)
+                    .frame(height: 100)
                     .padding(8)
                     .background(Color(NSColor.textBackgroundColor))
                     .cornerRadius(8)
@@ -441,7 +431,7 @@ struct SuperSpacesHUDView: View {
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 8)
-                        .padding(.top, -112)
+                        .padding(.top, -92)
                         .allowsHitTesting(false)
                 }
                 
@@ -569,37 +559,23 @@ struct SuperSpacesHUDView: View {
     /// Calculates appropriate width based on display mode and number of Spaces
     private func calculateWidth() -> CGFloat {
         switch displayMode {
-        case .mini:
-            return 200
         case .compact:
-            // Each Space button is ~40pt wide, add padding
-            let buttonWidth: CGFloat = 40
-            let spacing: CGFloat = 8
-            let padding: CGFloat = 32
-            let spaceCount = CGFloat(viewModel.allSpaces.count)
-            return min(max(spaceCount * buttonWidth + (spaceCount - 1) * spacing + padding, 300), 600)
-        case .expanded:
-            return 400
+            // Wider to accommodate number + emoji + name
+            return 480
         case .note:
-            return 420
+            // Wider for note editing and inline name/emoji editing
+            return 480
         }
     }
     
     /// Calculates appropriate height based on display mode
     private func calculateHeight() -> CGFloat {
         switch displayMode {
-        case .mini:
-            return 100
         case .compact:
-            return 140
-        case .expanded:
-            // Calculate rows needed for grid (3 columns)
-            let rows = ceil(Double(viewModel.allSpaces.count) / 3.0)
-            let rowHeight: CGFloat = 82
-            let baseHeight: CGFloat = 180
-            return baseHeight + CGFloat(rows) * rowHeight
+            return 120
         case .note:
-            return 320
+            // Taller to accommodate Space selector + name/emoji editor + note
+            return isEditingSpaceName ? 380 : 360
         }
     }
     
@@ -684,45 +660,78 @@ struct SuperSpacesHUDView: View {
         }
     }
     
-    /// Cycles through display modes
+    // MARK: - Inline Space Name/Emoji Editing
+    
+    /// Starts editing the Space name and emoji
+    private func startEditingSpaceName() {
+        guard let spaceNumber = selectedNoteSpace else { return }
+        
+        isEditingSpaceName = true
+        editingSpaceNameText = getSpaceName(spaceNumber) ?? ""
+        editingSpaceEmoji = getSpaceEmoji(spaceNumber) ?? ""
+        
+        // Focus the name field after a short delay to ensure the view is ready
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isNameFieldFocused = true
+        }
+    }
+    
+    /// Saves the edited Space name and emoji
+    private func saveSpaceNameAndEmoji() {
+        guard let spaceNumber = selectedNoteSpace else { return }
+        
+        // Save name
+        if editingSpaceNameText.isEmpty {
+            settings.spaceNames.removeValue(forKey: spaceNumber)
+        } else {
+            settings.spaceNames[spaceNumber] = editingSpaceNameText
+        }
+        
+        // Save emoji (limit to first character/emoji)
+        let trimmedEmoji = String(editingSpaceEmoji.prefix(2))
+        if trimmedEmoji.isEmpty {
+            settings.spaceEmojis.removeValue(forKey: spaceNumber)
+        } else {
+            settings.spaceEmojis[spaceNumber] = trimmedEmoji
+        }
+        
+        isEditingSpaceName = false
+    }
+    
+    /// Cancels Space name/emoji editing
+    private func cancelSpaceNameEditing() {
+        isEditingSpaceName = false
+        editingSpaceNameText = ""
+        editingSpaceEmoji = ""
+    }
+    
+    /// Cycles through display modes (only 2 modes now)
     private func cycleDisplayMode() {
         switch displayMode {
-        case .mini:
-            displayMode = .compact
         case .compact:
-            displayMode = .expanded
-        case .expanded:
             displayMode = .note
         case .note:
-            displayMode = .mini
+            displayMode = .compact
         }
     }
     
     /// Gets the icon for the current display mode toggle button
     private func getDisplayModeIcon() -> String {
         switch displayMode {
-        case .mini:
-            return "rectangle.expand.vertical"
         case .compact:
-            return "rectangle.expand.vertical"
-        case .expanded:
             return "note.text"
         case .note:
-            return "rectangle.compress.vertical"
+            return "list.bullet"
         }
     }
     
     /// Gets the name of the next display mode for tooltip
     private func getNextDisplayModeName() -> String {
         switch displayMode {
-        case .mini:
-            return "Compact"
         case .compact:
-            return "Expanded"
-        case .expanded:
-            return "Note"
+            return "Note Mode"
         case .note:
-            return "Mini"
+            return "Compact Mode"
         }
     }
     

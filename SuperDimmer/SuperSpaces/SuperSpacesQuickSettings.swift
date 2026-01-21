@@ -70,12 +70,10 @@ struct SuperSpacesQuickSettings: View {
                     .foregroundColor(.secondary)
                 
                 Picker("", selection: $settings.superSpacesDisplayMode) {
-                    Text("Mini").tag("mini")
                     Text("Compact").tag("compact")
-                    Text("Expanded").tag("expanded")
                     Text("Note").tag("note")
                 }
-                .pickerStyle(.menu)
+                .pickerStyle(.segmented)
                 .labelsHidden()
             }
             
