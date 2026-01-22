@@ -44,6 +44,14 @@ extern int CGSGetActiveSpace(CGSConnectionID cid);
 // Returns an array of Space IDs
 extern CFArrayRef CGSCopySpaces(CGSConnectionID cid, int displayID);
 
+// Switch to a specific Space by its ManagedSpaceID
+// This is the direct space switching API - no need to cycle through spaces!
+// Parameters:
+//   - cid: Connection ID from CGSMainConnectionID()
+//   - spaceID: The ManagedSpaceID of the target Space (from plist or CGSGetActiveSpace)
+// Returns: CGError code (0 = success)
+extern int CGSSetActiveSpace(CGSConnectionID cid, int spaceID);
+
 // Display ID constants
 #define kCGSAllDisplays 0xFFFFFFFF
 #define kCGSMainDisplay 0

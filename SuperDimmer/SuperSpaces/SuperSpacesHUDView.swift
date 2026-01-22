@@ -133,9 +133,6 @@ struct SuperSpacesHUDView: View {
                 
                 // Space grid/list (varies by display mode)
                 spacesView
-                
-                // Footer: Space count and settings
-                footerView
             }
             .padding(16)
         }
@@ -334,6 +331,21 @@ struct SuperSpacesHUDView: View {
             .padding(3)
             .background(Color.secondary.opacity(0.1))
             .cornerRadius(6)
+            
+            // Settings button (moved from footer)
+            Button(action: {
+                showQuickSettings.toggle()
+            }) {
+                Image(systemName: "gear")
+                    .font(.system(size: scaledFontSize(14)))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Settings")
+            .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
+                SuperSpacesQuickSettings(viewModel: viewModel)
+                    .environmentObject(settings)
+            }
             
             // Close button
             Button(action: { viewModel.closeHUD() }) {
@@ -827,33 +839,6 @@ struct SuperSpacesHUDView: View {
             return 60  // Number + emoji
         case .expanded:
             return 80  // Number + emoji + name (minimum, will expand with name)
-        }
-    }
-    
-    // MARK: - Footer
-    
-    private var footerView: some View {
-        HStack {
-            Text("\(viewModel.allSpaces.count) Spaces")
-                .font(.system(size: scaledFontSize(10)))
-                .foregroundColor(.secondary)
-            
-            Spacer()
-            
-            Button(action: {
-                showQuickSettings.toggle()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "gear")
-                    Text("Settings")
-                }
-                .font(.system(size: scaledFontSize(10)))
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
-                SuperSpacesQuickSettings(viewModel: viewModel)
-                    .environmentObject(settings)
-            }
         }
     }
     
