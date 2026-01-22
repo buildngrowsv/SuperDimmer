@@ -798,15 +798,22 @@ struct SuperSpacesHUDView: View {
     
     /// Determines the number of columns for overview mode based on window width
     /// RESPONSIVE THRESHOLDS:
-    /// - < 700pt: 2 columns
+    /// - < 450pt: 1 column (narrow window, single column for better readability)
+    /// - 450-700pt: 2 columns
     /// - 700-1000pt: 3 columns
     /// - 1000-1300pt: 4 columns
     /// - >= 1300pt: 5 columns
     /// Beyond 5 columns, cards just get wider
+    ///
+    /// DESIGN RATIONALE:
+    /// Single column mode ensures cards have maximum width for comfortable note editing
+    /// when the window is narrow. This prevents cramped text boxes and improves UX.
     private func getOverviewColumns(for width: CGFloat) -> [GridItem] {
         let columnCount: Int
         
-        if width < 700 {
+        if width < 450 {
+            columnCount = 1  // Single column for narrow windows
+        } else if width < 700 {
             columnCount = 2
         } else if width < 1000 {
             columnCount = 3
@@ -890,12 +897,13 @@ struct SuperSpacesHUDView: View {
             return isEditingSpaceName ? 420 : 400
         case .overview:
             // PHASE 4: Dynamic height based on number of Spaces
-            // Each card is ~150pt tall, 2 columns, plus padding
+            // Each card can be 200-400pt tall (with generous note editor), 2 columns default, plus padding
+            // Increased from 150pt to accommodate larger note editors (min 100pt + header/padding)
             let rows = CGFloat((viewModel.allSpaces.count + 1) / 2)
-            let cardHeight: CGFloat = 150
+            let cardHeight: CGFloat = 250  // Increased to accommodate larger note editors
             let spacing: CGFloat = 12
             let padding: CGFloat = 24
-            return min(rows * cardHeight + (rows - 1) * spacing + padding, 550)
+            return min(rows * cardHeight + (rows - 1) * spacing + padding, 700)  // Increased max from 550 to 700
         }
     }
     
@@ -1322,11 +1330,17 @@ struct OverviewSpaceCardView: View {
                 
                 // Use ZStack for proper placeholder positioning
                 // RESPONSIVE: Calculate height based on available space
-                // Minimum 80pt, expands to fill available vertical space in the grid
+                // Minimum 100pt, max 300pt, expands to fill available vertical space in the grid
                 // Account for header (40pt) + divider (9pt) + note label (13pt) + padding (20pt) + card padding (20pt)
-                let minNoteHeight: CGFloat = 80
+                //
+                // DESIGN RATIONALE:
+                // - Minimum 100pt ensures comfortable multi-line note editing
+                // - Maximum 300pt prevents cards from becoming too tall and unwieldy
+                // - Generous max height allows for longer notes without scrolling
+                let minNoteHeight: CGFloat = 100
+                let maxNoteHeight: CGFloat = 300
                 let fixedCardHeight: CGFloat = 40 + 9 + 13 + 20 + 20
-                let calculatedHeight = max(minNoteHeight, (availableHeight / 2) - fixedCardHeight)
+                let calculatedHeight = min(maxNoteHeight, max(minNoteHeight, (availableHeight / 2) - fixedCardHeight))
                 
                 ZStack(alignment: .topLeading) {
                     // TextEditor with local state
