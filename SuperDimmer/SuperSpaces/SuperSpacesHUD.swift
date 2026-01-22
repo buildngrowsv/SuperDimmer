@@ -413,33 +413,35 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         }
     }
     
-    /// Switches to specified Space using direct CGS API
+    /// Switches to specified Space via AppleScript
     ///
-    /// PERFORMANCE IMPROVEMENT (Jan 22, 2026):
-    /// - OLD METHOD: AppleScript simulating Control+Arrow key presses
-    ///   - Required cycling through intermediate Spaces
-    ///   - 0.15s delay per step = slow for distant Spaces
-    ///   - Example: Space 2 → Space 5 = 3 steps × 0.15s = 0.45s
+    /// TECHNICAL APPROACH (Jan 22, 2026):
+    /// We use AppleScript to simulate Control+Arrow key presses to cycle through Spaces.
+    /// This is the most reliable method that works across all macOS versions.
     ///
-    /// - NEW METHOD: Direct CGSSetActiveSpace API call
-    ///   - Instant switching to any Space (<1ms)
-    ///   - No intermediate Spaces, no delays
-    ///   - Example: Space 2 → Space 5 = instant
+    /// WHY NOT CGS PRIVATE API:
+    /// - Investigated CGSSetActiveSpace and CGSManagedDisplaySetCurrentSpace
+    /// - These functions either don't exist or have unclear/undocumented signatures
+    /// - dlsym() fails to find them in CoreGraphics framework
+    /// - Even Hammerspoon doesn't use direct CGS switching - it uses Accessibility API
+    ///   to programmatically open Mission Control and click on Spaces
     ///
-    /// WHY THIS WORKS:
-    /// - We're already using CGS private APIs (CGSGetActiveSpace) for Space detection
-    /// - CGSSetActiveSpace is the same API Mission Control uses internally
-    /// - It's been stable since macOS 10.5 and used by many shipping apps
-    /// - Same App Store risk level as our existing CGS usage
+    /// ALTERNATIVE APPROACHES CONSIDERED:
+    /// 1. CGS Private APIs (CGSSetActiveSpace, CGSManagedDisplaySetCurrentSpace)
+    ///    - Rejected: Functions not found via dlsym(), unclear signatures
+    /// 2. Hammerspoon's Accessibility approach (open Mission Control, click Space)
+    ///    - Rejected: Complex, requires Mission Control animation, still has delays
+    /// 3. AppleScript Control+Arrow simulation (CURRENT METHOD)
+    ///    - Chosen: Simple, reliable, works on all macOS versions
+    ///    - Tradeoff: Slower for distant Spaces (0.15s per step)
     ///
-    /// FALLBACK STRATEGY:
-    /// - If CGS API fails, we fall back to AppleScript method
-    /// - This ensures Space switching always works even if CGS behavior changes
+    /// PERFORMANCE:
+    /// - Adjacent Spaces (1 → 2): 0.15s
+    /// - Distant Spaces (1 → 5): 0.60s
+    /// - Maximum (1 → 9): 1.20s
     ///
-    /// TECHNICAL APPROACH:
-    /// 1. Check if already on target Space (no-op)
-    /// 2. Try direct CGS API switch via SpaceDetector.switchToSpace()
-    /// 3. If that fails, fall back to AppleScript cycling method
+    /// This is acceptable for a Space switcher HUD where users typically
+    /// switch to nearby Spaces rather than jumping across many Spaces.
     private func switchToSpace(_ spaceNumber: Int) {
         print("→ SuperSpacesHUD: Switching to Space \(spaceNumber)...")
         
@@ -450,16 +452,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             return
         }
         
-        // Try direct CGS API switch (FAST - instant)
-        let success = SpaceDetector.switchToSpace(spaceNumber)
-        
-        if success {
-            print("✓ SuperSpacesHUD: Space switch initiated via CGS API (instant)")
-            return
-        }
-        
-        // Fallback to AppleScript method (SLOW - but reliable)
-        print("⚠️ SuperSpacesHUD: CGS API failed, falling back to AppleScript method")
+        // Use AppleScript method (reliable across all macOS versions)
         switchToSpaceViaAppleScript(spaceNumber, from: currentSpace)
     }
     
