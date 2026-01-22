@@ -1027,6 +1027,9 @@ struct SuperSpacesHUDView_Previews: PreviewProvider {
 
 /// Separate view for each Space card in overview mode
 /// This ensures each TextEditor has its own stable state
+///
+/// CRITICAL FIX: Each card maintains its own @State for noteText and syncs with settings
+/// This prevents SwiftUI from confusing state between multiple TextEditors in the LazyVGrid
 struct OverviewSpaceCardView: View {
     let space: SpaceDetector.SpaceInfo
     @ObservedObject var viewModel: SuperSpacesViewModel
@@ -1034,9 +1037,12 @@ struct OverviewSpaceCardView: View {
     let getSpaceEmoji: (Int) -> String?
     let getSpaceName: (Int) -> String?
     
-    // Local state for this card's note
+    // Local state for this card's note - this is the source of truth for the TextEditor
     @State private var noteText: String = ""
     @State private var saveTimer: Timer?
+    
+    // Track if we've initialized from settings
+    @State private var hasInitialized = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1092,6 +1098,7 @@ struct OverviewSpaceCardView: View {
                 // Use ZStack for proper placeholder positioning
                 ZStack(alignment: .topLeading) {
                     // TextEditor with local state
+                    // CRITICAL: Using id() to force SwiftUI to create a unique TextEditor instance
                     TextEditor(text: $noteText)
                         .font(.system(size: 11))
                         .frame(height: 80)
@@ -1102,8 +1109,9 @@ struct OverviewSpaceCardView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
                         )
+                        .id("note-editor-\(space.index)")  // Unique ID per Space
                         .onChange(of: noteText) { newValue in
-                            // Debounced save
+                            // Debounced save to settings
                             saveTimer?.invalidate()
                             saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
                                 if newValue.isEmpty {
@@ -1143,8 +1151,17 @@ struct OverviewSpaceCardView: View {
                 )
         )
         .onAppear {
-            // Load note from settings when card appears
-            noteText = settings.spaceNotes[space.index] ?? ""
+            // Load note from settings when card appears (only once)
+            if !hasInitialized {
+                noteText = settings.spaceNotes[space.index] ?? ""
+                hasInitialized = true
+            }
+        }
+        .onChange(of: settings.spaceNotes[space.index]) { newValue in
+            // Sync from settings if changed externally (but not during our own saves)
+            if hasInitialized && noteText != (newValue ?? "") {
+                noteText = newValue ?? ""
+            }
         }
     }
 }
