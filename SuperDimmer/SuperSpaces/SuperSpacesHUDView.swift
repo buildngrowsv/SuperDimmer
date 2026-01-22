@@ -382,243 +382,252 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Note display mode: Persistent note editor with Space selector and inline editing
+    /// RESPONSIVE DESIGN: Text editor expands vertically with window size (with minimum height)
     private var noteDisplayView: some View {
-        VStack(spacing: 12) {
-            // Space selector row with adaptive button sizing
-            // Buttons expand to show number + emoji + name as window width increases
-            GeometryReader { geometry in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(viewModel.allSpaces, id: \.index) { space in
-                            noteSpaceButton(for: space, availableWidth: geometry.size.width)
-                        }
-                    }
-                    .padding(.horizontal, 4)
-                }
-                .onAppear {
-                    noteSelectorWidth = geometry.size.width
-                }
-                .onChange(of: geometry.size.width) { newWidth in
-                    noteSelectorWidth = newWidth
-                }
-            }
-            .frame(height: 40)  // Fixed height for the selector row
-            
-            Divider()
-            
-            // Space name and emoji editor (inline, above note)
-            if let spaceNumber = selectedNoteSpace {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Space \(spaceNumber)")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.secondary)
-                    
-                    if isEditingSpaceName {
-                        // Editing mode with character counter
-                        // PHASE 3.1: Emoji button instead of text field
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 8) {
-                                // Emoji button (PHASE 3.1: Visual picker instead of text field)
-                                Button(action: {
-                                    showInlineEmojiPicker = true
-                                }) {
-                                    HStack {
-                                        if editingSpaceEmoji.isEmpty {
-                                            Image(systemName: "face.smiling")
-                                                .font(.system(size: 18))
-                                                .foregroundColor(.secondary)
-                                        } else {
-                                            Text(editingSpaceEmoji)
-                                                .font(.system(size: 20))
-                                        }
-                                    }
-                                    .frame(width: 50, height: 36)
-                                    .background(Color(NSColor.textBackgroundColor))
-                                    .cornerRadius(6)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(showInlineEmojiPicker ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 2)
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .help("Click to choose emoji")
-                                
-                                // Name field
-                                TextField("Space Name", text: $editingSpaceNameText)
-                                    .font(.system(size: 14))
-                                    .textFieldStyle(.plain)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 8)
-                                    .background(Color(NSColor.textBackgroundColor))
-                                    .cornerRadius(6)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(
-                                                editingSpaceNameText.count > settings.maxSpaceNameLength ? Color.red : Color.accentColor,
-                                                lineWidth: 2
-                                            )
-                                    )
-                                    .focused($isNameFieldFocused)
-                                    .onSubmit {
-                                        saveSpaceNameAndEmoji()
-                                    }
-                                    .onChange(of: editingSpaceNameText) { newValue in
-                                        // Enforce character limit
-                                        if newValue.count > settings.maxSpaceNameLength {
-                                            editingSpaceNameText = String(newValue.prefix(settings.maxSpaceNameLength))
-                                        }
-                                    }
-                                
-                                // Save button
-                                Button(action: saveSpaceNameAndEmoji) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(.green)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Save (Enter)")
-                                
-                                // Cancel button
-                                Button(action: cancelSpaceNameEditing) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Cancel (Esc)")
-                            }
-                            
-                            // Character counter (PHASE 2.2)
-                            HStack {
-                                Spacer()
-                                Text("\(editingSpaceNameText.count)/\(settings.maxSpaceNameLength)")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(
-                                        editingSpaceNameText.count > settings.maxSpaceNameLength - 5 ?
-                                            (editingSpaceNameText.count >= settings.maxSpaceNameLength ? .red : .orange) :
-                                            .secondary
-                                    )
-                            }
-                        }
-                    } else {
-                        // Display mode (double-click to edit)
+        GeometryReader { geometry in
+            VStack(spacing: 12) {
+                // Space selector row with adaptive button sizing
+                // Buttons expand to show number + emoji + name as window width increases
+                GeometryReader { selectorGeometry in
+                    ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            // Emoji display
-                            if let emoji = getSpaceEmoji(spaceNumber), !emoji.isEmpty {
-                                Text(emoji)
-                                    .font(.system(size: 20))
-                            } else {
-                                Text("➕")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.secondary)
+                            ForEach(viewModel.allSpaces, id: \.index) { space in
+                                noteSpaceButton(for: space, availableWidth: selectorGeometry.size.width)
                             }
-                            
-                            // Name display
-                            Text(getSpaceName(spaceNumber) ?? "Unnamed Space")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(getSpaceName(spaceNumber) == nil ? .secondary : .primary)
-                            
-                            Spacer()
-                            
-                            // Edit hint
-                            Text("Double-click to edit")
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(6)
-                        .onTapGesture(count: 2) {
-                            startEditingSpaceName()
-                        }
+                        .padding(.horizontal, 4)
+                    }
+                    .onAppear {
+                        noteSelectorWidth = selectorGeometry.size.width
+                    }
+                    .onChange(of: selectorGeometry.size.width) { newWidth in
+                        noteSelectorWidth = newWidth
                     }
                 }
+                .frame(height: 40)  // Fixed height for the selector row
                 
                 Divider()
-            }
-            
-            // Note editor
-            VStack(alignment: .leading, spacing: 8) {
-                // Note header
-                HStack {
-                    Text("Note")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    // Character count
-                    Text("\(noteText.count)/500")
-                        .font(.system(size: 10))
-                        .foregroundColor(noteText.count > 500 ? .red : .secondary)
-                }
                 
-                // Text editor with ZStack for proper placeholder positioning
-                ZStack(alignment: .topLeading) {
-                    TextEditor(text: $noteText)
-                        .font(.system(size: 12))
-                        .frame(height: 100)
-                        .padding(8)
-                        .scrollContentBackground(.hidden)
-                        .background(Color(NSColor.textBackgroundColor))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                        )
-                        .onChange(of: noteText) { newValue in
-                            debouncedNoteSave(newValue)
-                        }
-                    
-                    // Placeholder when empty - positioned to match TextEditor cursor
-                    if noteText.isEmpty {
-                        Text("Add notes, reminders, or tasks for this Space...")
-                            .font(.system(size: 12))
+                // Space name and emoji editor (inline, above note)
+                if let spaceNumber = selectedNoteSpace {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Space \(spaceNumber)")
+                            .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.secondary)
-                            .padding(.leading, 13)
-                            .padding(.top, 8)
-                            .allowsHitTesting(false)
+                        
+                        if isEditingSpaceName {
+                            // Editing mode with character counter
+                            // PHASE 3.1: Emoji button instead of text field
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 8) {
+                                    // Emoji button (PHASE 3.1: Visual picker instead of text field)
+                                    Button(action: {
+                                        showInlineEmojiPicker = true
+                                    }) {
+                                        HStack {
+                                            if editingSpaceEmoji.isEmpty {
+                                                Image(systemName: "face.smiling")
+                                                    .font(.system(size: 18))
+                                                    .foregroundColor(.secondary)
+                                            } else {
+                                                Text(editingSpaceEmoji)
+                                                    .font(.system(size: 20))
+                                            }
+                                        }
+                                        .frame(width: 50, height: 36)
+                                        .background(Color(NSColor.textBackgroundColor))
+                                        .cornerRadius(6)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(showInlineEmojiPicker ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 2)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Click to choose emoji")
+                                    
+                                    // Name field
+                                    TextField("Space Name", text: $editingSpaceNameText)
+                                        .font(.system(size: 14))
+                                        .textFieldStyle(.plain)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 8)
+                                        .background(Color(NSColor.textBackgroundColor))
+                                        .cornerRadius(6)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(
+                                                    editingSpaceNameText.count > settings.maxSpaceNameLength ? Color.red : Color.accentColor,
+                                                    lineWidth: 2
+                                                )
+                                        )
+                                        .focused($isNameFieldFocused)
+                                        .onSubmit {
+                                            saveSpaceNameAndEmoji()
+                                        }
+                                        .onChange(of: editingSpaceNameText) { newValue in
+                                            // Enforce character limit
+                                            if newValue.count > settings.maxSpaceNameLength {
+                                                editingSpaceNameText = String(newValue.prefix(settings.maxSpaceNameLength))
+                                            }
+                                        }
+                                    
+                                    // Save button
+                                    Button(action: saveSpaceNameAndEmoji) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(.green)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Save (Enter)")
+                                    
+                                    // Cancel button
+                                    Button(action: cancelSpaceNameEditing) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Cancel (Esc)")
+                                }
+                                
+                                // Character counter (PHASE 2.2)
+                                HStack {
+                                    Spacer()
+                                    Text("\(editingSpaceNameText.count)/\(settings.maxSpaceNameLength)")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(
+                                            editingSpaceNameText.count > settings.maxSpaceNameLength - 5 ?
+                                                (editingSpaceNameText.count >= settings.maxSpaceNameLength ? .red : .orange) :
+                                                .secondary
+                                        )
+                                }
+                            }
+                        } else {
+                            // Display mode (double-click to edit)
+                            HStack(spacing: 8) {
+                                // Emoji display
+                                if let emoji = getSpaceEmoji(spaceNumber), !emoji.isEmpty {
+                                    Text(emoji)
+                                        .font(.system(size: 20))
+                                } else {
+                                    Text("➕")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                // Name display
+                                Text(getSpaceName(spaceNumber) ?? "Unnamed Space")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(getSpaceName(spaceNumber) == nil ? .secondary : .primary)
+                                
+                                Spacer()
+                                
+                                // Edit hint
+                                Text("Double-click to edit")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(6)
+                            .onTapGesture(count: 2) {
+                                startEditingSpaceName()
+                            }
+                        }
                     }
+                    
+                    Divider()
                 }
                 
-                // Action buttons
-                HStack {
-                    Button(action: {
-                        if let space = selectedNoteSpace {
-                            viewModel.switchToSpace(space)
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.right.circle")
-                            Text("Switch to Space")
-                        }
-                        .font(.system(size: 11))
+                // Note editor - RESPONSIVE: Expands to fill available vertical space
+                VStack(alignment: .leading, spacing: 8) {
+                    // Note header
+                    HStack {
+                        Text("Note")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        // Character count
+                        Text("\(noteText.count)/500")
+                            .font(.system(size: 10))
+                            .foregroundColor(noteText.count > 500 ? .red : .secondary)
                     }
-                    .buttonStyle(.plain)
-                    .padding(6)
-                    .background(Color.accentColor.opacity(0.1))
-                    .cornerRadius(6)
                     
-                    Spacer()
+                    // Text editor with ZStack for proper placeholder positioning
+                    // RESPONSIVE: Calculate height based on available space
+                    // Minimum 100pt, expands to fill remaining vertical space
+                    let availableHeight = geometry.size.height
+                    let usedHeight: CGFloat = 40 + 12 + (selectedNoteSpace != nil ? (isEditingSpaceName ? 120 : 80) : 0) + 12 + 20 + 8 + 40
+                    let noteEditorHeight = max(100, availableHeight - usedHeight)
                     
-                    if !noteText.isEmpty {
-                        Button(action: clearCurrentNote) {
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $noteText)
+                            .font(.system(size: 12))
+                            .frame(height: noteEditorHeight)
+                            .padding(8)
+                            .scrollContentBackground(.hidden)
+                            .background(Color(NSColor.textBackgroundColor))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                            )
+                            .onChange(of: noteText) { newValue in
+                                debouncedNoteSave(newValue)
+                            }
+                        
+                        // Placeholder when empty - positioned to match TextEditor cursor
+                        if noteText.isEmpty {
+                            Text("Add notes, reminders, or tasks for this Space...")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 13)
+                                .padding(.top, 8)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    
+                    // Action buttons
+                    HStack {
+                        Button(action: {
+                            if let space = selectedNoteSpace {
+                                viewModel.switchToSpace(space)
+                            }
+                        }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "trash")
-                                Text("Clear")
+                                Image(systemName: "arrow.right.circle")
+                                Text("Switch to Space")
                             }
                             .font(.system(size: 11))
                         }
                         .buttonStyle(.plain)
                         .padding(6)
-                        .background(Color.secondary.opacity(0.1))
+                        .background(Color.accentColor.opacity(0.1))
                         .cornerRadius(6)
+                        
+                        Spacer()
+                        
+                        if !noteText.isEmpty {
+                            Button(action: clearCurrentNote) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "trash")
+                                    Text("Clear")
+                                }
+                                .font(.system(size: 11))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(6)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(6)
+                        }
                     }
                 }
             }
+            .padding(.vertical, 8)
         }
-        .padding(.vertical, 8)
         .onAppear {
             // Initialize with current Space when entering note mode
             if selectedNoteSpace == nil {
@@ -774,28 +783,53 @@ struct SuperSpacesHUDView: View {
     
     /// Overview display mode: Grid showing all Spaces with their notes, all editable
     /// Single click on any Space button switches to that Space
+    /// RESPONSIVE DESIGN: 2-5 columns based on window width, cards expand vertically with window
     private var overviewDisplayView: some View {
-        ScrollView {
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 12),
-                GridItem(.flexible(), spacing: 12)
-            ], spacing: 12) {
-                ForEach(viewModel.allSpaces, id: \.index) { space in
-                    overviewSpaceCard(for: space)
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVGrid(columns: getOverviewColumns(for: geometry.size.width), spacing: 12) {
+                    ForEach(viewModel.allSpaces, id: \.index) { space in
+                        overviewSpaceCard(for: space, availableHeight: geometry.size.height)
+                    }
                 }
+                .padding(12)
             }
-            .padding(12)
         }
     }
     
+    /// Determines the number of columns for overview mode based on window width
+    /// RESPONSIVE THRESHOLDS:
+    /// - < 700pt: 2 columns
+    /// - 700-1000pt: 3 columns
+    /// - 1000-1300pt: 4 columns
+    /// - >= 1300pt: 5 columns
+    /// Beyond 5 columns, cards just get wider
+    private func getOverviewColumns(for width: CGFloat) -> [GridItem] {
+        let columnCount: Int
+        
+        if width < 700 {
+            columnCount = 2
+        } else if width < 1000 {
+            columnCount = 3
+        } else if width < 1300 {
+            columnCount = 4
+        } else {
+            columnCount = 5
+        }
+        
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: columnCount)
+    }
+    
     /// Creates a card for each Space in overview mode
-    private func overviewSpaceCard(for space: SpaceDetector.SpaceInfo) -> some View {
+    /// RESPONSIVE: Cards expand vertically with window height
+    private func overviewSpaceCard(for space: SpaceDetector.SpaceInfo, availableHeight: CGFloat) -> some View {
         OverviewSpaceCardView(
             space: space,
             viewModel: viewModel,
             settings: settings,
             getSpaceEmoji: getSpaceEmoji,
-            getSpaceName: getSpaceName
+            getSpaceName: getSpaceName,
+            availableHeight: availableHeight
         )
     }
     
@@ -1169,12 +1203,14 @@ struct SuperSpacesHUDView_Previews: PreviewProvider {
 ///
 /// CRITICAL FIX: Each card maintains its own @State for noteText and syncs with settings
 /// This prevents SwiftUI from confusing state between multiple TextEditors in the LazyVGrid
+/// RESPONSIVE DESIGN: Note editor expands vertically with window height (with minimum)
 struct OverviewSpaceCardView: View {
     let space: SpaceDetector.SpaceInfo
     @ObservedObject var viewModel: SuperSpacesViewModel
     @ObservedObject var settings: SettingsManager
     let getSpaceEmoji: (Int) -> String?
     let getSpaceName: (Int) -> String?
+    let availableHeight: CGFloat
     
     // Local state for this card's note - this is the source of truth for the TextEditor
     @State private var noteText: String = ""
@@ -1229,18 +1265,26 @@ struct OverviewSpaceCardView: View {
             Divider()
             
             // Note editor (inline, always visible)
+            // RESPONSIVE: Expands vertically with window height
             VStack(alignment: .leading, spacing: 4) {
                 Text("Note")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(.secondary)
                 
                 // Use ZStack for proper placeholder positioning
+                // RESPONSIVE: Calculate height based on available space
+                // Minimum 80pt, expands to fill available vertical space in the grid
+                // Account for header (40pt) + divider (9pt) + note label (13pt) + padding (20pt) + card padding (20pt)
+                let minNoteHeight: CGFloat = 80
+                let fixedCardHeight: CGFloat = 40 + 9 + 13 + 20 + 20
+                let calculatedHeight = max(minNoteHeight, (availableHeight / 2) - fixedCardHeight)
+                
                 ZStack(alignment: .topLeading) {
                     // TextEditor with local state
                     // CRITICAL: Using id() to force SwiftUI to create a unique TextEditor instance
                     TextEditor(text: $noteText)
                         .font(.system(size: 11))
-                        .frame(height: 80)
+                        .frame(height: calculatedHeight)
                         .padding(6)  // Internal padding for text content
                         .scrollContentBackground(.hidden)
                         .background(Color(NSColor.textBackgroundColor))
