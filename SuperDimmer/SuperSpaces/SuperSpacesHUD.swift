@@ -734,25 +734,44 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     ///
     /// When superSpacesFloatOnTop is true:
     /// - Window level = .floating (above normal windows)
-    /// - isFloatingPanel = true
     ///
     /// When superSpacesFloatOnTop is false:
     /// - Window level = .normal (can be covered by other windows)
-    /// - isFloatingPanel = false
     ///
     /// This allows users to choose whether the HUD stays above everything
     /// or behaves like a normal window that can be covered.
+    ///
+    /// BUG FIX (Jan 22, 2026):
+    /// The issue was that NSPanel.isFloatingPanel property overrides the window level.
+    /// When isFloatingPanel = true, the panel ALWAYS stays at .floating level,
+    /// ignoring any attempts to set level = .normal.
+    ///
+    /// SOLUTION:
+    /// We do NOT use isFloatingPanel at all. Instead, we only control the window level
+    /// directly using the .level property. This gives us full control over whether
+    /// the panel floats above other windows or not.
+    ///
+    /// TECHNICAL NOTES:
+    /// - NSPanel inherits from NSWindow and has the same .level property
+    /// - .floating level = 3 (above normal windows)
+    /// - .normal level = 0 (regular window behavior)
+    /// - Setting level directly works as expected when isFloatingPanel is not used
     func updateWindowLevel() {
         let settings = SettingsManager.shared
         
+        print("→ SuperSpacesHUD: updateWindowLevel() called, superSpacesFloatOnTop = \(settings.superSpacesFloatOnTop)")
+        print("   Current level before change: \(level.rawValue)")
+        
         if settings.superSpacesFloatOnTop {
-            isFloatingPanel = true
+            // Set window level to floating (above normal windows)
             level = .floating
             print("✓ SuperSpacesHUD: Window level set to .floating (always on top)")
+            print("   Level after change: \(level.rawValue)")
         } else {
-            isFloatingPanel = false
+            // Set window level to normal (can be covered by other windows)
             level = .normal
             print("✓ SuperSpacesHUD: Window level set to .normal (can be covered)")
+            print("   Level after change: \(level.rawValue)")
         }
     }
     
