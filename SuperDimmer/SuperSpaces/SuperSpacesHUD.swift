@@ -299,8 +299,13 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         contentView = hostingView
         
         // Observe float on top setting changes
+        // dropFirst() prevents the initial value from triggering updateWindowLevel()
+        // We only want to respond to actual user changes to the setting
         SettingsManager.shared.$superSpacesFloatOnTop
-            .sink { [weak self] _ in
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newValue in
+                print("🔔 SuperSpacesHUD: Float on top setting changed to \(newValue)")
                 self?.updateWindowLevel()
             }
             .store(in: &cancellables)
@@ -863,14 +868,14 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             // Refresh Space data
             self.refreshSpaces()
             
-            // Ensure window level is correct before showing
-            // This is critical because the window level might have been changed
-            // by the user's preference or by system events
-            self.updateWindowLevel()
-            
-            // Show window
+            // Show window first
             self.orderFront(nil)
             self.isCurrentlyVisible = true
+            
+            // Set window level AFTER showing
+            // This is critical because NSPanel may reset the level during orderFront()
+            // Setting it after ensures our desired level is applied and sticks
+            self.updateWindowLevel()
             
             print("✓ SuperSpacesHUD: Shown")
         }
