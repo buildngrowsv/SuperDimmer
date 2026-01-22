@@ -501,29 +501,32 @@ struct SuperSpacesHUDView: View {
                         .foregroundColor(noteText.count > 500 ? .red : .secondary)
                 }
                 
-                // Text editor
-                TextEditor(text: $noteText)
-                    .font(.system(size: 12))
-                    .frame(height: 100)
-                    .padding(8)
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
-                    .onChange(of: noteText) { newValue in
-                        debouncedNoteSave(newValue)
-                    }
-                
-                // Placeholder when empty
-                if noteText.isEmpty {
-                    Text("Add notes, reminders, or tasks for this Space...")
+                // Text editor with ZStack for proper placeholder positioning
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $noteText)
                         .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.top, -92)
-                        .allowsHitTesting(false)
+                        .frame(height: 100)
+                        .padding(8)
+                        .scrollContentBackground(.hidden)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                        .onChange(of: noteText) { newValue in
+                            debouncedNoteSave(newValue)
+                        }
+                    
+                    // Placeholder when empty - positioned to match TextEditor padding
+                    if noteText.isEmpty {
+                        Text("Add notes, reminders, or tasks for this Space...")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 8)
+                            .padding(.top, 8)
+                            .allowsHitTesting(false)
+                    }
                 }
                 
                 // Action buttons
