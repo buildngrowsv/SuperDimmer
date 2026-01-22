@@ -1102,6 +1102,7 @@ struct OverviewSpaceCardView: View {
                     TextEditor(text: $noteText)
                         .font(.system(size: 11))
                         .frame(height: 80)
+                        .padding(6)  // Internal padding for text content
                         .scrollContentBackground(.hidden)
                         .background(Color(NSColor.textBackgroundColor))
                         .cornerRadius(6)
@@ -1123,13 +1124,13 @@ struct OverviewSpaceCardView: View {
                         }
                     
                     // Placeholder when empty
-                    // Position to match TextEditor's internal text position
+                    // Position to match TextEditor's padding
                     if noteText.isEmpty {
                         Text("Add note...")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
-                            .padding(.leading, 5)
-                            .padding(.top, 8)
+                            .padding(.leading, 6)
+                            .padding(.top, 6)
                             .allowsHitTesting(false)
                     }
                 }
