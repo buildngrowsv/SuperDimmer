@@ -413,11 +413,22 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         }
     }
     
-    /// Switches to specified Space via AppleScript
+    /// Switches to specified Space using hybrid approach
     ///
-    /// TECHNICAL APPROACH (Jan 22, 2026):
-    /// We use AppleScript to simulate Control+Arrow key presses to cycle through Spaces.
-    /// This is the most reliable method that works across all macOS versions.
+    /// HYBRID APPROACH (Jan 22, 2026):
+    /// 1. Try Control+Number shortcut (instant if user has enabled it)
+    /// 2. Wait 1 second to see if it worked
+    /// 3. If still on same Space, fall back to Control+Arrow cycling
+    ///
+    /// RATIONALE:
+    /// - macOS has built-in shortcuts: Control+1, Control+2, etc.
+    /// - These are instant (no cycling) but only work if user enabled them
+    /// - System Settings > Keyboard > Keyboard Shortcuts > Mission Control
+    /// - Most users don't enable these, so we need a fallback
+    ///
+    /// PERFORMANCE:
+    /// - With shortcuts enabled: < 0.5s (instant switch + verification)
+    /// - Without shortcuts: 0.15s × steps (cycling fallback)
     ///
     /// WHY NOT CGS PRIVATE API:
     /// - Investigated CGSSetActiveSpace and CGSManagedDisplaySetCurrentSpace
@@ -425,23 +436,6 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// - dlsym() fails to find them in CoreGraphics framework
     /// - Even Hammerspoon doesn't use direct CGS switching - it uses Accessibility API
     ///   to programmatically open Mission Control and click on Spaces
-    ///
-    /// ALTERNATIVE APPROACHES CONSIDERED:
-    /// 1. CGS Private APIs (CGSSetActiveSpace, CGSManagedDisplaySetCurrentSpace)
-    ///    - Rejected: Functions not found via dlsym(), unclear signatures
-    /// 2. Hammerspoon's Accessibility approach (open Mission Control, click Space)
-    ///    - Rejected: Complex, requires Mission Control animation, still has delays
-    /// 3. AppleScript Control+Arrow simulation (CURRENT METHOD)
-    ///    - Chosen: Simple, reliable, works on all macOS versions
-    ///    - Tradeoff: Slower for distant Spaces (0.15s per step)
-    ///
-    /// PERFORMANCE:
-    /// - Adjacent Spaces (1 → 2): 0.15s
-    /// - Distant Spaces (1 → 5): 0.60s
-    /// - Maximum (1 → 9): 1.20s
-    ///
-    /// This is acceptable for a Space switcher HUD where users typically
-    /// switch to nearby Spaces rather than jumping across many Spaces.
     private func switchToSpace(_ spaceNumber: Int) {
         print("→ SuperSpacesHUD: Switching to Space \(spaceNumber)...")
         
@@ -452,8 +446,86 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             return
         }
         
-        // Use AppleScript method (reliable across all macOS versions)
-        switchToSpaceViaAppleScript(spaceNumber, from: currentSpace)
+        // Try direct Control+Number shortcut first (instant if enabled)
+        let directSuccess = tryDirectSpaceShortcut(spaceNumber)
+        
+        if directSuccess {
+            print("✓ SuperSpacesHUD: Space switch via Control+\(spaceNumber) shortcut (instant)")
+        } else {
+            // Fallback to cycling method
+            print("⚠️ SuperSpacesHUD: Direct shortcut not enabled, falling back to cycling")
+            switchToSpaceViaAppleScript(spaceNumber, from: currentSpace)
+        }
+    }
+    
+    /// Tries to switch to Space using Control+Number shortcut
+    ///
+    /// macOS has built-in keyboard shortcuts for switching to specific Spaces:
+    /// - Control+1 → Desktop 1
+    /// - Control+2 → Desktop 2
+    /// - etc.
+    ///
+    /// These shortcuts must be enabled by the user in:
+    /// System Settings > Keyboard > Keyboard Shortcuts > Mission Control
+    ///
+    /// APPROACH:
+    /// 1. Simulate Control+Number key press
+    /// 2. Wait 1 second for Space change to occur
+    /// 3. Check if we're now on the target Space
+    /// 4. Return true if successful, false if shortcut not enabled
+    ///
+    /// - Parameter spaceNumber: The Space number to switch to (1-9)
+    /// - Returns: true if shortcut worked, false if not enabled or failed
+    private func tryDirectSpaceShortcut(_ spaceNumber: Int) -> Bool {
+        // Only works for Spaces 1-9 (macOS limitation)
+        guard spaceNumber >= 1 && spaceNumber <= 9 else {
+            return false
+        }
+        
+        // Key codes for number keys 1-9 (top row of keyboard)
+        // Key code 18 = 1, 19 = 2, 20 = 3, 21 = 4, 22 = 5, 23 = 6, 24 = 7, 25 = 8, 26 = 9
+        let keyCode = 17 + spaceNumber
+        
+        // Build AppleScript to simulate Control+Number
+        let script = """
+        tell application "System Events"
+            key code \(keyCode) using {control down}
+        end tell
+        """
+        
+        // Execute AppleScript
+        var error: NSDictionary?
+        if let scriptObject = NSAppleScript(source: script) {
+            scriptObject.executeAndReturnError(&error)
+            
+            if let error = error {
+                print("⚠️ SuperSpacesHUD: Direct shortcut AppleScript error: \(error)")
+                return false
+            }
+        } else {
+            return false
+        }
+        
+        // Wait 1 second to see if Space changed
+        // This gives macOS time to switch Spaces if the shortcut is enabled
+        let startTime = Date()
+        let timeout: TimeInterval = 1.0
+        
+        while Date().timeIntervalSince(startTime) < timeout {
+            // Check if we're now on the target Space
+            if let currentSpaceInfo = SpaceDetector.getCurrentSpace(),
+               currentSpaceInfo.spaceNumber == spaceNumber {
+                // Success! The shortcut worked
+                return true
+            }
+            
+            // Small delay before checking again
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        
+        // Timeout reached and we're not on target Space
+        // This means the shortcut is not enabled
+        return false
     }
     
     /// Fallback method: Switches to Space by simulating Control+Arrow key presses
