@@ -1123,11 +1123,12 @@ struct OverviewSpaceCardView: View {
                         }
                     
                     // Placeholder when empty
+                    // Position to match TextEditor's internal text position
                     if noteText.isEmpty {
                         Text("Add note...")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
-                            .padding(.horizontal, 12)
+                            .padding(.leading, 5)
                             .padding(.top, 8)
                             .allowsHitTesting(false)
                     }
