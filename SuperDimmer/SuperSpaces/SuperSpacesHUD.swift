@@ -91,6 +91,14 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Prevents excessive UserDefaults writes during window dragging
     private var positionSaveTimer: Timer?
     
+    /// Timer for debouncing window size saves
+    /// Prevents excessive UserDefaults writes during window resizing
+    private var sizeSaveTimer: Timer?
+    
+    /// Current display mode (tracked to know which size setting to save)
+    /// Synced with SettingsManager.superSpacesDisplayMode
+    private var currentDisplayMode: String = "compact"
+    
     // MARK: - Initialization
     
     /// Private initializer (singleton pattern)
@@ -192,14 +200,37 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         }
         
         // Create SwiftUI view with view model and inject settings
-        let hudView = SuperSpacesHUDView(viewModel: viewModel)
-            .environmentObject(SettingsManager.shared)
+        var hudView = SuperSpacesHUDView(viewModel: viewModel)
+        
+        // Set up mode change callback to handle window resizing
+        hudView.onModeChange = { [weak self] mode in
+            self?.handleModeChange(mode)
+        }
+        
+        let finalView = hudView.environmentObject(SettingsManager.shared)
         
         // Wrap in NSHostingView
-        let hostingView = NSHostingView(rootView: hudView)
+        let hostingView = NSHostingView(rootView: finalView)
         contentView = hostingView
         
         print("✓ SuperSpacesHUD: Content view created")
+    }
+    
+    /// Handles display mode changes
+    /// Restores the saved window size for the new mode
+    private func handleModeChange(_ mode: SuperSpacesHUDView.DisplayMode) {
+        let modeString: String
+        switch mode {
+        case .compact:
+            modeString = "compact"
+        case .note:
+            modeString = "note"
+        case .overview:
+            modeString = "overview"
+        }
+        
+        // Restore window size for the new mode
+        restoreSizeForMode(modeString)
     }
     
     /// Sets up Space change monitoring
@@ -487,5 +518,78 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             
             print("💾 SuperSpacesHUD: Saved position to \(position)")
         }
+    }
+    
+    /// Called when window resizes
+    /// Saves size to UserDefaults per display mode (debounced)
+    /// This allows each mode to remember the user's preferred window size
+    func windowDidResize(_ notification: Notification) {
+        // Cancel previous save timer
+        sizeSaveTimer?.invalidate()
+        
+        // Schedule new save after delay (debounce)
+        sizeSaveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            
+            let size = self.frame.size
+            let mode = SettingsManager.shared.superSpacesDisplayMode
+            
+            // Save size to the appropriate mode setting
+            switch mode {
+            case "compact":
+                SettingsManager.shared.hudSizeCompact = size
+                print("💾 SuperSpacesHUD: Saved Compact mode size to \(size)")
+            case "note":
+                SettingsManager.shared.hudSizeNote = size
+                print("💾 SuperSpacesHUD: Saved Note mode size to \(size)")
+            case "overview":
+                SettingsManager.shared.hudSizeOverview = size
+                print("💾 SuperSpacesHUD: Saved Overview mode size to \(size)")
+            default:
+                break
+            }
+        }
+    }
+    
+    /// Restores window size for the current display mode
+    /// Called when switching modes to restore the user's preferred size for that mode
+    func restoreSizeForMode(_ mode: String) {
+        let savedSize: CGSize?
+        let defaultSize: CGSize
+        
+        switch mode {
+        case "compact":
+            savedSize = SettingsManager.shared.hudSizeCompact
+            defaultSize = CGSize(width: 480, height: 140)
+        case "note":
+            savedSize = SettingsManager.shared.hudSizeNote
+            defaultSize = CGSize(width: 480, height: 400)
+        case "overview":
+            savedSize = SettingsManager.shared.hudSizeOverview
+            defaultSize = CGSize(width: 600, height: 550)
+        default:
+            return
+        }
+        
+        let targetSize = savedSize ?? defaultSize
+        
+        // Animate size change
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            
+            // Keep the window's top-left corner in the same position
+            var newFrame = self.frame
+            newFrame.size = targetSize
+            
+            // Adjust origin to keep top-left corner fixed
+            // (NSWindow origin is bottom-left, so we need to adjust Y)
+            let heightDiff = targetSize.height - self.frame.height
+            newFrame.origin.y -= heightDiff
+            
+            self.animator().setFrame(newFrame, display: true)
+        }
+        
+        print("✓ SuperSpacesHUD: Restored \(mode) mode size to \(targetSize)")
     }
 }

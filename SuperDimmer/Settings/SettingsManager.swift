@@ -437,6 +437,16 @@ final class SettingsManager: ObservableObject {
         case lastHUDPositionX = "superdimmer.lastHUDPositionX"
         case lastHUDPositionY = "superdimmer.lastHUDPositionY"
         
+        // Super Spaces HUD Window Size per Mode (Jan 21, 2026)
+        // Stores the last user-set window size for each display mode
+        // so switching modes restores the size the user prefers for that mode
+        case hudSizeCompactWidth = "superdimmer.hudSizeCompactWidth"
+        case hudSizeCompactHeight = "superdimmer.hudSizeCompactHeight"
+        case hudSizeNoteWidth = "superdimmer.hudSizeNoteWidth"
+        case hudSizeNoteHeight = "superdimmer.hudSizeNoteHeight"
+        case hudSizeOverviewWidth = "superdimmer.hudSizeOverviewWidth"
+        case hudSizeOverviewHeight = "superdimmer.hudSizeOverviewHeight"
+        
         // Appearance Mode System (2.2.1.1)
         case appearanceMode = "superdimmer.comearanceMode"
         case darkModeProfile = "superdimmer.darkModeProfile"
@@ -1596,6 +1606,87 @@ final class SettingsManager: ObservableObject {
         }
     }
     
+    /**
+     Last window size for Compact mode.
+     
+     FEATURE: Per-Mode Window Size Persistence
+     
+     Stores the user's preferred window size for Compact display mode.
+     When switching to Compact mode, the HUD resizes to this saved size.
+     
+     BEHAVIOR:
+     - Saved when window resizes while in Compact mode (debounced)
+     - Restored when switching to Compact mode
+     - Nil means use default size
+     
+     DEFAULT: nil (use default size of 480x140)
+     */
+    @Published var hudSizeCompact: CGSize? {
+        didSet {
+            if let size = hudSizeCompact {
+                defaults.set(Double(size.width), forKey: Keys.hudSizeCompactWidth.rawValue)
+                defaults.set(Double(size.height), forKey: Keys.hudSizeCompactHeight.rawValue)
+            } else {
+                defaults.removeObject(forKey: Keys.hudSizeCompactWidth.rawValue)
+                defaults.removeObject(forKey: Keys.hudSizeCompactHeight.rawValue)
+            }
+        }
+    }
+    
+    /**
+     Last window size for Note mode.
+     
+     FEATURE: Per-Mode Window Size Persistence
+     
+     Stores the user's preferred window size for Note display mode.
+     When switching to Note mode, the HUD resizes to this saved size.
+     
+     BEHAVIOR:
+     - Saved when window resizes while in Note mode (debounced)
+     - Restored when switching to Note mode
+     - Nil means use default size
+     
+     DEFAULT: nil (use default size of 480x400)
+     */
+    @Published var hudSizeNote: CGSize? {
+        didSet {
+            if let size = hudSizeNote {
+                defaults.set(Double(size.width), forKey: Keys.hudSizeNoteWidth.rawValue)
+                defaults.set(Double(size.height), forKey: Keys.hudSizeNoteHeight.rawValue)
+            } else {
+                defaults.removeObject(forKey: Keys.hudSizeNoteWidth.rawValue)
+                defaults.removeObject(forKey: Keys.hudSizeNoteHeight.rawValue)
+            }
+        }
+    }
+    
+    /**
+     Last window size for Overview mode.
+     
+     FEATURE: Per-Mode Window Size Persistence
+     
+     Stores the user's preferred window size for Overview display mode.
+     When switching to Overview mode, the HUD resizes to this saved size.
+     
+     BEHAVIOR:
+     - Saved when window resizes while in Overview mode (debounced)
+     - Restored when switching to Overview mode
+     - Nil means use default size
+     
+     DEFAULT: nil (use default size of 600x550)
+     */
+    @Published var hudSizeOverview: CGSize? {
+        didSet {
+            if let size = hudSizeOverview {
+                defaults.set(Double(size.width), forKey: Keys.hudSizeOverviewWidth.rawValue)
+                defaults.set(Double(size.height), forKey: Keys.hudSizeOverviewHeight.rawValue)
+            } else {
+                defaults.removeObject(forKey: Keys.hudSizeOverviewWidth.rawValue)
+                defaults.removeObject(forKey: Keys.hudSizeOverviewHeight.rawValue)
+            }
+        }
+    }
+    
     // ================================================================
     // MARK: - Appearance Mode System (2.2.1.1)
     // ================================================================
@@ -1949,6 +2040,30 @@ final class SettingsManager: ObservableObject {
             self.lastHUDPosition = CGPoint(x: x, y: y)
         } else {
             self.lastHUDPosition = nil
+        }
+        
+        // Load last HUD window sizes per mode (Jan 21, 2026)
+        // These store the user's preferred window size for each display mode
+        // so switching modes restores the appropriate size
+        if let width = defaults.object(forKey: Keys.hudSizeCompactWidth.rawValue) as? Double,
+           let height = defaults.object(forKey: Keys.hudSizeCompactHeight.rawValue) as? Double {
+            self.hudSizeCompact = CGSize(width: width, height: height)
+        } else {
+            self.hudSizeCompact = nil
+        }
+        
+        if let width = defaults.object(forKey: Keys.hudSizeNoteWidth.rawValue) as? Double,
+           let height = defaults.object(forKey: Keys.hudSizeNoteHeight.rawValue) as? Double {
+            self.hudSizeNote = CGSize(width: width, height: height)
+        } else {
+            self.hudSizeNote = nil
+        }
+        
+        if let width = defaults.object(forKey: Keys.hudSizeOverviewWidth.rawValue) as? Double,
+           let height = defaults.object(forKey: Keys.hudSizeOverviewHeight.rawValue) as? Double {
+            self.hudSizeOverview = CGSize(width: width, height: height)
+        } else {
+            self.hudSizeOverview = nil
         }
         
         // ============================================================

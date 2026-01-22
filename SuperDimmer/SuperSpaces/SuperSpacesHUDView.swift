@@ -30,6 +30,10 @@ struct SuperSpacesHUDView: View {
     /// View model that provides Space data and callbacks
     @ObservedObject var viewModel: SuperSpacesViewModel
     
+    /// Callback for mode changes (to trigger window resize)
+    /// Called when user switches display modes so the HUD can resize appropriately
+    var onModeChange: ((DisplayMode) -> Void)?
+    
     /// Current display mode (synced with settings)
     @State private var displayMode: DisplayMode = .compact
     
@@ -249,14 +253,49 @@ struct SuperSpacesHUDView: View {
             
             Spacer()
             
-            // Display mode toggle button
-            Button(action: cycleDisplayMode) {
-                Image(systemName: getDisplayModeIcon())
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+            // Display mode buttons (3 separate buttons instead of toggle)
+            // FEATURE: Per-mode window size persistence
+            // Each button switches to that mode and restores the saved window size
+            HStack(spacing: 4) {
+                // Compact mode button
+                Button(action: { switchToMode(.compact) }) {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 11))
+                        .foregroundColor(displayMode == .compact ? .white : .secondary)
+                        .frame(width: 24, height: 20)
+                        .background(displayMode == .compact ? Color.accentColor : Color.clear)
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help("Compact Mode")
+                
+                // Note mode button
+                Button(action: { switchToMode(.note) }) {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 11))
+                        .foregroundColor(displayMode == .note ? .white : .secondary)
+                        .frame(width: 24, height: 20)
+                        .background(displayMode == .note ? Color.accentColor : Color.clear)
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help("Note Mode")
+                
+                // Overview mode button
+                Button(action: { switchToMode(.overview) }) {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 11))
+                        .foregroundColor(displayMode == .overview ? .white : .secondary)
+                        .frame(width: 24, height: 20)
+                        .background(displayMode == .overview ? Color.accentColor : Color.clear)
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help("Overview Mode")
             }
-            .buttonStyle(.plain)
-            .help("Toggle view mode: \(getNextDisplayModeName())")
+            .padding(3)
+            .background(Color.secondary.opacity(0.1))
+            .cornerRadius(6)
             
             // Close button
             Button(action: { viewModel.closeHUD() }) {
@@ -977,15 +1016,29 @@ struct SuperSpacesHUDView: View {
         editingSpaceEmoji = ""
     }
     
+    /// Switches to a specific display mode
+    /// FEATURE: Per-mode window size persistence
+    /// Triggers window resize to restore the saved size for the target mode
+    private func switchToMode(_ mode: DisplayMode) {
+        guard displayMode != mode else { return }
+        
+        // Update display mode
+        displayMode = mode
+        
+        // Trigger callback to resize window
+        onModeChange?(mode)
+    }
+    
     /// Cycles through display modes (PHASE 4: Now 3 modes)
+    /// DEPRECATED: Replaced by separate mode buttons, but kept for keyboard shortcuts if needed
     private func cycleDisplayMode() {
         switch displayMode {
         case .compact:
-            displayMode = .note
+            switchToMode(.note)
         case .note:
-            displayMode = .overview
+            switchToMode(.overview)
         case .overview:
-            displayMode = .compact
+            switchToMode(.compact)
         }
     }
     
