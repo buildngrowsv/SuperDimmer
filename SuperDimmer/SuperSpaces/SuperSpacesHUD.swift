@@ -863,6 +863,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             // Refresh Space data
             self.refreshSpaces()
             
+            // Ensure window level is correct before showing
+            // This is critical because the window level might have been changed
+            // by the user's preference or by system events
+            self.updateWindowLevel()
+            
             // Show window
             self.orderFront(nil)
             self.isCurrentlyVisible = true
