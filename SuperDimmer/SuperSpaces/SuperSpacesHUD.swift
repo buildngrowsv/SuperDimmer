@@ -52,9 +52,15 @@ final class SuperSpacesViewModel: ObservableObject {
     /// All detected Spaces
     @Published var allSpaces: [SpaceDetector.SpaceInfo] = []
     
-    /// Font size multiplier for HUD text (1.0 = default, 0.8 = minimum, 1.5 = maximum)
+    /// Font size multiplier for HUD text (1.0 = default, 0.8 = minimum, 3.0 = maximum)
     /// This allows users to adjust text size with Cmd+/Cmd- shortcuts
     /// The multiplier is applied to all font sizes in the HUD for consistent scaling
+    ///
+    /// RANGE UPDATE (Jan 22, 2026):
+    /// Increased maximum from 1.5x to 3.0x (300% of default size) to support users
+    /// who need much larger text for accessibility or preference reasons.
+    /// All adaptive thresholds (column counts, spacing) scale with this multiplier
+    /// to maintain proper layout at all text sizes.
     ///
     /// PERSISTENCE (Jan 22, 2026):
     /// This property now reads from and writes to SettingsManager.shared.superSpacesFontSizeMultiplier
@@ -89,13 +95,18 @@ final class SuperSpacesViewModel: ObservableObject {
     }
     
     /// Increases font size (Cmd+)
-    /// Maximum multiplier is 1.5x (150% of default size)
+    /// Maximum multiplier is 3.0x (300% of default size)
+    ///
+    /// RANGE UPDATE (Jan 22, 2026):
+    /// Increased maximum from 1.5x to 3.0x to support users who need much larger text
+    /// for accessibility or preference reasons. All adaptive layout features scale
+    /// appropriately with this larger range.
     ///
     /// PERSISTENCE (Jan 22, 2026):
     /// Changes are automatically saved to UserDefaults via SettingsManager.
     /// The new size persists across app restarts.
     func increaseFontSize() {
-        let newSize = min(fontSizeMultiplier + 0.1, 1.5)
+        let newSize = min(fontSizeMultiplier + 0.1, 3.0)
         if newSize != fontSizeMultiplier {
             fontSizeMultiplier = newSize
             print("✓ SuperSpacesHUD: Font size increased to \(Int(fontSizeMultiplier * 100))% (persisted)")

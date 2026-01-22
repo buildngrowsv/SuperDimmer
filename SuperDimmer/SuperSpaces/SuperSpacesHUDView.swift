@@ -302,6 +302,7 @@ struct SuperSpacesHUDView: View {
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()  // Disable focus ring/outline on click
                 .help("Compact Mode")
                 
                 // Note mode button
@@ -314,6 +315,7 @@ struct SuperSpacesHUDView: View {
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()  // Disable focus ring/outline on click
                 .help("Note Mode")
                 
                 // Overview mode button
@@ -326,6 +328,7 @@ struct SuperSpacesHUDView: View {
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()  // Disable focus ring/outline on click
                 .help("Overview Mode")
             }
             .padding(3)
@@ -341,6 +344,7 @@ struct SuperSpacesHUDView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
+            .focusEffectDisabled()  // Disable focus ring/outline on click
             .help("Settings")
             .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
                 SuperSpacesQuickSettings(viewModel: viewModel)
@@ -354,6 +358,7 @@ struct SuperSpacesHUDView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
+            .focusEffectDisabled()  // Disable focus ring/outline on click
             .help("Close (Esc)")
         }
     }
@@ -890,24 +895,26 @@ struct SuperSpacesHUDView: View {
     /// Single column mode ensures cards have maximum width for comfortable note editing
     /// when the window is narrow. This prevents cramped text boxes and improves UX.
     ///
-    /// FONT SIZE ADAPTATION:
+    /// FONT SIZE ADAPTATION (Updated Jan 22, 2026):
     /// Thresholds scale with fontSizeMultiplier so that larger text triggers fewer columns
     /// at the same window width. This ensures cards remain readable and don't become cramped
-    /// when text size increases. For example, at 1.5x text size, the 2-column threshold
-    /// increases from 450pt to 675pt (450 * 1.5).
+    /// when text size increases. For example, at 3.0x text size (maximum), the 2-column
+    /// threshold increases from 450pt to 1350pt (450 * 3.0), ensuring comfortable spacing
+    /// even with very large text. This adaptive scaling is critical for accessibility.
     private func getOverviewColumns(for width: CGFloat) -> [GridItem] {
         let columnCount: Int
         
         // Scale thresholds by font size multiplier
         // Larger text = higher thresholds = fewer columns at same width
+        // This ensures proper spacing and readability at all text sizes (0.8x to 3.0x)
         let multiplier = viewModel.fontSizeMultiplier
-        let threshold1 = 450 * multiplier  // 1 column threshold
-        let threshold2 = 700 * multiplier  // 2 column threshold
-        let threshold3 = 1000 * multiplier // 3 column threshold
-        let threshold4 = 1300 * multiplier // 4 column threshold
+        let threshold1 = 450 * multiplier  // 1 column threshold (at 3.0x: 1350pt)
+        let threshold2 = 700 * multiplier  // 2 column threshold (at 3.0x: 2100pt)
+        let threshold3 = 1000 * multiplier // 3 column threshold (at 3.0x: 3000pt)
+        let threshold4 = 1300 * multiplier // 4 column threshold (at 3.0x: 3900pt)
         
         if width < threshold1 {
-            columnCount = 1  // Single column for narrow windows
+            columnCount = 1  // Single column for narrow windows or large text
         } else if width < threshold2 {
             columnCount = 2
         } else if width < threshold3 {
@@ -918,7 +925,12 @@ struct SuperSpacesHUDView: View {
             columnCount = 5
         }
         
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: columnCount)
+        // Scale grid spacing with font size multiplier for better layout at larger text sizes
+        // At 1.0x: 12pt spacing (default)
+        // At 3.0x: 36pt spacing (3x larger for proportional spacing with large text)
+        let scaledSpacing = 12 * multiplier
+        
+        return Array(repeating: GridItem(.flexible(), spacing: scaledSpacing), count: columnCount)
     }
     
     /// Creates a card for each Space in overview mode

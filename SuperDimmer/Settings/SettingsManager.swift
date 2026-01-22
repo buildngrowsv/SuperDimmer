@@ -458,9 +458,10 @@ final class SettingsManager: ObservableObject {
         // Controls whether HUD stays above all other windows
         case superSpacesFloatOnTop = "superdimmer.superSpacesFloatOnTop"
         
-        // Super Spaces Font Size (Jan 21, 2026)
-        // User's preferred font size multiplier for the HUD (0.8 to 1.5)
+        // Super Spaces Font Size (Jan 21, 2026, updated Jan 22, 2026)
+        // User's preferred font size multiplier for the HUD (0.8 to 3.0)
         // Allows Cmd+/Cmd- to adjust text size, persisted across app launches
+        // Range increased from 1.5 to 3.0 for better accessibility support
         case superSpacesFontSizeMultiplier = "superdimmer.superSpacesFontSizeMultiplier"
         
         // Appearance Mode System (2.2.1.1)
@@ -1854,9 +1855,9 @@ final class SettingsManager: ObservableObject {
      Users can adjust the HUD text size using Cmd+ and Cmd- keyboard shortcuts.
      This preference is saved so the text size persists across app launches.
      
-     RANGE:
+     RANGE (Updated Jan 22, 2026):
      - Minimum: 0.8 (80% of default size)
-     - Maximum: 1.5 (150% of default size)
+     - Maximum: 3.0 (300% of default size) - INCREASED from 1.5x for better accessibility
      - Default: 1.0 (100% - normal size)
      
      BEHAVIOR:
@@ -1864,16 +1865,19 @@ final class SettingsManager: ObservableObject {
      - Changed via Cmd+ (increase) and Cmd- (decrease) shortcuts
      - Increments/decrements by 0.1 per keypress
      - Persists across app restarts
+     - All adaptive layout thresholds scale with this multiplier
      
      WHY THIS MATTERS:
-     - Accessibility: Users with vision needs can make text larger
+     - Accessibility: Users with vision needs can make text much larger (up to 3x)
      - Preference: Some users prefer more compact or more spacious UI
      - Consistency: Size preference maintained across sessions
+     - Adaptive Layout: Column counts and spacing adjust automatically for larger text
      
      TECHNICAL NOTES:
      - Stored as CGFloat in UserDefaults
-     - Clamped to valid range in the increase/decrease methods
+     - Clamped to valid range (0.8 to 3.0) in the increase/decrease methods
      - Applied via multiplication in scaledFontSize() helper
+     - Column thresholds scale proportionally to prevent cramped layouts
      
      DEFAULT: 1.0 (normal size)
      */
@@ -2289,7 +2293,7 @@ final class SettingsManager: ObservableObject {
             defaults.bool(forKey: Keys.superSpacesFloatOnTop.rawValue) : true
         
         // Font size multiplier defaults to 1.0 (normal size)
-        // Range: 0.8 (80%) to 1.5 (150%)
+        // Range: 0.8 (80%) to 3.0 (300%) - increased max for accessibility
         // User can adjust with Cmd+/Cmd- shortcuts in the HUD
         self.superSpacesFontSizeMultiplier = defaults.object(forKey: Keys.superSpacesFontSizeMultiplier.rawValue) != nil ?
             CGFloat(defaults.double(forKey: Keys.superSpacesFontSizeMultiplier.rawValue)) : 1.0
