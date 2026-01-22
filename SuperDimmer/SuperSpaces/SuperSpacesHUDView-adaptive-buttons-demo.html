@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Spaces HUD - Adaptive Button Sizing Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+        }
+        
+        .demo-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .hud-window {
+            background: rgba(40, 40, 50, 0.95);
+            backdrop-filter: blur(40px);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            margin-bottom: 20px;
+            transition: width 0.3s ease;
+        }
+        
+        .hud-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .current-space {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+        }
+        
+        .emoji {
+            font-size: 16px;
+        }
+        
+        .space-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .space-number {
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+        }
+        
+        .space-name {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .controls {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .icon-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px;
+        }
+        
+        .icon-btn:hover {
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .space-selector {
+            overflow-x: auto;
+            margin-bottom: 12px;
+        }
+        
+        .space-buttons {
+            display: flex;
+            gap: 8px;
+            padding: 4px;
+        }
+        
+        .space-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 8px;
+            height: 32px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            font-size: 11px;
+            min-width: 36px;
+            justify-content: center;
+        }
+        
+        .space-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-1px);
+        }
+        
+        .space-btn.active {
+            background: #007AFF;
+        }
+        
+        .space-btn-number {
+            font-weight: 600;
+            min-width: 16px;
+            text-align: center;
+        }
+        
+        .space-btn-emoji {
+            font-size: 14px;
+        }
+        
+        .space-btn-name {
+            font-size: 11px;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .note-indicator {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #FF9500;
+        }
+        
+        .width-control {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 8px;
+        }
+        
+        .width-control label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007AFF;
+            cursor: pointer;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007AFF;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .width-display {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .mode-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        .mode-compact {
+            background: #FF3B30;
+            color: white;
+        }
+        
+        .mode-medium {
+            background: #FF9500;
+            color: white;
+        }
+        
+        .mode-expanded {
+            background: #34C759;
+            color: white;
+        }
+        
+        .explanation {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 122, 255, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #007AFF;
+        }
+        
+        .explanation h3 {
+            color: #007AFF;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .explanation ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .explanation li {
+            color: #333;
+            margin-bottom: 8px;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .explanation li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #007AFF;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🎨 Super Spaces HUD - Adaptive Button Sizing</h1>
+        <p class="subtitle">Interactive demo showing how emoji buttons expand as window width increases</p>
+        
+        <div class="hud-window" id="hudWindow">
+            <div class="hud-header">
+                <div class="current-space">
+                    <span class="emoji">📝</span>
+                    <div class="space-info">
+                        <div class="space-number">Space 3</div>
+                        <div class="space-name">Desktop 3</div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button class="icon-btn">⚙️</button>
+                    <button class="icon-btn">✕</button>
+                </div>
+            </div>
+            
+            <div class="space-selector">
+                <div class="space-buttons" id="spaceButtons">
+                    <!-- Buttons will be generated by JavaScript -->
+                </div>
+            </div>
+            
+            <div style="color: rgba(255, 255, 255, 0.4); font-size: 10px; text-align: center; margin-top: 8px;">
+                Note Editor Below (not shown in demo)
+            </div>
+        </div>
+        
+        <div class="width-control">
+            <label for="widthSlider">
+                Window Width: <span id="widthValue">480</span>px
+                <span class="mode-indicator" id="modeIndicator">MEDIUM</span>
+            </label>
+            <input type="range" min="300" max="800" value="480" class="slider" id="widthSlider">
+            <div class="width-display">
+                Drag the slider to see buttons adapt to window width
+            </div>
+        </div>
+        
+        <div class="explanation">
+            <h3>How Adaptive Sizing Works</h3>
+            <ul>
+                <li><strong>Compact Mode (< 400px):</strong> Shows only emoji or number - minimal space usage</li>
+                <li><strong>Medium Mode (400-550px):</strong> Shows number + emoji - balanced view</li>
+                <li><strong>Expanded Mode (> 550px):</strong> Shows number + emoji + name - full information</li>
+                <li><strong>Smooth Transitions:</strong> Buttons smoothly transition between modes as you resize</li>
+                <li><strong>Note Indicators:</strong> Orange dots show which spaces have notes (always visible)</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // Sample space data
+        const spaces = [
+            { number: 1, emoji: '🏠', name: 'Home', hasNote: false },
+            { number: 2, emoji: '💼', name: 'Work', hasNote: true },
+            { number: 3, emoji: '📝', name: 'Desktop 3', hasNote: false },
+            { number: 4, emoji: '🎮', name: 'Gaming', hasNote: true },
+            { number: 5, emoji: '🎵', name: 'Music', hasNote: false },
+            { number: 6, emoji: '📚', name: 'Reading', hasNote: true },
+            { number: 7, emoji: '🎨', name: 'Design', hasNote: false },
+            { number: 8, emoji: '🔬', name: 'Research', hasNote: false },
+        ];
+        
+        const hudWindow = document.getElementById('hudWindow');
+        const spaceButtons = document.getElementById('spaceButtons');
+        const widthSlider = document.getElementById('widthSlider');
+        const widthValue = document.getElementById('widthValue');
+        const modeIndicator = document.getElementById('modeIndicator');
+        
+        function getButtonMode(width) {
+            const spaceCount = spaces.length;
+            const spacing = 8;
+            const padding = 8;
+            const totalSpacing = (spaceCount - 1) * spacing + padding * 2;
+            const availableForButtons = width - totalSpacing;
+            const spacePerButton = availableForButtons / spaceCount;
+            
+            if (spacePerButton >= 100) {
+                return 'expanded';
+            } else if (spacePerButton >= 60) {
+                return 'medium';
+            } else {
+                return 'compact';
+            }
+        }
+        
+        function renderButtons(width) {
+            const mode = getButtonMode(width);
+            
+            spaceButtons.innerHTML = '';
+            
+            spaces.forEach(space => {
+                const btn = document.createElement('button');
+                btn.className = 'space-btn';
+                if (space.number === 3) {
+                    btn.classList.add('active');
+                }
+                
+                if (mode === 'compact') {
+                    // Compact: Emoji or number only
+                    if (space.emoji) {
+                        btn.innerHTML = `<span class="space-btn-emoji">${space.emoji}</span>`;
+                    } else {
+                        btn.innerHTML = `<span class="space-btn-number">${space.number}</span>`;
+                    }
+                    btn.style.minWidth = '36px';
+                    btn.style.padding = '8px 4px';
+                } else if (mode === 'medium') {
+                    // Medium: Number + emoji
+                    btn.innerHTML = `
+                        <span class="space-btn-number">${space.number}</span>
+                        ${space.emoji ? `<span class="space-btn-emoji">${space.emoji}</span>` : ''}
+                    `;
+                    btn.style.minWidth = '60px';
+                    btn.style.padding = '8px 4px';
+                } else {
+                    // Expanded: Number + emoji + name
+                    btn.innerHTML = `
+                        <span class="space-btn-number">${space.number}</span>
+                        ${space.emoji ? `<span class="space-btn-emoji">${space.emoji}</span>` : ''}
+                        <span class="space-btn-name">${space.name}</span>
+                    `;
+                    btn.style.minWidth = '80px';
+                    btn.style.padding = '8px';
+                }
+                
+                // Add note indicator if space has note
+                if (space.hasNote) {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'note-indicator';
+                    btn.appendChild(indicator);
+                }
+                
+                spaceButtons.appendChild(btn);
+            });
+            
+            // Update mode indicator
+            modeIndicator.textContent = mode.toUpperCase();
+            modeIndicator.className = 'mode-indicator mode-' + mode;
+        }
+        
+        function updateWidth() {
+            const width = widthSlider.value;
+            hudWindow.style.width = width + 'px';
+            widthValue.textContent = width;
+            renderButtons(parseInt(width));
+        }
+        
+        widthSlider.addEventListener('input', updateWidth);
+        
+        // Initial render
+        updateWidth();
+    </script>
+</body>
+</html>

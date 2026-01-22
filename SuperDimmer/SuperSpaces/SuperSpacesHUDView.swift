@@ -83,6 +83,10 @@ struct SuperSpacesHUDView: View {
     /// Maximum button width for equal-width buttons (PHASE 2.1)
     @State private var maxButtonWidth: CGFloat = 100
     
+    /// Available width for note mode space selector buttons (adaptive sizing)
+    /// This tracks the container width to determine button expansion level
+    @State private var noteSelectorWidth: CGFloat = 0
+    
     /// Show quick settings popover
     @State private var showQuickSettings = false
     
@@ -341,15 +345,25 @@ struct SuperSpacesHUDView: View {
     /// Note display mode: Persistent note editor with Space selector and inline editing
     private var noteDisplayView: some View {
         VStack(spacing: 12) {
-            // Space selector row
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(viewModel.allSpaces, id: \.index) { space in
-                        noteSpaceButton(for: space)
+            // Space selector row with adaptive button sizing
+            // Buttons expand to show number + emoji + name as window width increases
+            GeometryReader { geometry in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(viewModel.allSpaces, id: \.index) { space in
+                            noteSpaceButton(for: space, availableWidth: geometry.size.width)
+                        }
                     }
+                    .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 4)
+                .onAppear {
+                    noteSelectorWidth = geometry.size.width
+                }
+                .onChange(of: geometry.size.width) { newWidth in
+                    noteSelectorWidth = newWidth
+                }
             }
+            .frame(height: 40)  // Fixed height for the selector row
             
             Divider()
             
@@ -518,12 +532,12 @@ struct SuperSpacesHUDView: View {
                             debouncedNoteSave(newValue)
                         }
                     
-                    // Placeholder when empty - positioned to match TextEditor padding
+                    // Placeholder when empty - positioned to match TextEditor cursor
                     if noteText.isEmpty {
                         Text("Add notes, reminders, or tasks for this Space...")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                            .padding(.leading, 8)
+                            .padding(.leading, 13)
                             .padding(.top, 8)
                             .allowsHitTesting(false)
                     }
@@ -575,30 +589,70 @@ struct SuperSpacesHUDView: View {
         }
     }
     
-    /// Creates a Space button for note mode selector
-    private func noteSpaceButton(for space: SpaceDetector.SpaceInfo) -> some View {
-        Button(action: {
+    /// Creates a Space button for note mode selector with adaptive sizing
+    /// ADAPTIVE SIZING: Button expands to show more content as window width increases
+    /// - Compact (width < 400): Emoji/number only (36pt)
+    /// - Medium (width 400-550): Number + emoji (60pt)
+    /// - Expanded (width > 550): Number + emoji + name (dynamic width)
+    private func noteSpaceButton(for space: SpaceDetector.SpaceInfo, availableWidth: CGFloat) -> some View {
+        // Determine what to show based on available width (calculate once outside button)
+        let buttonMode = getNoteButtonMode(availableWidth: availableWidth)
+        
+        return Button(action: {
             // Single click: Load note for this Space
             selectNoteSpace(space.index)
         }) {
             HStack(spacing: 4) {
-                // Emoji or number
-                if let emoji = getSpaceEmoji(space.index) {
-                    Text(emoji)
-                        .font(.system(size: 14))
-                } else {
+                switch buttonMode {
+                case .compact:
+                    // Compact: Emoji or number only
+                    if let emoji = getSpaceEmoji(space.index) {
+                        Text(emoji)
+                            .font(.system(size: 14))
+                    } else {
+                        Text("\(space.index)")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    
+                case .medium:
+                    // Medium: Number + emoji
                     Text("\(space.index)")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 16)
+                    
+                    if let emoji = getSpaceEmoji(space.index) {
+                        Text(emoji)
+                            .font(.system(size: 14))
+                    }
+                    
+                case .expanded:
+                    // Expanded: Number + emoji + name
+                    Text("\(space.index)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 16)
+                    
+                    if let emoji = getSpaceEmoji(space.index) {
+                        Text(emoji)
+                            .font(.system(size: 14))
+                    }
+                    
+                    if let name = getSpaceName(space.index) {
+                        Text(name)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                    }
                 }
                 
-                // Note indicator
+                // Note indicator (always shown)
                 if hasNote(space.index) {
                     Circle()
                         .fill(Color.orange)
                         .frame(width: 4, height: 4)
                 }
             }
-            .frame(width: 36, height: 32)
+            .padding(.horizontal, buttonMode == .expanded ? 8 : 4)
+            .frame(minWidth: getNoteButtonWidth(mode: buttonMode))
+            .frame(height: 32)
             .background(
                 selectedNoteSpace == space.index ?
                     Color.accentColor : Color.secondary.opacity(0.2)
@@ -616,6 +670,49 @@ struct SuperSpacesHUDView: View {
                 viewModel.switchToSpace(space.index)
             }
         )
+    }
+    
+    /// Button display modes for note selector
+    /// Determines what content to show based on available width
+    private enum NoteButtonMode {
+        case compact    // Emoji/number only (36pt)
+        case medium     // Number + emoji (60pt)
+        case expanded   // Number + emoji + name (dynamic)
+    }
+    
+    /// Determines button mode based on available width
+    /// Calculates per-button space to decide expansion level
+    private func getNoteButtonMode(availableWidth: CGFloat) -> NoteButtonMode {
+        let spaceCount = CGFloat(viewModel.allSpaces.count)
+        guard spaceCount > 0 else { return .compact }
+        
+        // Calculate approximate space per button (accounting for spacing and padding)
+        let spacing: CGFloat = 8
+        let padding: CGFloat = 8
+        let totalSpacing = (spaceCount - 1) * spacing + padding * 2
+        let availableForButtons = availableWidth - totalSpacing
+        let spacePerButton = availableForButtons / spaceCount
+        
+        // Determine mode based on space per button
+        if spacePerButton >= 100 {
+            return .expanded  // Enough space for number + emoji + name
+        } else if spacePerButton >= 60 {
+            return .medium    // Enough space for number + emoji
+        } else {
+            return .compact   // Only emoji/number
+        }
+    }
+    
+    /// Gets minimum width for note button based on mode
+    private func getNoteButtonWidth(mode: NoteButtonMode) -> CGFloat {
+        switch mode {
+        case .compact:
+            return 36
+        case .medium:
+            return 60
+        case .expanded:
+            return 80  // Minimum, will expand with name
+        }
     }
     
     // MARK: - Footer
