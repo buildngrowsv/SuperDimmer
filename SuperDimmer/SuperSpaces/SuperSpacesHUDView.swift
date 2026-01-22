@@ -419,19 +419,25 @@ struct SuperSpacesHUDView: View {
             .frame(width: maxButtonWidth)  // PHASE 2.1: Fixed width for all buttons
             .padding(.vertical, 8)
             .background(
-                // FEATURE 5.5.9: Use Space's custom color or default
-                space.index == viewModel.currentSpaceNumber ?
-                    (getSpaceColor(space.index).map { settings.hexToColor($0) } ?? Color.accentColor) :
-                    Color.secondary.opacity(0.2)
+                // FEATURE 5.5.9: Show each Space's color (custom or default)
+                // Active space: Full color intensity
+                // Inactive spaces: Faded color (20% opacity) to show their identity
+                getSpaceBackgroundColor(space.index, isActive: space.index == viewModel.currentSpaceNumber)
             )
             .foregroundColor(
                 space.index == viewModel.currentSpaceNumber ? .white : .primary
             )
             .cornerRadius(8)
+            // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
+            // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
+            // This keeps buttons fully visible but darker, matching SuperDimmer's core functionality
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+            )
         }
         .buttonStyle(.plain)
         .help(getSpaceTooltip(space.index))
-        .opacity(getSpaceOpacity(space.index))  // FEATURE: 5.5.8 - Dim to Indicate Order
     }
     
     /// Note display mode: Persistent note editor with Space selector and inline editing
@@ -773,19 +779,24 @@ struct SuperSpacesHUDView: View {
             .frame(minWidth: getNoteButtonWidth(mode: buttonMode))
             .frame(height: 32)
             .background(
-                // FEATURE 5.5.9: Use Space's custom color or default
-                selectedNoteSpace == space.index ?
-                    (getSpaceColor(space.index).map { settings.hexToColor($0) } ?? Color.accentColor) :
-                    Color.secondary.opacity(0.2)
+                // FEATURE 5.5.9: Show each Space's color (custom or default)
+                // Selected space: Full color intensity
+                // Unselected spaces: Faded color (20% opacity) to show their identity
+                getSpaceBackgroundColor(space.index, isActive: selectedNoteSpace == space.index)
             )
             .foregroundColor(
                 selectedNoteSpace == space.index ? .white : .primary
             )
             .cornerRadius(8)
+            // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
+            // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+            )
         }
         .buttonStyle(.plain)
         .help(getSpaceName(space.index) ?? "Space \(space.index)")
-        .opacity(getSpaceOpacity(space.index))  // FEATURE: 5.5.8 - Dim to Indicate Order
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
                 // Double-click: Switch to this Space
@@ -913,7 +924,7 @@ struct SuperSpacesHUDView: View {
             settings: settings,
             getSpaceEmoji: getSpaceEmoji,
             getSpaceName: getSpaceName,
-            getSpaceOpacity: getSpaceOpacity,  // FEATURE: 5.5.8 - Pass opacity calculator
+            getSpaceDimmingOverlayOpacity: getSpaceDimmingOverlayOpacity,  // FEATURE: 5.5.8 - Pass dimming overlay calculator
             availableHeight: availableHeight
         )
     }
@@ -1014,14 +1025,45 @@ struct SuperSpacesHUDView: View {
         return settings.spaceColors[spaceNumber]
     }
     
+    /// Gets the background color for a Space button
+    /// FEATURE 5.5.9: Returns appropriate color based on active state
+    ///
+    /// BEHAVIOR:
+    /// - Active space: Full color intensity (100% opacity)
+    /// - Inactive space: Faded color (20% opacity) to show identity without overwhelming
+    ///
+    /// COLOR SOURCE:
+    /// - Uses custom color if user has set one
+    /// - Falls back to default color based on space number (cycling through palette)
+    /// - This ensures every space has a distinct color, even before customization
+    ///
+    /// WHY SHOW COLORS FOR INACTIVE SPACES:
+    /// - Provides visual identity and distinction between spaces
+    /// - Helps users quickly recognize and navigate to specific spaces
+    /// - Creates a more colorful, engaging interface
+    /// - Reduces cognitive load by using color as a memory aid
+    ///
+    /// - Parameters:
+    ///   - spaceNumber: The Space number (1-based)
+    ///   - isActive: Whether this is the currently active/selected Space
+    /// - Returns: SwiftUI Color with appropriate opacity
+    private func getSpaceBackgroundColor(_ spaceNumber: Int, isActive: Bool) -> Color {
+        // Get the color hex (custom or default)
+        let colorHex = settings.getSpaceColorOrDefault(for: spaceNumber)
+        let color = settings.hexToColor(colorHex)
+        
+        // Apply full opacity for active, faded for inactive
+        return isActive ? color : color.opacity(0.2)
+    }
+    
     /// Gets the accent color for the current Space
-    /// FEATURE 5.5.9: Returns custom color or default blue
+    /// FEATURE 5.5.9: Returns custom color or default color
+    ///
+    /// Used for HUD background tint and other accent elements
     private func getCurrentSpaceAccentColor() -> Color {
         let currentSpace = displayMode == .note ? (selectedNoteSpace ?? viewModel.currentSpaceNumber) : viewModel.currentSpaceNumber
-        if let colorHex = getSpaceColor(currentSpace) {
-            return settings.hexToColor(colorHex)
-        }
-        return Color.accentColor  // Default blue
+        let colorHex = settings.getSpaceColorOrDefault(for: currentSpace)
+        return settings.hexToColor(colorHex)
     }
     
     /// Checks if a Space has a note
@@ -1035,38 +1077,56 @@ struct SuperSpacesHUDView: View {
         return "Switch to Space \(spaceNumber)"
     }
     
-    /// Gets opacity for a Space button based on visit recency
+    /// Gets dimming overlay opacity for a Space button based on visit recency
     ///
     /// FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
+    ///
+    /// DESIGN CHANGE (Jan 22, 2026):
+    /// Changed from transparency-based dimming to overlay-based dimming.
+    /// Instead of making the entire button/card transparent (which reduces visibility),
+    /// we now apply a dark overlay on top. This keeps elements fully visible but darker.
+    ///
+    /// WHY THIS IS BETTER:
+    /// - More consistent with SuperDimmer's core dimming functionality
+    /// - Better visibility - dimmed elements remain clear and readable
+    /// - More natural visual hierarchy - darkness indicates less recent visits
+    /// - Matches the app's brand identity (dimming specialist)
     ///
     /// When spaceOrderDimmingEnabled is true, buttons are dimmed based on
     /// how recently each Space was visited. This creates a visual "heat map"
     /// of your workflow.
     ///
     /// CALCULATION:
-    /// - Current Space: 100% opacity (fully bright)
-    /// - Last visited: Slightly dimmed (e.g., 95% opacity)
-    /// - Older Spaces: Progressively more dimmed (down to minimum opacity)
+    /// - Current Space: 0% overlay (fully bright, no dimming)
+    /// - Last visited: Slight overlay (e.g., 5% dark overlay)
+    /// - Older Spaces: Progressively darker overlay (up to maximum dim level)
     /// - Maximum dimming controlled by spaceOrderMaxDimLevel setting
     ///
     /// WHEN DISABLED:
-    /// - All buttons have 100% opacity (no dimming)
+    /// - All buttons have 0% overlay (no dimming)
     ///
-    /// - Parameter spaceNumber: The Space number to get opacity for
-    /// - Returns: Opacity value (0.0-1.0) where 1.0 is fully visible
-    private func getSpaceOpacity(_ spaceNumber: Int) -> Double {
-        // If dimming is disabled, return full opacity
+    /// - Parameter spaceNumber: The Space number to get overlay opacity for
+    /// - Returns: Overlay opacity value (0.0-1.0) where 0.0 is no dimming, 1.0 is maximum dimming
+    private func getSpaceDimmingOverlayOpacity(_ spaceNumber: Int) -> Double {
+        // If dimming is disabled, return no overlay
         guard settings.spaceOrderDimmingEnabled else {
-            return 1.0
+            return 0.0
         }
         
-        // Get opacity from visit tracker
+        // Get opacity from visit tracker (this represents visibility)
+        // We need to invert it to get dimming level
         let totalSpaces = viewModel.allSpaces.count
-        return SpaceVisitTracker.shared.getOpacity(
+        let visibilityOpacity = SpaceVisitTracker.shared.getOpacity(
             for: spaceNumber,
             maxDimLevel: settings.spaceOrderMaxDimLevel,
             totalSpaces: totalSpaces
         )
+        
+        // Convert visibility opacity to dimming overlay opacity
+        // visibility 1.0 (fully visible) = overlay 0.0 (no dimming)
+        // visibility 0.5 (50% transparent) = overlay 0.5 (50% dark overlay)
+        // This creates equivalent visual effect but with better visibility
+        return 1.0 - visibilityOpacity
     }
     
     /// Handles Space button click (always switches Space in mini/compact/expanded modes)
@@ -1371,7 +1431,7 @@ struct OverviewSpaceCardView: View {
     @ObservedObject var settings: SettingsManager
     let getSpaceEmoji: (Int) -> String?
     let getSpaceName: (Int) -> String?
-    let getSpaceOpacity: (Int) -> Double  // FEATURE: 5.5.8 - Opacity calculator
+    let getSpaceDimmingOverlayOpacity: (Int) -> Double  // FEATURE: 5.5.8 - Dimming overlay calculator
     let availableHeight: CGFloat
     
     // Local state for this card's note - this is the source of truth for the TextEditor
@@ -1518,6 +1578,13 @@ struct OverviewSpaceCardView: View {
                     lineWidth: 2
                 )
         )
+        // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
+        // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
+        // This keeps cards fully visible but darker, matching SuperDimmer's core functionality
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+        )
         .onAppear {
             // Load note from settings when card appears (only once)
             if !hasInitialized {
@@ -1531,7 +1598,6 @@ struct OverviewSpaceCardView: View {
                 noteText = newValue ?? ""
             }
         }
-        .opacity(getSpaceOpacity(space.index))  // FEATURE: 5.5.8 - Dim to Indicate Order
         // Emoji picker popover
         .popover(
             isPresented: $showEmojiPicker,

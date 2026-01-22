@@ -134,8 +134,12 @@ struct SuperSpacesQuickSettings: View {
     ///
     /// BEHAVIOR:
     /// - Clears the visit order tracked by SpaceVisitTracker
-    /// - All Space buttons will have equal opacity until visited again
+    /// - All Space buttons will have no dimming overlay until visited again
     /// - Useful for starting fresh or debugging
+    ///
+    /// DESIGN NOTE (Jan 22, 2026):
+    /// After reset, buttons use dark overlay dimming instead of transparency.
+    /// This provides better visibility while maintaining visual hierarchy.
     private func resetVisitHistory() {
         SpaceVisitTracker.shared.resetVisitOrder()
         print("✓ SuperSpacesQuickSettings: Visit history reset by user")

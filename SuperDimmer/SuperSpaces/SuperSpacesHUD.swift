@@ -367,16 +367,23 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     
     /// Refreshes Space information
     ///
-    /// FEATURE: 5.5.8 - Dim to Indicate Order (Updated Jan 21, 2026)
+    /// FEATURE: 5.5.8 - Dim to Indicate Order (Updated Jan 22, 2026)
     /// 
-    /// BEHAVIOR CHANGE:
+    /// DESIGN CHANGE (Jan 22, 2026):
+    /// Changed from transparency-based to overlay-based dimming.
+    /// Instead of making buttons/cards transparent, we now apply a dark overlay.
+    /// This keeps elements fully visible but darker, matching SuperDimmer's core functionality.
+    /// 
+    /// BEHAVIOR:
     /// - Previously: All Spaces were pre-initialized in visit order on first launch
     /// - Now: Only the current Space is added to visit order
-    /// - Unvisited Spaces default to 50% opacity until actually visited
+    /// - Unvisited Spaces default to 50% dark overlay until actually visited
     /// - After being visited, they progressively dim based on recency
     ///
-    /// WHY THIS CHANGE:
-    /// - Provides clearer visual feedback: 50% = neutral/unvisited, 100% = current
+    /// WHY THIS APPROACH:
+    /// - Better visibility: Dimmed elements remain clear and readable (vs transparent)
+    /// - More on-brand: Matches SuperDimmer's core dimming functionality
+    /// - Clearer visual feedback: darkness indicates less recent visits
     /// - Progressive dimming only applies to Spaces you've actually used
     /// - More intuitive: brightness indicates recent activity, not arbitrary order
     private func refreshSpaces() {
@@ -386,8 +393,8 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             viewModel.currentSpaceNumber = currentSpace.spaceNumber
             
             // Record the current Space as visited (5.5.8)
-            // This ensures the current Space shows at 100% opacity
-            // Other Spaces will remain at 50% until visited
+            // This ensures the current Space shows at full brightness (no overlay)
+            // Other Spaces will have dark overlay until visited
             if SpaceVisitTracker.shared.visitOrder.isEmpty {
                 SpaceVisitTracker.shared.recordVisit(to: currentSpace.spaceNumber)
             }

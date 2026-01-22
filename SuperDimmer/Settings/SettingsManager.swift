@@ -2813,6 +2813,52 @@ final class SettingsManager: ObservableObject {
     }
     
     /**
+     Gets a default color for a Space based on its number.
+     
+     FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     
+     WHY DEFAULT COLORS:
+     - Provides visual distinction between spaces even before user customizes them
+     - Creates a more colorful, engaging experience out of the box
+     - Helps users quickly identify spaces by color from the start
+     - Reduces the need for manual color assignment for basic usage
+     
+     IMPLEMENTATION:
+     - Cycles through the color palette based on space number
+     - Uses modulo to wrap around when there are more spaces than colors
+     - Provides consistent colors (Space 1 always gets the same default color)
+     - User can override by setting a custom color
+     
+     USAGE:
+     - Call this when a Space has no custom color assigned
+     - Provides a sensible default instead of always using blue
+     
+     - Parameter spaceNumber: The Space number (1-based)
+     - Returns: Hex color string from the palette
+     */
+    func getDefaultSpaceColor(for spaceNumber: Int) -> String {
+        // Use modulo to cycle through the color palette
+        // Subtract 1 because spaceNumber is 1-based but array is 0-based
+        let colorIndex = (spaceNumber - 1) % spaceColorPalette.count
+        return spaceColorPalette[colorIndex].hex
+    }
+    
+    /**
+     Gets the color for a Space, using custom color if set, or default color otherwise.
+     
+     FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     
+     This is the primary method to use when displaying Space colors in the UI.
+     It ensures every Space has a color (either custom or default).
+     
+     - Parameter spaceNumber: The Space number (1-based)
+     - Returns: Hex color string (custom or default)
+     */
+    func getSpaceColorOrDefault(for spaceNumber: Int) -> String {
+        return spaceColors[spaceNumber] ?? getDefaultSpaceColor(for: spaceNumber)
+    }
+    
+    /**
      Converts hex color string to SwiftUI Color.
      
      FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)

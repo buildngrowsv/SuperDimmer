@@ -86,9 +86,14 @@ struct SuperSpacesColorPicker: View {
             
             Divider()
             
-            // Remove color button
+            // Remove color button (shows default color preview)
             Button(action: removeColor) {
-                HStack {
+                HStack(spacing: 8) {
+                    // Default color preview swatch
+                    Circle()
+                        .fill(settings.hexToColor(settings.getDefaultSpaceColor(for: spaceNumber)))
+                        .frame(width: 16, height: 16)
+                    
                     Image(systemName: "xmark.circle")
                     Text("Remove Color (Use Default)")
                 }
@@ -130,7 +135,9 @@ struct SuperSpacesColorPicker: View {
     
     /// Creates a color button with name and swatch
     private func colorButton(name: String, hex: String) -> some View {
-        Button(action: {
+        let isDefaultColor = hex == settings.getDefaultSpaceColor(for: spaceNumber)
+        
+        return Button(action: {
             selectColor(hex)
         }) {
             VStack(spacing: 4) {
@@ -146,6 +153,27 @@ struct SuperSpacesColorPicker: View {
                                 lineWidth: selectedColorHex == hex ? 3 : 1
                             )
                     )
+                    .overlay(
+                        // Show "Default" badge for the default color
+                        Group {
+                            if isDefaultColor {
+                                VStack {
+                                    Spacer()
+                                    HStack {
+                                        Spacer()
+                                        Text("Default")
+                                            .font(.system(size: 7, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 2)
+                                            .background(Color.black.opacity(0.6))
+                                            .cornerRadius(4)
+                                            .padding(4)
+                                    }
+                                }
+                            }
+                        }
+                    )
                 
                 // Color name
                 Text(name)
@@ -155,7 +183,7 @@ struct SuperSpacesColorPicker: View {
             }
         }
         .buttonStyle(.plain)
-        .help("Use \(name)")
+        .help(isDefaultColor ? "\(name) (Default for Space \(spaceNumber))" : "Use \(name)")
     }
     
     // MARK: - Actions

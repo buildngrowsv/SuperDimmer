@@ -137,16 +137,26 @@ final class SpaceVisitTracker: ObservableObject {
     
     /// Gets the opacity level for a Space based on visit recency
     ///
+    /// DESIGN CHANGE (Jan 22, 2026):
+    /// This function still returns "opacity" values, but they are now used to calculate
+    /// dark overlay opacity in the UI layer (SuperSpacesHUDView).
+    /// 
+    /// The UI converts these values: opacity 1.0 → overlay 0.0 (no dimming)
+    ///                               opacity 0.5 → overlay 0.5 (50% dark overlay)
+    /// 
+    /// This change provides better visibility while maintaining the same visual hierarchy.
+    /// Instead of making elements transparent (hard to see), we apply dark overlays (fully visible but darker).
+    ///
     /// BEHAVIOR (Updated Jan 22, 2026 - More dramatic progressive dimming):
     /// - All Spaces start at 50% opacity (default/neutral state)
-    /// - Position 0 (current Space): 100% opacity (fully bright)
+    /// - Position 0 (current Space): 100% opacity (fully bright, no overlay in UI)
     /// - After being visited (positions 1+): Progressive dimming from 100% down to minOpacity
     ///
     /// CALCULATION:
     /// 1. Find Space's position in visitOrder array
-    /// 2. If position 0 (current): return 100% opacity
+    /// 2. If position 0 (current): return 100% opacity (converted to 0% overlay in UI)
     /// 3. If position > 0 (visited before): calculate progressive dim from 100% down
-    /// 4. If not in visit order (never visited): return 50% opacity (default)
+    /// 4. If not in visit order (never visited): return 50% opacity (converted to 50% overlay in UI)
     ///
     /// FORMULA FOR VISITED SPACES (position > 0):
     /// - Start at 100% opacity for position 0 (current)
@@ -156,30 +166,31 @@ final class SpaceVisitTracker: ObservableObject {
     /// - opacity = 1.0 - (position * dimStep)
     ///
     /// EXAMPLE (10 Spaces, 25% max dim = 75% min opacity):
-    /// Position 0 (current): opacity = 1.0 (100%)
-    /// Position 1 (last): opacity = ~0.975 (97.5%, just switched away - still very bright)
-    /// Position 2: opacity = ~0.95 (95%)
-    /// Position 3: opacity = ~0.925 (92.5%)
-    /// Position 4: opacity = ~0.90 (90%)
-    /// Position 5: opacity = ~0.875 (87.5%)
+    /// Position 0 (current): opacity = 1.0 (100%) → UI shows 0% overlay (fully bright)
+    /// Position 1 (last): opacity = ~0.975 (97.5%) → UI shows ~2.5% overlay (just switched away)
+    /// Position 2: opacity = ~0.95 (95%) → UI shows ~5% overlay
+    /// Position 3: opacity = ~0.925 (92.5%) → UI shows ~7.5% overlay
+    /// Position 4: opacity = ~0.90 (90%) → UI shows ~10% overlay
+    /// Position 5: opacity = ~0.875 (87.5%) → UI shows ~12.5% overlay
     /// ...
-    /// Position 10+: opacity = 0.75 (75%, minimum)
+    /// Position 10+: opacity = 0.75 (75%) → UI shows 25% overlay (maximum dimming)
     ///
     /// WHY THIS WORKS BETTER:
     /// - Creates clear visual hierarchy: current is brightest, progressively dims with each rank
     /// - Each position has a noticeable ~2.5% opacity difference (for 10 Spaces)
     /// - More dramatic than the old 50%→25% range which was too subtle
     /// - The full 100%→75% range provides better visual distinction
+    /// - Dark overlays keep elements fully visible (vs transparency which reduces visibility)
     ///
     /// UNVISITED SPACES:
-    /// - Not in visitOrder array: opacity = 0.5 (50%, default state)
-    /// - This makes them clearly distinct from visited Spaces (which are 75%+)
+    /// - Not in visitOrder array: opacity = 0.5 (50%) → UI shows 50% overlay (default state)
+    /// - This makes them clearly distinct from visited Spaces (which are 75%+ opacity / 25%- overlay)
     ///
     /// - Parameters:
     ///   - spaceNumber: The Space number to get opacity for
     ///   - maxDimLevel: Maximum dim level (0.0-1.0, default 0.25 = 25%)
     ///   - totalSpaces: Total number of Spaces (used to calculate step size)
-    /// - Returns: Opacity value (0.0-1.0) where 1.0 is fully visible
+    /// - Returns: Opacity value (0.0-1.0) where 1.0 is fully visible (converted to overlay in UI)
     func getOpacity(for spaceNumber: Int, maxDimLevel: Double = 0.25, totalSpaces: Int) -> Double {
         // Find position in visit order
         guard let position = visitOrder.firstIndex(of: spaceNumber) else {
@@ -224,7 +235,11 @@ final class SpaceVisitTracker: ObservableObject {
     /// BEHAVIOR:
     /// - Clears the visitOrder array
     /// - Removes persisted data from UserDefaults
-    /// - All Spaces will have equal opacity until visited again
+    /// - All Spaces will have no dimming overlay until visited again
+    ///
+    /// DESIGN NOTE (Jan 22, 2026):
+    /// The UI now uses dark overlay dimming instead of transparency.
+    /// After reset, all buttons will be equally bright (no overlay).
     func resetVisitOrder() {
         visitOrder.removeAll()
         UserDefaults.standard.removeObject(forKey: visitOrderKey)
