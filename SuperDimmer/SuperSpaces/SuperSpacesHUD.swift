@@ -451,11 +451,24 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         
         if directSuccess {
             print("✓ SuperSpacesHUD: Space switch via Control+\(spaceNumber) shortcut (instant)")
-        } else {
-            // Fallback to cycling method
-            print("⚠️ SuperSpacesHUD: Direct shortcut not enabled, falling back to cycling")
-            switchToSpaceViaAppleScript(spaceNumber, from: currentSpace)
+            return
         }
+        
+        // Double-check we're not already on target Space
+        // (shortcut might have worked but we didn't detect it in time)
+        if let currentSpaceInfo = SpaceDetector.getCurrentSpace(),
+           currentSpaceInfo.spaceNumber == spaceNumber {
+            print("✓ SuperSpacesHUD: Already on Space \(spaceNumber) (shortcut worked)")
+            return
+        }
+        
+        // Get CURRENT space number (may have changed during shortcut attempt)
+        let actualCurrentSpace = SpaceDetector.getCurrentSpace()?.spaceNumber ?? currentSpace
+        
+        // Fallback to cycling method
+        print("⚠️ SuperSpacesHUD: Direct shortcut not enabled, falling back to cycling")
+        print("   Current: \(actualCurrentSpace), Target: \(spaceNumber)")
+        switchToSpaceViaAppleScript(spaceNumber, from: actualCurrentSpace)
     }
     
     /// Tries to switch to Space using Control+Number shortcut
