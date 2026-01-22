@@ -496,8 +496,23 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         }
         
         // Key codes for number keys 1-9 (top row of keyboard)
-        // Key code 18 = 1, 19 = 2, 20 = 3, 21 = 4, 22 = 5, 23 = 6, 24 = 7, 25 = 8, 26 = 9
-        let keyCode = 17 + spaceNumber
+        // These are NOT sequential! macOS uses a non-linear mapping:
+        // 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25
+        let keyCodes: [Int: Int] = [
+            1: 18,
+            2: 19,
+            3: 20,
+            4: 21,
+            5: 23,  // Note: 5 and 6 are swapped!
+            6: 22,
+            7: 26,
+            8: 28,
+            9: 25
+        ]
+        
+        guard let keyCode = keyCodes[spaceNumber] else {
+            return false
+        }
         
         // Build AppleScript to simulate Control+Number
         let script = """
