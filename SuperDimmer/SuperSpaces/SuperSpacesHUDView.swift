@@ -431,9 +431,11 @@ struct SuperSpacesHUDView: View {
             // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
             // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
             // This keeps buttons fully visible but darker, matching SuperDimmer's core functionality
+            // CRITICAL: allowsHitTesting(false) ensures overlay doesn't block button clicks
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+                    .allowsHitTesting(false)
             )
         }
         .buttonStyle(.plain)
@@ -790,9 +792,11 @@ struct SuperSpacesHUDView: View {
             .cornerRadius(8)
             // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
             // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
+            // CRITICAL: allowsHitTesting(false) ensures overlay doesn't block button clicks
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+                    .allowsHitTesting(false)
             )
         }
         .buttonStyle(.plain)
@@ -1581,9 +1585,11 @@ struct OverviewSpaceCardView: View {
         // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
         // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
         // This keeps cards fully visible but darker, matching SuperDimmer's core functionality
+        // CRITICAL: allowsHitTesting(false) ensures overlay doesn't block clicks on text fields and buttons
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+                .allowsHitTesting(false)
         )
         .onAppear {
             // Load note from settings when card appears (only once)
