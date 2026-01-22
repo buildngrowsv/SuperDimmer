@@ -98,10 +98,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         // Create panel with HUD style
         // PHASE 1.2 FIX: Use .borderless to remove title bar artifact
         // PHASE 1.3 FIX: Increased initial height to prevent clipping, window is resizable
+        // CRITICAL FIX: Removed .nonactivatingPanel to allow TextEditor input
+        // The panel MUST be able to become key window for text editing to work
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 450),
             styleMask: [
-                .nonactivatingPanel,  // Doesn't steal focus from other apps
                 .borderless,          // No title bar or borders (fixes artifact)
                 .fullSizeContentView, // Content extends to edges
                 .resizable            // Allow user to resize if needed
@@ -161,6 +162,20 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         positionInTopRight()
         
         print("✓ SuperSpacesHUD: Panel configured")
+    }
+    
+    // MARK: - Window Overrides (CRITICAL for TextEditor input)
+    
+    /// Allow panel to become key window so TextEditors can receive input
+    /// Without this, text fields and editors cannot be edited
+    override var canBecomeKey: Bool {
+        return true
+    }
+    
+    /// Allow panel to become main window
+    /// This ensures proper first responder chain for text editing
+    override var canBecomeMain: Bool {
+        return true
     }
     
     /// Creates and sets SwiftUI content view
