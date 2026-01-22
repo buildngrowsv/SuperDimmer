@@ -323,12 +323,13 @@
         </div>
         
         <div class="explanation">
-            <h3>How Adaptive Sizing Works</h3>
+            <h3>How Adaptive Sizing Works (Updated - More Aggressive Expansion)</h3>
             <ul>
-                <li><strong>Compact Mode (< 400px):</strong> Shows only emoji or number - minimal space usage</li>
-                <li><strong>Medium Mode (400-550px):</strong> Shows number + emoji - balanced view</li>
-                <li><strong>Expanded Mode (> 550px):</strong> Shows number + emoji + name - full information</li>
-                <li><strong>Smooth Transitions:</strong> Buttons smoothly transition between modes as you resize</li>
+                <li><strong>Compact Mode (narrow):</strong> Shows number only - minimal space, always visible</li>
+                <li><strong>Medium Mode (moderate):</strong> Shows number + emoji - more generous threshold (50px/button)</li>
+                <li><strong>Expanded Mode (wide):</strong> Shows number + emoji + name - aggressive expansion (70px/button, names can clip)</li>
+                <li><strong>User Preference:</strong> "I rather have to scroll than not" - prefers showing more info even if it requires scrolling</li>
+                <li><strong>Always Show Number:</strong> Space number is always visible in all modes</li>
                 <li><strong>Note Indicators:</strong> Orange dots show which spaces have notes (always visible)</li>
             </ul>
         </div>
@@ -361,12 +362,14 @@
             const availableForButtons = width - totalSpacing;
             const spacePerButton = availableForButtons / spaceCount;
             
-            if (spacePerButton >= 100) {
-                return 'expanded';
-            } else if (spacePerButton >= 60) {
-                return 'medium';
+            // UPDATED: More aggressive thresholds (70 and 50 instead of 100 and 60)
+            // User wants to scroll rather than see less info
+            if (spacePerButton >= 70) {
+                return 'expanded';  // Show number + emoji + name
+            } else if (spacePerButton >= 50) {
+                return 'medium';    // Show number + emoji
             } else {
-                return 'compact';
+                return 'compact';   // Show number only
             }
         }
         
@@ -382,15 +385,12 @@
                     btn.classList.add('active');
                 }
                 
+                // UPDATED: Always show number, add emoji and name based on mode
                 if (mode === 'compact') {
-                    // Compact: Emoji or number only
-                    if (space.emoji) {
-                        btn.innerHTML = `<span class="space-btn-emoji">${space.emoji}</span>`;
-                    } else {
-                        btn.innerHTML = `<span class="space-btn-number">${space.number}</span>`;
-                    }
-                    btn.style.minWidth = '36px';
-                    btn.style.padding = '8px 4px';
+                    // Compact: Number only (always visible)
+                    btn.innerHTML = `<span class="space-btn-number">${space.number}</span>`;
+                    btn.style.minWidth = '44px';
+                    btn.style.padding = '8px 6px';
                 } else if (mode === 'medium') {
                     // Medium: Number + emoji
                     btn.innerHTML = `
@@ -398,9 +398,9 @@
                         ${space.emoji ? `<span class="space-btn-emoji">${space.emoji}</span>` : ''}
                     `;
                     btn.style.minWidth = '60px';
-                    btn.style.padding = '8px 4px';
+                    btn.style.padding = '8px 6px';
                 } else {
-                    // Expanded: Number + emoji + name
+                    // Expanded: Number + emoji + name (names can clip, user will scroll)
                     btn.innerHTML = `
                         <span class="space-btn-number">${space.number}</span>
                         ${space.emoji ? `<span class="space-btn-emoji">${space.emoji}</span>` : ''}

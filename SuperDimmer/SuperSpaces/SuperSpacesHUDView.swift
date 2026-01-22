@@ -630,9 +630,11 @@ struct SuperSpacesHUDView: View {
     
     /// Creates a Space button for note mode selector with adaptive sizing
     /// ADAPTIVE SIZING: Button expands to show more content as window width increases
-    /// - Compact (width < 400): Emoji/number only (36pt)
-    /// - Medium (width 400-550): Number + emoji (60pt)
-    /// - Expanded (width > 550): Number + emoji + name (dynamic width)
+    /// ALWAYS shows number (user requirement), expands to show emoji and name as width allows
+    /// User preference: "I rather have to scroll than not" - aggressive expansion
+    /// - Compact (narrow): Number only (44pt)
+    /// - Medium (moderate): Number + emoji (60pt)
+    /// - Expanded (wide): Number + emoji + name (80pt+, names can clip)
     private func noteSpaceButton(for space: SpaceDetector.SpaceInfo, availableWidth: CGFloat) -> some View {
         // Determine what to show based on available width (calculate once outside button)
         let buttonMode = getNoteButtonMode(availableWidth: availableWidth)
@@ -642,44 +644,23 @@ struct SuperSpacesHUDView: View {
             selectNoteSpace(space.index)
         }) {
             HStack(spacing: 4) {
-                switch buttonMode {
-                case .compact:
-                    // Compact: Emoji or number only
-                    if let emoji = getSpaceEmoji(space.index) {
-                        Text(emoji)
-                            .font(.system(size: 14))
-                    } else {
-                        Text("\(space.index)")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    
-                case .medium:
-                    // Medium: Number + emoji
-                    Text("\(space.index)")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 16)
-                    
-                    if let emoji = getSpaceEmoji(space.index) {
-                        Text(emoji)
-                            .font(.system(size: 14))
-                    }
-                    
-                case .expanded:
-                    // Expanded: Number + emoji + name
-                    Text("\(space.index)")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 16)
-                    
-                    if let emoji = getSpaceEmoji(space.index) {
-                        Text(emoji)
-                            .font(.system(size: 14))
-                    }
-                    
-                    if let name = getSpaceName(space.index) {
-                        Text(name)
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                    }
+                // NUMBER: Always shown (user requirement - "keep the number there all the time")
+                Text("\(space.index)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 16)
+                
+                // EMOJI: Show when we have medium or more space
+                if buttonMode != .compact, let emoji = getSpaceEmoji(space.index) {
+                    Text(emoji)
+                        .font(.system(size: 14))
+                }
+                
+                // NAME: Show when we have expanded space (even if it clips)
+                // User preference: "I rather have to scroll than not" - show names aggressively
+                if buttonMode == .expanded, let name = getSpaceName(space.index) {
+                    Text(name)
+                        .font(.system(size: 11))
+                        .lineLimit(1)
                 }
                 
                 // Note indicator (always shown)
@@ -689,7 +670,7 @@ struct SuperSpacesHUDView: View {
                         .frame(width: 4, height: 4)
                 }
             }
-            .padding(.horizontal, buttonMode == .expanded ? 8 : 4)
+            .padding(.horizontal, buttonMode == .expanded ? 8 : 6)
             .frame(minWidth: getNoteButtonWidth(mode: buttonMode))
             .frame(height: 32)
             .background(
@@ -713,14 +694,17 @@ struct SuperSpacesHUDView: View {
     
     /// Button display modes for note selector
     /// Determines what content to show based on available width
+    /// UPDATED: More aggressive expansion, always show number
     private enum NoteButtonMode {
-        case compact    // Emoji/number only (36pt)
+        case compact    // Number only (44pt) - no emoji
         case medium     // Number + emoji (60pt)
-        case expanded   // Number + emoji + name (dynamic)
+        case expanded   // Number + emoji + name (80pt+, names can clip)
     }
     
     /// Determines button mode based on available width
     /// Calculates per-button space to decide expansion level
+    /// UPDATED: More generous thresholds - prefer expansion over compactness
+    /// User wants to scroll rather than see less info
     private func getNoteButtonMode(availableWidth: CGFloat) -> NoteButtonMode {
         let spaceCount = CGFloat(viewModel.allSpaces.count)
         guard spaceCount > 0 else { return .compact }
@@ -732,25 +716,27 @@ struct SuperSpacesHUDView: View {
         let availableForButtons = availableWidth - totalSpacing
         let spacePerButton = availableForButtons / spaceCount
         
-        // Determine mode based on space per button
-        if spacePerButton >= 100 {
-            return .expanded  // Enough space for number + emoji + name
-        } else if spacePerButton >= 60 {
-            return .medium    // Enough space for number + emoji
+        // UPDATED: More aggressive thresholds - prefer showing more info
+        // Lowered from 100→70 and 60→50 to expand sooner
+        if spacePerButton >= 70 {
+            return .expanded  // Show number + emoji + name (names can clip, user will scroll)
+        } else if spacePerButton >= 50 {
+            return .medium    // Show number + emoji
         } else {
-            return .compact   // Only emoji/number
+            return .compact   // Show number only
         }
     }
     
     /// Gets minimum width for note button based on mode
+    /// UPDATED: Adjusted widths for new always-show-number approach
     private func getNoteButtonWidth(mode: NoteButtonMode) -> CGFloat {
         switch mode {
         case .compact:
-            return 36
+            return 44  // Number only (increased from 36 to accommodate number)
         case .medium:
-            return 60
+            return 60  // Number + emoji
         case .expanded:
-            return 80  // Minimum, will expand with name
+            return 80  // Number + emoji + name (minimum, will expand with name)
         }
     }
     
