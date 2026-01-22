@@ -665,106 +665,12 @@ struct SuperSpacesHUDView: View {
     
     /// Creates a card for each Space in overview mode
     private func overviewSpaceCard(for space: SpaceDetector.SpaceInfo) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Header: Number, emoji, name, switch button
-            HStack(spacing: 8) {
-                // Number badge
-                Text("\(space.index)")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 24, height: 24)
-                    .background(
-                        space.index == viewModel.currentSpaceNumber ?
-                            Color.accentColor : Color.secondary
-                    )
-                    .cornerRadius(6)
-                
-                // Emoji
-                if let emoji = getSpaceEmoji(space.index) {
-                    Text(emoji)
-                        .font(.system(size: 16))
-                }
-                
-                // Name
-                Text(getSpaceName(space.index) ?? "Unnamed")
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
-                
-                Spacer()
-                
-                // Switch button
-                Button(action: {
-                    viewModel.switchToSpace(space.index)
-                }) {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(
-                            space.index == viewModel.currentSpaceNumber ?
-                                .accentColor : .secondary
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Switch to Space \(space.index)")
-            }
-            
-            Divider()
-            
-            // Note editor (inline, always visible)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Note")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                // Use ZStack for proper placeholder positioning
-                ZStack(alignment: .topLeading) {
-                    // TextEditor with direct binding
-                    TextEditor(text: Binding(
-                        get: { settings.spaceNotes[space.index] ?? "" },
-                        set: { newValue in
-                            if newValue.isEmpty {
-                                settings.spaceNotes.removeValue(forKey: space.index)
-                            } else {
-                                settings.spaceNotes[space.index] = newValue
-                            }
-                        }
-                    ))
-                    .font(.system(size: 11))
-                    .frame(height: 80)
-                    .scrollContentBackground(.hidden)  // Hide default background
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
-                    
-                    // Placeholder when empty
-                    if (settings.spaceNotes[space.index] ?? "").isEmpty {
-                        Text("Add note...")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.top, 8)
-                            .allowsHitTesting(false)
-                    }
-                }
-            }
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(
-                    space.index == viewModel.currentSpaceNumber ?
-                        Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05)
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(
-                    space.index == viewModel.currentSpaceNumber ?
-                        Color.accentColor.opacity(0.3) : Color.clear,
-                    lineWidth: 2
-                )
+        OverviewSpaceCardView(
+            space: space,
+            viewModel: viewModel,
+            settings: settings,
+            getSpaceEmoji: getSpaceEmoji,
+            getSpaceName: getSpaceName
         )
     }
     
@@ -1116,3 +1022,129 @@ struct SuperSpacesHUDView_Previews: PreviewProvider {
     }
 }
 #endif
+
+// MARK: - Overview Space Card View (Separate component for proper state management)
+
+/// Separate view for each Space card in overview mode
+/// This ensures each TextEditor has its own stable state
+struct OverviewSpaceCardView: View {
+    let space: SpaceDetector.SpaceInfo
+    @ObservedObject var viewModel: SuperSpacesViewModel
+    @ObservedObject var settings: SettingsManager
+    let getSpaceEmoji: (Int) -> String?
+    let getSpaceName: (Int) -> String?
+    
+    // Local state for this card's note
+    @State private var noteText: String = ""
+    @State private var saveTimer: Timer?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header: Number, emoji, name, switch button
+            HStack(spacing: 8) {
+                // Number badge
+                Text("\(space.index)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        space.index == viewModel.currentSpaceNumber ?
+                            Color.accentColor : Color.secondary
+                    )
+                    .cornerRadius(6)
+                
+                // Emoji
+                if let emoji = getSpaceEmoji(space.index) {
+                    Text(emoji)
+                        .font(.system(size: 16))
+                }
+                
+                // Name
+                Text(getSpaceName(space.index) ?? "Unnamed")
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                // Switch button
+                Button(action: {
+                    viewModel.switchToSpace(space.index)
+                }) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(
+                            space.index == viewModel.currentSpaceNumber ?
+                                .accentColor : .secondary
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Switch to Space \(space.index)")
+            }
+            
+            Divider()
+            
+            // Note editor (inline, always visible)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Note")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                // Use ZStack for proper placeholder positioning
+                ZStack(alignment: .topLeading) {
+                    // TextEditor with local state
+                    TextEditor(text: $noteText)
+                        .font(.system(size: 11))
+                        .frame(height: 80)
+                        .scrollContentBackground(.hidden)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                        .onChange(of: noteText) { newValue in
+                            // Debounced save
+                            saveTimer?.invalidate()
+                            saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                                if newValue.isEmpty {
+                                    settings.spaceNotes.removeValue(forKey: space.index)
+                                } else {
+                                    settings.spaceNotes[space.index] = newValue
+                                }
+                            }
+                        }
+                    
+                    // Placeholder when empty
+                    if noteText.isEmpty {
+                        Text("Add note...")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(
+                    space.index == viewModel.currentSpaceNumber ?
+                        Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(
+                    space.index == viewModel.currentSpaceNumber ?
+                        Color.accentColor.opacity(0.3) : Color.clear,
+                    lineWidth: 2
+                )
+        )
+        .onAppear {
+            // Load note from settings when card appears
+            noteText = settings.spaceNotes[space.index] ?? ""
+        }
+    }
+}
