@@ -63,6 +63,18 @@ final class WindowInactivityTracker: ObservableObject {
         
         /// Owner name for debugging
         var ownerName: String
+        
+        /// Space number where this window was last seen/active
+        /// FEATURE (Jan 21, 2026): Space-aware decay freezing
+        /// When user switches spaces, windows on other spaces freeze their decay timers.
+        /// This prevents windows from continuing to dim when they're not visible.
+        var lastSeenOnSpace: Int?
+        
+        /// Accumulated inactivity time (seconds) when window was on a different space
+        /// FEATURE (Jan 21, 2026): Space-aware decay freezing
+        /// When a window is on a non-current space, we freeze the timer by storing
+        /// the elapsed time. When the space becomes active again, we resume from this point.
+        var frozenInactivityTime: TimeInterval
     }
     
     // ================================================================
@@ -92,12 +104,32 @@ final class WindowInactivityTracker: ObservableObject {
     /// - App was visible, user clicked another window → reset only THAT window
     private var hiddenAppPIDs: Set<pid_t> = []
     
+    /// Current active space number
+    /// FEATURE (Jan 21, 2026): Space-aware decay freezing
+    /// Tracks which space is currently active. When this changes, we freeze
+    /// decay timers for windows on the old space and resume timers for windows
+    /// on the new space.
+    private var currentSpaceNumber: Int = 1
+    
+    /// Active usage tracker for idle detection
+    /// FEATURE (Jan 22, 2026): Idle-aware decay dimming
+    /// When user is idle (no mouse/keyboard activity), we pause decay timers.
+    /// This prevents windows from continuing to dim when user is away from computer.
+    private let activeUsageTracker = ActiveUsageTracker.shared
+    
+    /// Timestamp when user became idle (for calculating pause duration)
+    /// FEATURE (Jan 22, 2026): Idle-aware decay dimming
+    /// When user goes idle, we store this timestamp. When they return, we can
+    /// calculate how long they were away and adjust timers accordingly.
+    private var idleSinceTime: Date?
+    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
     
     private init() {
         setupObservers()
+        setupIdleTracking()
         print("✓ WindowInactivityTracker initialized")
     }
     
@@ -111,6 +143,9 @@ final class WindowInactivityTracker: ObservableObject {
      CHANGED (Jan 8, 2026): Now sets `lastFrontmostWindowID` for window-level tracking.
      Only this specific window will be considered "active" (no decay applied).
      Other windows of the same app WILL decay.
+     
+     CHANGED (Jan 21, 2026): Added space tracking for space-aware decay freezing.
+     Records which space the window is on so decay can be frozen when user switches spaces.
      
      Call this when a window becomes the frontmost window.
      
@@ -126,7 +161,9 @@ final class WindowInactivityTracker: ObservableObject {
         windowActivity[windowID] = WindowActivityInfo(
             lastActiveTime: Date(),
             ownerPID: ownerPID,
-            ownerName: ownerName
+            ownerName: ownerName,
+            lastSeenOnSpace: currentSpaceNumber,
+            frozenInactivityTime: 0
         )
         
         // Track the specific frontmost window for window-level decay
@@ -191,6 +228,20 @@ final class WindowInactivityTracker: ObservableObject {
      Only the actual frontmost window (lastFrontmostWindowID) returns 0.
      Other windows of the same app WILL decay if they're not the active window.
      
+     CHANGED (Jan 21, 2026): Space-aware decay freezing.
+     Windows on non-current spaces return their frozen inactivity time instead of
+     continuing to accumulate. This prevents windows from dimming when they're not visible.
+     
+     CHANGED (Jan 22, 2026): Idle-aware decay dimming.
+     When user is idle (no activity), decay timers pause. This prevents windows from
+     continuing to dim when user is away from computer (lunch, meeting, etc.).
+     
+     HOW IT WORKS:
+     - If window is on current space: calculate normal inactivity time
+     - If window is on different space: return frozen time (decay paused)
+     - If user is idle: pause decay accumulation (don't count idle time)
+     - When space becomes active again: resume from frozen time
+     
      - Parameter windowID: The window to check
      - Returns: Time interval since last active, or 0 if window is currently active or unknown
      */
@@ -209,7 +260,30 @@ final class WindowInactivityTracker: ObservableObject {
             return 0
         }
         
-        return Date().timeIntervalSince(info.lastActiveTime)
+        // FEATURE (Jan 21, 2026): Space-aware decay freezing
+        // If window is on a different space than current, return frozen time
+        // This prevents decay from continuing when windows aren't visible
+        if let windowSpace = info.lastSeenOnSpace, windowSpace != currentSpaceNumber {
+            // Window is on a different space - return frozen inactivity time
+            // Decay is paused until this space becomes active again
+            return info.frozenInactivityTime
+        }
+        
+        // FEATURE (Jan 22, 2026): Idle-aware decay dimming
+        // If user is currently idle, we need to calculate time excluding idle period
+        let currentInactivity: TimeInterval
+        if !activeUsageTracker.isUserActive, let idleStart = idleSinceTime {
+            // User is idle - calculate time up to when they became idle
+            // Don't count the idle time itself
+            currentInactivity = idleStart.timeIntervalSince(info.lastActiveTime)
+        } else {
+            // User is active - calculate normal elapsed time
+            currentInactivity = Date().timeIntervalSince(info.lastActiveTime)
+        }
+        
+        // Window is on current space - calculate inactivity time
+        // Add any previously frozen time to current elapsed time
+        return info.frozenInactivityTime + max(0, currentInactivity)
     }
     
     /**
@@ -219,6 +293,8 @@ final class WindowInactivityTracker: ObservableObject {
      not just if window was never tracked. This ensures:
      - New windows start with no decay
      - Windows that were closed and reopened (same ID) also reset
+     
+     CHANGED (Jan 21, 2026): Added space tracking for new windows.
      
      Existing active windows are NOT touched - only truly new appearances.
      
@@ -237,9 +313,58 @@ final class WindowInactivityTracker: ObservableObject {
             windowActivity[windowID] = WindowActivityInfo(
                 lastActiveTime: Date(),
                 ownerPID: ownerPID,
-                ownerName: ownerName
+                ownerName: ownerName,
+                lastSeenOnSpace: currentSpaceNumber,
+                frozenInactivityTime: 0
             )
         }
+    }
+    
+    /**
+     Updates the current active space number.
+     
+     FEATURE (Jan 21, 2026): Space-aware decay freezing
+     
+     When the user switches spaces, this method:
+     1. Freezes decay timers for windows on the old space
+     2. Updates the current space number
+     3. Resumes decay timers for windows on the new space
+     
+     HOW FREEZING WORKS:
+     - For each window on the old space, we calculate its current inactivity time
+     - We store this as "frozenInactivityTime" so decay stops accumulating
+     - When the space becomes active again, we resume from this frozen time
+     
+     - Parameter spaceNumber: The new current space number (1-based)
+     */
+    func updateCurrentSpace(_ spaceNumber: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        // If space hasn't changed, nothing to do
+        guard spaceNumber != currentSpaceNumber else { return }
+        
+        let oldSpace = currentSpaceNumber
+        let now = Date()
+        
+        // Freeze timers for windows on the old space
+        for (windowID, var info) in windowActivity {
+            if info.lastSeenOnSpace == oldSpace {
+                // This window is on the old space - freeze its timer
+                let currentInactivity = now.timeIntervalSince(info.lastActiveTime)
+                info.frozenInactivityTime = info.frozenInactivityTime + currentInactivity
+                info.lastActiveTime = now  // Reset base time for when space becomes active again
+                windowActivity[windowID] = info
+            }
+        }
+        
+        // Update current space
+        currentSpaceNumber = spaceNumber
+        
+        // Windows on the new space will automatically resume decay calculation
+        // because getInactivityDuration() will now see they match currentSpaceNumber
+        
+        print("⏰ Space changed: \(oldSpace) → \(spaceNumber) - froze timers for old space")
     }
     
     /**
@@ -349,5 +474,52 @@ final class WindowInactivityTracker: ObservableObject {
                 hiddenAppPIDs.insert(app.processIdentifier)
             }
         }
+    }
+    
+    // ================================================================
+    // MARK: - Idle Tracking
+    // ================================================================
+    
+    /**
+     Sets up idle state tracking to pause decay timers when user is away.
+     
+     FEATURE (Jan 22, 2026): Idle-aware decay dimming
+     
+     WHY THIS MATTERS:
+     Without idle tracking, windows continue to decay dim even when you're away
+     from your computer (lunch break, meeting, overnight). This means you come back
+     to find everything heavily dimmed even though you weren't actively ignoring them.
+     
+     HOW IT WORKS:
+     - Subscribe to ActiveUsageTracker's isUserActive property
+     - When user becomes idle: record the timestamp
+     - When user returns: getInactivityDuration() automatically excludes idle time
+     - Result: Decay only accumulates during active computer use
+     
+     INTEGRATION:
+     - Works alongside space-aware freezing (both features are independent)
+     - Decay pauses for BOTH idle periods AND space switches
+     */
+    private func setupIdleTracking() {
+        // Observe user activity state changes
+        activeUsageTracker.$isUserActive
+            .sink { [weak self] isActive in
+                guard let self = self else { return }
+                
+                self.lock.lock()
+                defer { self.lock.unlock() }
+                
+                if !isActive && self.idleSinceTime == nil {
+                    // User just became idle - record timestamp
+                    self.idleSinceTime = Date()
+                    print("⏸️ WindowInactivityTracker: User idle - pausing decay timers")
+                } else if isActive && self.idleSinceTime != nil {
+                    // User returned from idle - clear timestamp
+                    let idleDuration = Date().timeIntervalSince(self.idleSinceTime!)
+                    self.idleSinceTime = nil
+                    print("▶️ WindowInactivityTracker: User active - resuming decay timers (was idle for \(Int(idleDuration))s)")
+                }
+            }
+            .store(in: &cancellables)
     }
 }

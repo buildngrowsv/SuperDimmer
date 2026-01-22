@@ -186,6 +186,18 @@ final class DimmingCoordinator: ObservableObject {
      */
     private let minAnalysisInterval: CFAbsoluteTime = 0.3
     
+    /**
+     Space change monitor for space-aware decay freezing.
+     
+     FEATURE (Jan 21, 2026): Space-aware decay freezing
+     Monitors when user switches between macOS Spaces and notifies
+     WindowInactivityTracker to freeze/resume decay timers accordingly.
+     
+     This prevents windows on non-visible spaces from continuing to dim
+     when they're not actually visible to the user.
+     */
+    private var spaceMonitor: SpaceChangeMonitor?
+    
     // ================================================================
     // MARK: - Analysis Cache (Performance Optimization)
     // ================================================================
@@ -272,6 +284,11 @@ final class DimmingCoordinator: ObservableObject {
         
         // Set up settings observers
         setupSettingsObservers()
+        
+        // FEATURE (Jan 21, 2026): Start space change monitoring for decay freezing
+        // When user switches spaces, we need to freeze decay timers for windows
+        // on the old space and resume timers for windows on the new space
+        setupSpaceMonitoring()
         
         print("✓ DimmingCoordinator initialized")
     }
@@ -1200,6 +1217,40 @@ final class DimmingCoordinator: ObservableObject {
     // ================================================================
     // MARK: - Settings Observers
     // ================================================================
+    
+    /**
+     Sets up space change monitoring for decay freezing.
+     
+     FEATURE (Jan 21, 2026): Space-aware decay freezing
+     
+     When user switches between macOS Spaces (virtual desktops), we need to:
+     1. Freeze decay timers for windows on the old space (they're no longer visible)
+     2. Resume decay timers for windows on the new space (they're now visible)
+     
+     This prevents windows from continuing to dim when they're not actually
+     visible to the user, which would be confusing and unexpected.
+     
+     HOW IT WORKS:
+     - SpaceChangeMonitor detects when user switches spaces
+     - We notify WindowInactivityTracker of the new space number
+     - WindowInactivityTracker freezes/resumes timers accordingly
+     */
+    private func setupSpaceMonitoring() {
+        // Get initial space number
+        if let currentSpace = SpaceDetector.getCurrentSpace() {
+            WindowInactivityTracker.shared.updateCurrentSpace(currentSpace.spaceNumber)
+            print("✓ Initial space: \(currentSpace.spaceNumber)")
+        }
+        
+        // Start monitoring for space changes
+        spaceMonitor = SpaceChangeMonitor()
+        spaceMonitor?.startMonitoring { [weak self] newSpaceNumber in
+            // Notify WindowInactivityTracker of space change
+            // This will freeze timers for windows on old space and resume for new space
+            WindowInactivityTracker.shared.updateCurrentSpace(newSpaceNumber)
+            print("⏰ Space changed to \(newSpaceNumber) - updated decay tracking")
+        }
+    }
     
     /**
      Sets up observers for settings that affect dimming.

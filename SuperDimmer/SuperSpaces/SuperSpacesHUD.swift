@@ -37,6 +37,14 @@ import Combine
 
 /// ObservableObject that bridges the NSPanel and SwiftUI view
 /// This allows @Published properties to work correctly with SwiftUI bindings
+///
+/// PERSISTENCE ARCHITECTURE (Jan 22, 2026):
+/// Font size multiplier is now persisted via SettingsManager.
+/// The viewModel accesses it directly from SettingsManager.shared, which:
+/// - Automatically saves to UserDefaults when changed
+/// - Loads from UserDefaults on app launch
+/// - Persists across app restarts
+/// This ensures the user's text size preference is maintained between sessions.
 final class SuperSpacesViewModel: ObservableObject {
     /// Current Space number (1-based)
     @Published var currentSpaceNumber: Int = 1
@@ -47,7 +55,21 @@ final class SuperSpacesViewModel: ObservableObject {
     /// Font size multiplier for HUD text (1.0 = default, 0.8 = minimum, 1.5 = maximum)
     /// This allows users to adjust text size with Cmd+/Cmd- shortcuts
     /// The multiplier is applied to all font sizes in the HUD for consistent scaling
-    @Published var fontSizeMultiplier: CGFloat = 1.0
+    ///
+    /// PERSISTENCE (Jan 22, 2026):
+    /// This property now reads from and writes to SettingsManager.shared.superSpacesFontSizeMultiplier
+    /// which automatically persists to UserDefaults. The user's text size preference is maintained
+    /// across app launches.
+    var fontSizeMultiplier: CGFloat {
+        get {
+            SettingsManager.shared.superSpacesFontSizeMultiplier
+        }
+        set {
+            SettingsManager.shared.superSpacesFontSizeMultiplier = newValue
+            // Trigger SwiftUI update by manually calling objectWillChange
+            objectWillChange.send()
+        }
+    }
     
     /// Callback for Space switching
     var onSpaceSwitch: ((Int) -> Void)?
@@ -68,21 +90,29 @@ final class SuperSpacesViewModel: ObservableObject {
     
     /// Increases font size (Cmd+)
     /// Maximum multiplier is 1.5x (150% of default size)
+    ///
+    /// PERSISTENCE (Jan 22, 2026):
+    /// Changes are automatically saved to UserDefaults via SettingsManager.
+    /// The new size persists across app restarts.
     func increaseFontSize() {
         let newSize = min(fontSizeMultiplier + 0.1, 1.5)
         if newSize != fontSizeMultiplier {
             fontSizeMultiplier = newSize
-            print("✓ SuperSpacesHUD: Font size increased to \(Int(fontSizeMultiplier * 100))%")
+            print("✓ SuperSpacesHUD: Font size increased to \(Int(fontSizeMultiplier * 100))% (persisted)")
         }
     }
     
     /// Decreases font size (Cmd-)
     /// Minimum multiplier is 0.8x (80% of default size)
+    ///
+    /// PERSISTENCE (Jan 22, 2026):
+    /// Changes are automatically saved to UserDefaults via SettingsManager.
+    /// The new size persists across app restarts.
     func decreaseFontSize() {
         let newSize = max(fontSizeMultiplier - 0.1, 0.8)
         if newSize != fontSizeMultiplier {
             fontSizeMultiplier = newSize
-            print("✓ SuperSpacesHUD: Font size decreased to \(Int(fontSizeMultiplier * 100))%")
+            print("✓ SuperSpacesHUD: Font size decreased to \(Int(fontSizeMultiplier * 100))% (persisted)")
         }
     }
 }

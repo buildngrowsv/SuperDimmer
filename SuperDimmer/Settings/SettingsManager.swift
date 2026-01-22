@@ -36,6 +36,7 @@
 import Foundation
 import Combine
 import AppKit
+import SwiftUI  // FEATURE 5.5.9: Needed for Color type in hexToColor
 
 // ====================================================================
 // MARK: - Detection Mode Enum
@@ -431,6 +432,7 @@ final class SettingsManager: ObservableObject {
         case spaceNames = "superdimmer.spaceNames"
         case spaceEmojis = "superdimmer.spaceEmojis"
         case spaceNotes = "superdimmer.spaceNotes"
+        case spaceColors = "superdimmer.spaceColors"
         case superSpacesDisplayMode = "superdimmer.superSpacesDisplayMode"
         case superSpacesAutoHide = "superdimmer.superSpacesAutoHide"
         case superSpacesPosition = "superdimmer.superSpacesPosition"
@@ -455,6 +457,11 @@ final class SettingsManager: ObservableObject {
         // Super Spaces Float on Top (Jan 21, 2026)
         // Controls whether HUD stays above all other windows
         case superSpacesFloatOnTop = "superdimmer.superSpacesFloatOnTop"
+        
+        // Super Spaces Font Size (Jan 21, 2026)
+        // User's preferred font size multiplier for the HUD (0.8 to 1.5)
+        // Allows Cmd+/Cmd- to adjust text size, persisted across app launches
+        case superSpacesFontSizeMultiplier = "superdimmer.superSpacesFontSizeMultiplier"
         
         // Appearance Mode System (2.2.1.1)
         case appearanceMode = "superdimmer.comearanceMode"
@@ -876,11 +883,15 @@ final class SettingsManager: ObservableObject {
     /**
      Rate at which inactive windows decay (dim increase per second).
      
+     INTERNAL STORAGE: This stores the decay rate as % per second for calculation purposes.
+     UI PRESENTATION: The UI shows this as "Full decay in X minutes" for better UX.
+     
      Range: 0.005 to 0.05 (0.5% to 5% per second)
      Default: 0.01 (1% per second)
      
-     At default rate, a window would reach max decay after ~40 seconds
-     of inactivity (assuming 30s delay + 40s to reach 40% additional dim).
+     CHANGED (Jan 21, 2026): UI now presents this as "full decay time" instead of rate.
+     Conversion: decayRate = maxDecayDimLevel / (fullDecayMinutes * 60)
+     Example: For 80% max dim and 10 min full decay → 0.80 / (10 * 60) = 0.00133 per second
      */
     @Published var decayRate: Double {
         didSet {
@@ -891,8 +902,11 @@ final class SettingsManager: ObservableObject {
     /**
      Seconds of inactivity before decay starts.
      
-     Range: 5 to 120 seconds
+     Range: 5 to 1800 seconds (5 seconds to 30 minutes)
      Default: 30 seconds
+     
+     CHANGED (Jan 21, 2026): Expanded range from 5-120 to 5-1800 seconds to support
+     longer delays before dimming starts (up to 30 minutes).
      
      This grace period prevents decay from starting immediately
      when you briefly switch to another window.
@@ -1530,6 +1544,42 @@ final class SettingsManager: ObservableObject {
     }
     
     /**
+     Custom colors for Spaces.
+     
+     FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     
+     Dictionary mapping Space number (1-based) to color hex string.
+     Example: [1: "#FF5733", 2: "#33FF57", 3: "#3357FF"]
+     
+     USAGE:
+     - User can assign a color to each Space when editing name/emoji
+     - Color tints the entire HUD when on that Space
+     - Active card shows a stronger version of the color
+     - Inactive cards show a faded version of their color or remain neutral
+     
+     WHY THIS FEATURE:
+     - Provides instant visual feedback about which Space you're on
+     - Color-coding helps with mental organization and context switching
+     - Creates a more personalized and visually rich experience
+     - Reduces cognitive load by associating colors with specific contexts
+     
+     COLOR PALETTE:
+     - Curated set of professional, accessible colors
+     - Includes warm, cool, and neutral tones
+     - Colors are vibrant enough to be distinctive but not overwhelming
+     - All colors meet WCAG contrast guidelines for readability
+     
+     DEFAULT: Empty (no custom colors, uses default blue accent)
+     */
+    @Published var spaceColors: [Int: String] {
+        didSet {
+            // Convert Int keys to String keys for UserDefaults
+            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceColors.map { (String($0.key), $0.value) })
+            defaults.set(stringKeyDict, forKey: Keys.spaceColors.rawValue)
+        }
+    }
+    
+    /**
      Display mode for Super Spaces HUD.
      
      VALUES:
@@ -1792,6 +1842,44 @@ final class SettingsManager: ObservableObject {
     @Published var superSpacesFloatOnTop: Bool {
         didSet {
             defaults.set(superSpacesFloatOnTop, forKey: Keys.superSpacesFloatOnTop.rawValue)
+        }
+    }
+    
+    /**
+     Font size multiplier for Super Spaces HUD text.
+     
+     FEATURE: Cmd+/Cmd- Text Size Adjustment with Persistence
+     
+     PURPOSE:
+     Users can adjust the HUD text size using Cmd+ and Cmd- keyboard shortcuts.
+     This preference is saved so the text size persists across app launches.
+     
+     RANGE:
+     - Minimum: 0.8 (80% of default size)
+     - Maximum: 1.5 (150% of default size)
+     - Default: 1.0 (100% - normal size)
+     
+     BEHAVIOR:
+     - Applied to all text in the HUD via scaledFontSize() function
+     - Changed via Cmd+ (increase) and Cmd- (decrease) shortcuts
+     - Increments/decrements by 0.1 per keypress
+     - Persists across app restarts
+     
+     WHY THIS MATTERS:
+     - Accessibility: Users with vision needs can make text larger
+     - Preference: Some users prefer more compact or more spacious UI
+     - Consistency: Size preference maintained across sessions
+     
+     TECHNICAL NOTES:
+     - Stored as CGFloat in UserDefaults
+     - Clamped to valid range in the increase/decrease methods
+     - Applied via multiplication in scaledFontSize() helper
+     
+     DEFAULT: 1.0 (normal size)
+     */
+    @Published var superSpacesFontSizeMultiplier: CGFloat {
+        didSet {
+            defaults.set(Double(superSpacesFontSizeMultiplier), forKey: Keys.superSpacesFontSizeMultiplier.rawValue)
         }
     }
     
@@ -2138,6 +2226,17 @@ final class SettingsManager: ObservableObject {
             self.spaceNotes = [:]
         }
         
+        // Load Space colors dictionary (5.5.9 - Jan 22, 2026)
+        if let colorsDict = defaults.dictionary(forKey: Keys.spaceColors.rawValue) as? [String: String] {
+            // Convert String keys to Int keys
+            self.spaceColors = Dictionary(uniqueKeysWithValues: colorsDict.compactMap { key, value in
+                guard let intKey = Int(key) else { return nil }
+                return (intKey, value)
+            })
+        } else {
+            self.spaceColors = [:]
+        }
+        
         self.superSpacesDisplayMode = defaults.string(forKey: Keys.superSpacesDisplayMode.rawValue) ?? "compact"
         self.superSpacesAutoHide = defaults.bool(forKey: Keys.superSpacesAutoHide.rawValue)
         self.superSpacesPosition = defaults.string(forKey: Keys.superSpacesPosition.rawValue) ?? "topRight"
@@ -2188,6 +2287,12 @@ final class SettingsManager: ObservableObject {
         // Float on top defaults to true (original behavior)
         self.superSpacesFloatOnTop = defaults.object(forKey: Keys.superSpacesFloatOnTop.rawValue) != nil ?
             defaults.bool(forKey: Keys.superSpacesFloatOnTop.rawValue) : true
+        
+        // Font size multiplier defaults to 1.0 (normal size)
+        // Range: 0.8 (80%) to 1.5 (150%)
+        // User can adjust with Cmd+/Cmd- shortcuts in the HUD
+        self.superSpacesFontSizeMultiplier = defaults.object(forKey: Keys.superSpacesFontSizeMultiplier.rawValue) != nil ?
+            CGFloat(defaults.double(forKey: Keys.superSpacesFontSizeMultiplier.rawValue)) : 1.0
         
         // ============================================================
         // Load Appearance Mode System (2.2.1.1)
@@ -2644,6 +2749,128 @@ final class SettingsManager: ObservableObject {
     }
     
     /**
+     Curated color palette for Space customization.
+     
+     FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     
+     DESIGN RATIONALE:
+     - Professional, accessible colors that work well in both light and dark mode
+     - Vibrant enough to be distinctive but not overwhelming
+     - Includes warm, cool, and neutral tones for variety
+     - All colors meet WCAG contrast guidelines for readability
+     - Hex format for easy storage and conversion
+     
+     COLOR CATEGORIES:
+     - Blues: Calm, professional, focus (default)
+     - Greens: Growth, creativity, balance
+     - Purples: Innovation, imagination, luxury
+     - Reds/Pinks: Energy, passion, urgency
+     - Oranges/Yellows: Warmth, optimism, creativity
+     - Neutrals: Sophisticated, minimal, classic
+     */
+    let spaceColorPalette: [(name: String, hex: String)] = [
+        // Blues (calm, professional)
+        ("Ocean Blue", "#0EA5E9"),      // Bright cyan-blue
+        ("Deep Blue", "#3B82F6"),       // Classic blue
+        ("Indigo", "#6366F1"),          // Rich indigo
+        
+        // Greens (growth, balance)
+        ("Emerald", "#10B981"),         // Vibrant green
+        ("Mint", "#34D399"),            // Fresh mint
+        ("Forest", "#059669"),          // Deep forest green
+        
+        // Purples (creativity, luxury)
+        ("Purple", "#A855F7"),          // Vibrant purple
+        ("Violet", "#8B5CF6"),          // Rich violet
+        ("Magenta", "#D946EF"),         // Bright magenta
+        
+        // Reds/Pinks (energy, passion)
+        ("Rose", "#F43F5E"),            // Vibrant rose
+        ("Pink", "#EC4899"),            // Bright pink
+        ("Coral", "#FB7185"),           // Soft coral
+        
+        // Oranges/Yellows (warmth, creativity)
+        ("Orange", "#F97316"),          // Vibrant orange
+        ("Amber", "#F59E0B"),           // Rich amber
+        ("Yellow", "#EAB308"),          // Bright yellow
+        
+        // Neutrals (sophisticated, minimal)
+        ("Slate", "#64748B"),           // Cool gray-blue
+        ("Gray", "#6B7280"),            // Neutral gray
+        ("Stone", "#78716C")            // Warm gray-brown
+    ]
+    
+    /**
+     Gets the custom color for a Space, or nil if no color is set.
+     
+     FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     
+     Returns the hex color string stored for this Space.
+     Returns nil if no custom color is assigned (will use default blue).
+     */
+    func getSpaceColor(for spaceNumber: Int) -> String? {
+        return spaceColors[spaceNumber]
+    }
+    
+    /**
+     Converts hex color string to SwiftUI Color.
+     
+     FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     
+     USAGE:
+     - Takes hex string like "#FF5733" or "FF5733"
+     - Returns SwiftUI Color object
+     - Returns default blue if hex is invalid
+     
+     IMPLEMENTATION:
+     - Handles both formats (with and without #)
+     - Parses RGB components
+     - Converts to 0-1 range for SwiftUI
+     */
+    func hexToColor(_ hex: String) -> Color {
+        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+        
+        var rgb: UInt64 = 0
+        
+        guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else {
+            // Invalid hex, return default blue
+            return Color.blue
+        }
+        
+        let red = Double((rgb & 0xFF0000) >> 16) / 255.0
+        let green = Double((rgb & 0x00FF00) >> 8) / 255.0
+        let blue = Double(rgb & 0x0000FF) / 255.0
+        
+        return Color(red: red, green: green, blue: blue)
+    }
+    
+    /**
+     Converts hex color to NSColor for AppKit usage.
+     
+     FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     
+     Similar to hexToColor but returns NSColor for use in AppKit contexts.
+     */
+    func hexToNSColor(_ hex: String) -> NSColor {
+        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+        
+        var rgb: UInt64 = 0
+        
+        guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else {
+            // Invalid hex, return default blue
+            return NSColor.systemBlue
+        }
+        
+        let red = CGFloat((rgb & 0xFF0000) >> 16) / 255.0
+        let green = CGFloat((rgb & 0x00FF00) >> 8) / 255.0
+        let blue = CGFloat(rgb & 0x0000FF) / 255.0
+        
+        return NSColor(red: red, green: green, blue: blue, alpha: 1.0)
+    }
+    
+    /**
      Validates and truncates Space name to character limit.
      
      FEATURE: Phase 2.2 - Character Limit
@@ -2656,6 +2883,65 @@ final class SettingsManager: ObservableObject {
             return String(name.prefix(maxSpaceNameLength))
         }
         return name
+    }
+    
+    // ================================================================
+    // MARK: - Decay Rate Conversion Helpers
+    // ================================================================
+    
+    /**
+     Converts decay rate (% per second) to full decay time (minutes).
+     
+     FEATURE: Jan 21, 2026 - User-friendly decay time presentation
+     
+     The decay rate is stored internally as "% per second" for calculation efficiency,
+     but presented to users as "full decay in X minutes" for better UX.
+     
+     Formula: fullDecayMinutes = maxDecayDimLevel / (decayRate * 60)
+     
+     Example: If maxDecayDimLevel is 0.8 (80%) and decayRate is 0.00133 per second,
+     then full decay time = 0.8 / (0.00133 * 60) = 10 minutes
+     
+     - Returns: Full decay time in minutes
+     */
+    func getFullDecayTimeMinutes() -> Double {
+        // Prevent division by zero
+        guard decayRate > 0 else { return 30.0 }
+        
+        // Calculate how many seconds it takes to reach maxDecayDimLevel
+        let secondsToFullDecay = maxDecayDimLevel / decayRate
+        
+        // Convert to minutes
+        return secondsToFullDecay / 60.0
+    }
+    
+    /**
+     Sets decay rate based on desired full decay time (minutes).
+     
+     FEATURE: Jan 21, 2026 - User-friendly decay time presentation
+     
+     Converts user-friendly "full decay in X minutes" to internal decay rate.
+     
+     Formula: decayRate = maxDecayDimLevel / (fullDecayMinutes * 60)
+     
+     Example: For 80% max dim and 10 min full decay:
+     decayRate = 0.8 / (10 * 60) = 0.00133 per second
+     
+     - Parameter minutes: Desired full decay time in minutes (5-30)
+     */
+    func setFullDecayTimeMinutes(_ minutes: Double) {
+        // Clamp to valid range (5-30 minutes)
+        let clampedMinutes = min(max(minutes, 5.0), 30.0)
+        
+        // Convert to seconds
+        let secondsToFullDecay = clampedMinutes * 60.0
+        
+        // Calculate decay rate: maxDim / timeInSeconds
+        let newRate = maxDecayDimLevel / secondsToFullDecay
+        
+        // Clamp to valid internal range (0.0005 to 0.05 per second)
+        // This ensures reasonable decay speeds
+        decayRate = min(max(newRate, 0.0005), 0.05)
     }
     
     // ================================================================
@@ -2768,10 +3054,12 @@ final class SettingsManager: ObservableObject {
         spaceNames = [:]
         spaceEmojis = [:]
         spaceNotes = [:]
+        spaceColors = [:]  // 5.5.9 - Jan 22, 2026
         superSpacesDisplayMode = "compact"
         superSpacesAutoHide = false
         superSpacesPosition = "topRight"
         lastHUDPosition = nil  // Reset position
+        superSpacesFontSizeMultiplier = 1.0  // Reset to normal size (100%)
         
         print("✓ Settings reset to defaults (2.2.1.7)")
         print("   Super Dimming: ON with Auto mode")

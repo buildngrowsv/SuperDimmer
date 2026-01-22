@@ -48,6 +48,7 @@
 		SS1000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */; };
 		SS1000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift */; };
 		SS1000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift */; };
+		SS1000000006COLORPICKER00 /* SuperSpacesColorPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000006COLORPICKER00 /* SuperSpacesColorPicker.swift */; };
 		SS1000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift */; };
 		SS1000000008VISITTRACKER /* SpaceVisitTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS2000000008VISITTRACKER /* SpaceVisitTracker.swift */; };
 /* End PBXBuildFile section */
@@ -108,6 +109,7 @@
 		SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesHUDView.swift; sourceTree = "<group>"; };
 		SS2000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesQuickSettings.swift; sourceTree = "<group>"; };
 		SS2000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesEmojiPicker.swift; sourceTree = "<group>"; };
+		SS2000000006COLORPICKER00 /* SuperSpacesColorPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesColorPicker.swift; sourceTree = "<group>"; };
 		SS2000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperSpacesNoteEditor.swift; sourceTree = "<group>"; };
 		SS2000000008VISITTRACKER /* SpaceVisitTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceVisitTracker.swift; sourceTree = "<group>"; };
 		UC9876543210FEDCBA987654 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
@@ -169,6 +171,7 @@
 				SS2000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift */,
 				SS2000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift */,
 				SS2000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift */,
+				SS2000000006COLORPICKER00 /* SuperSpacesColorPicker.swift */,
 				SS2000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift */,
 				SS2000000008VISITTRACKER /* SpaceVisitTracker.swift */,
 			);
@@ -467,6 +470,7 @@
 				SS1000000004SUPERSPACEVIW /* SuperSpacesHUDView.swift in Sources */,
 				SS1000000005QUICKSETTINGS /* SuperSpacesQuickSettings.swift in Sources */,
 				SS1000000006EMOJIPICKER00 /* SuperSpacesEmojiPicker.swift in Sources */,
+				SS1000000006COLORPICKER00 /* SuperSpacesColorPicker.swift in Sources */,
 				SS1000000007NOTEEDITOR00 /* SuperSpacesNoteEditor.swift in Sources */,
 				SS1000000008VISITTRACKER /* SpaceVisitTracker.swift in Sources */,
 				7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */,

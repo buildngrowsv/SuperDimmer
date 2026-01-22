@@ -77,10 +77,11 @@ struct SuperSpacesHUDView: View {
     /// Timer for debounced note saving
     @State private var noteSaveTimer: Timer?
     
-    /// Editing state for inline Space name/emoji editing
+    /// Editing state for inline Space name/emoji/color editing
     @State private var isEditingSpaceName = false
     @State private var editingSpaceNameText: String = ""
     @State private var editingSpaceEmoji: String = ""
+    @State private var editingSpaceColor: String = ""  // FEATURE 5.5.9 - Color editing
     @FocusState private var isNameFieldFocused: Bool
     @FocusState private var isEmojiFieldFocused: Bool
     
@@ -101,15 +102,25 @@ struct SuperSpacesHUDView: View {
     /// Show inline emoji picker (for note mode editing) - PHASE 3.1
     @State private var showInlineEmojiPicker = false
     
+    /// Show color picker popover (for inline editing) - FEATURE 5.5.9
+    @State private var showColorPicker = false
+    
     // MARK: - Body
     
     var body: some View {
         ZStack {
-            // Background blur
-            VisualEffectView(
-                material: .hudWindow,
-                blendingMode: .behindWindow
-            )
+            // Background blur with color tint (FEATURE 5.5.9)
+            // Tints the HUD with the current Space's color for visual feedback
+            ZStack {
+                VisualEffectView(
+                    material: .hudWindow,
+                    blendingMode: .behindWindow
+                )
+                
+                // Color overlay tint (subtle, 5% opacity)
+                getCurrentSpaceAccentColor()
+                    .opacity(0.05)
+            }
             .cornerRadius(12)
             
             // Content
@@ -219,6 +230,32 @@ struct SuperSpacesHUDView: View {
                 )
             }
         }
+        // Inline color picker popover (FEATURE 5.5.9: Color customization)
+        .popover(
+            isPresented: $showColorPicker,
+            arrowEdge: .bottom
+        ) {
+            if let spaceNumber = selectedNoteSpace {
+                SuperSpacesColorPicker(
+                    spaceNumber: spaceNumber,
+                    selectedColorHex: Binding(
+                        get: { editingSpaceColor.isEmpty ? nil : editingSpaceColor },
+                        set: { newColor in
+                            editingSpaceColor = newColor ?? ""
+                        }
+                    ),
+                    onColorSelected: { color in
+                        editingSpaceColor = color ?? ""
+                        showColorPicker = false
+                        // Auto-focus name field after color selection
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isNameFieldFocused = true
+                        }
+                    }
+                )
+                .environmentObject(settings)
+            }
+        }
     }
     
     // MARK: - Header
@@ -256,6 +293,7 @@ struct SuperSpacesHUDView: View {
             // Display mode buttons (3 separate buttons instead of toggle)
             // FEATURE: Per-mode window size persistence
             // Each button switches to that mode and restores the saved window size
+            // FEATURE 5.5.9: Uses current Space's color for active button
             HStack(spacing: 4) {
                 // Compact mode button
                 Button(action: { switchToMode(.compact) }) {
@@ -263,7 +301,7 @@ struct SuperSpacesHUDView: View {
                         .font(.system(size: scaledFontSize(11)))
                         .foregroundColor(displayMode == .compact ? .white : .secondary)
                         .frame(width: 24, height: 20)
-                        .background(displayMode == .compact ? Color.accentColor : Color.clear)
+                        .background(displayMode == .compact ? getCurrentSpaceAccentColor() : Color.clear)
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
@@ -275,7 +313,7 @@ struct SuperSpacesHUDView: View {
                         .font(.system(size: scaledFontSize(11)))
                         .foregroundColor(displayMode == .note ? .white : .secondary)
                         .frame(width: 24, height: 20)
-                        .background(displayMode == .note ? Color.accentColor : Color.clear)
+                        .background(displayMode == .note ? getCurrentSpaceAccentColor() : Color.clear)
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
@@ -287,7 +325,7 @@ struct SuperSpacesHUDView: View {
                         .font(.system(size: scaledFontSize(11)))
                         .foregroundColor(displayMode == .overview ? .white : .secondary)
                         .frame(width: 24, height: 20)
-                        .background(displayMode == .overview ? Color.accentColor : Color.clear)
+                        .background(displayMode == .overview ? getCurrentSpaceAccentColor() : Color.clear)
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
@@ -369,8 +407,10 @@ struct SuperSpacesHUDView: View {
             .frame(width: maxButtonWidth)  // PHASE 2.1: Fixed width for all buttons
             .padding(.vertical, 8)
             .background(
+                // FEATURE 5.5.9: Use Space's custom color or default
                 space.index == viewModel.currentSpaceNumber ?
-                    Color.accentColor : Color.secondary.opacity(0.2)
+                    (getSpaceColor(space.index).map { settings.hexToColor($0) } ?? Color.accentColor) :
+                    Color.secondary.opacity(0.2)
             )
             .foregroundColor(
                 space.index == viewModel.currentSpaceNumber ? .white : .primary
@@ -419,6 +459,7 @@ struct SuperSpacesHUDView: View {
                         if isEditingSpaceName {
                             // Editing mode with character counter
                             // PHASE 3.1: Emoji button instead of text field
+                            // FEATURE 5.5.9: Added color picker button
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 8) {
                                     // Emoji button (PHASE 3.1: Visual picker instead of text field)
@@ -440,11 +481,38 @@ struct SuperSpacesHUDView: View {
                                         .cornerRadius(6)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 6)
-                                                .stroke(showInlineEmojiPicker ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 2)
+                                                .stroke(showInlineEmojiPicker ? getCurrentSpaceAccentColor() : Color.secondary.opacity(0.3), lineWidth: 2)
                                         )
                                     }
                                     .buttonStyle(.plain)
                                     .help("Click to choose emoji")
+                                    
+                                    // Color button (FEATURE 5.5.9: Color picker)
+                                    Button(action: {
+                                        showColorPicker = true
+                                    }) {
+                                        HStack {
+                                            if editingSpaceColor.isEmpty {
+                                                Image(systemName: "paintpalette")
+                                                    .font(.system(size: scaledFontSize(18)))
+                                                    .foregroundColor(.secondary)
+                                            } else {
+                                                // Show color swatch
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .fill(settings.hexToColor(editingSpaceColor))
+                                                    .frame(width: 24, height: 24)
+                                            }
+                                        }
+                                        .frame(width: 50, height: 36)
+                                        .background(Color(NSColor.textBackgroundColor))
+                                        .cornerRadius(6)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(showColorPicker ? getCurrentSpaceAccentColor() : Color.secondary.opacity(0.3), lineWidth: 2)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Click to choose color")
                                     
                                     // Name field
                                     TextField("Space Name", text: $editingSpaceNameText)
@@ -457,7 +525,7 @@ struct SuperSpacesHUDView: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 6)
                                                 .stroke(
-                                                    editingSpaceNameText.count > settings.maxSpaceNameLength ? Color.red : Color.accentColor,
+                                                    editingSpaceNameText.count > settings.maxSpaceNameLength ? Color.red : getCurrentSpaceAccentColor(),
                                                     lineWidth: 2
                                                 )
                                         )
@@ -469,6 +537,15 @@ struct SuperSpacesHUDView: View {
                                             // Enforce character limit
                                             if newValue.count > settings.maxSpaceNameLength {
                                                 editingSpaceNameText = String(newValue.prefix(settings.maxSpaceNameLength))
+                                            }
+                                        }
+                                        .onChange(of: isNameFieldFocused) { isFocused in
+                                            // FEATURE: Auto-save when clicking off the name field
+                                            // When the field loses focus (isFocused becomes false), save the changes
+                                            // This provides a more intuitive UX where users don't need to explicitly
+                                            // click the save button - just clicking elsewhere saves automatically
+                                            if !isFocused && isEditingSpaceName {
+                                                saveSpaceNameAndEmoji()
                                             }
                                         }
                                     
@@ -684,8 +761,10 @@ struct SuperSpacesHUDView: View {
             .frame(minWidth: getNoteButtonWidth(mode: buttonMode))
             .frame(height: 32)
             .background(
+                // FEATURE 5.5.9: Use Space's custom color or default
                 selectedNoteSpace == space.index ?
-                    Color.accentColor : Color.secondary.opacity(0.2)
+                    (getSpaceColor(space.index).map { settings.hexToColor($0) } ?? Color.accentColor) :
+                    Color.secondary.opacity(0.2)
             )
             .foregroundColor(
                 selectedNoteSpace == space.index ? .white : .primary
@@ -797,7 +876,7 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Determines the number of columns for overview mode based on window width
-    /// RESPONSIVE THRESHOLDS:
+    /// RESPONSIVE THRESHOLDS (scale with font size):
     /// - < 450pt: 1 column (narrow window, single column for better readability)
     /// - 450-700pt: 2 columns
     /// - 700-1000pt: 3 columns
@@ -808,16 +887,30 @@ struct SuperSpacesHUDView: View {
     /// DESIGN RATIONALE:
     /// Single column mode ensures cards have maximum width for comfortable note editing
     /// when the window is narrow. This prevents cramped text boxes and improves UX.
+    ///
+    /// FONT SIZE ADAPTATION:
+    /// Thresholds scale with fontSizeMultiplier so that larger text triggers fewer columns
+    /// at the same window width. This ensures cards remain readable and don't become cramped
+    /// when text size increases. For example, at 1.5x text size, the 2-column threshold
+    /// increases from 450pt to 675pt (450 * 1.5).
     private func getOverviewColumns(for width: CGFloat) -> [GridItem] {
         let columnCount: Int
         
-        if width < 450 {
+        // Scale thresholds by font size multiplier
+        // Larger text = higher thresholds = fewer columns at same width
+        let multiplier = viewModel.fontSizeMultiplier
+        let threshold1 = 450 * multiplier  // 1 column threshold
+        let threshold2 = 700 * multiplier  // 2 column threshold
+        let threshold3 = 1000 * multiplier // 3 column threshold
+        let threshold4 = 1300 * multiplier // 4 column threshold
+        
+        if width < threshold1 {
             columnCount = 1  // Single column for narrow windows
-        } else if width < 700 {
+        } else if width < threshold2 {
             columnCount = 2
-        } else if width < 1000 {
+        } else if width < threshold3 {
             columnCount = 3
-        } else if width < 1300 {
+        } else if width < threshold4 {
             columnCount = 4
         } else {
             columnCount = 5
@@ -930,6 +1023,22 @@ struct SuperSpacesHUDView: View {
         return settings.getDefaultEmoji(for: spaceNumber)
     }
     
+    /// Gets Space color (custom or nil for default)
+    /// FEATURE 5.5.9: Returns custom color hex if set
+    private func getSpaceColor(_ spaceNumber: Int) -> String? {
+        return settings.spaceColors[spaceNumber]
+    }
+    
+    /// Gets the accent color for the current Space
+    /// FEATURE 5.5.9: Returns custom color or default blue
+    private func getCurrentSpaceAccentColor() -> Color {
+        let currentSpace = displayMode == .note ? (selectedNoteSpace ?? viewModel.currentSpaceNumber) : viewModel.currentSpaceNumber
+        if let colorHex = getSpaceColor(currentSpace) {
+            return settings.hexToColor(colorHex)
+        }
+        return Color.accentColor  // Default blue
+    }
+    
     /// Checks if a Space has a note
     private func hasNote(_ spaceNumber: Int) -> Bool {
         guard let note = settings.spaceNotes[spaceNumber] else { return false }
@@ -1037,13 +1146,15 @@ struct SuperSpacesHUDView: View {
     
     // MARK: - Inline Space Name/Emoji Editing
     
-    /// Starts editing the Space name and emoji
+    /// Starts editing the Space name, emoji, and color
+    /// FEATURE 5.5.9: Added color editing support
     private func startEditingSpaceName() {
         guard let spaceNumber = selectedNoteSpace else { return }
         
         isEditingSpaceName = true
         editingSpaceNameText = getSpaceName(spaceNumber) ?? ""
         editingSpaceEmoji = getSpaceEmoji(spaceNumber) ?? ""
+        editingSpaceColor = getSpaceColor(spaceNumber) ?? ""  // Load current color
         
         // Focus the name field after a short delay to ensure the view is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -1051,8 +1162,9 @@ struct SuperSpacesHUDView: View {
         }
     }
     
-    /// Saves the edited Space name and emoji
+    /// Saves the edited Space name, emoji, and color
     /// PHASE 2.2: Validates and enforces character limit
+    /// FEATURE 5.5.9: Added color saving
     private func saveSpaceNameAndEmoji() {
         guard let spaceNumber = selectedNoteSpace else { return }
         
@@ -1076,14 +1188,25 @@ struct SuperSpacesHUDView: View {
             settings.spaceEmojis[spaceNumber] = trimmedEmoji
         }
         
+        // Save color (FEATURE 5.5.9)
+        let trimmedColor = editingSpaceColor.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedColor.isEmpty {
+            // Empty color: remove custom color, will use default blue
+            settings.spaceColors.removeValue(forKey: spaceNumber)
+        } else {
+            settings.spaceColors[spaceNumber] = trimmedColor
+        }
+        
         isEditingSpaceName = false
     }
     
-    /// Cancels Space name/emoji editing
+    /// Cancels Space name/emoji/color editing
+    /// FEATURE 5.5.9: Added color clearing
     private func cancelSpaceNameEditing() {
         isEditingSpaceName = false
         editingSpaceNameText = ""
         editingSpaceEmoji = ""
+        editingSpaceColor = ""  // Clear color editing state
     }
     
     /// Switches to a specific display mode
@@ -1254,6 +1377,9 @@ struct SuperSpacesHUDView_Previews: PreviewProvider {
 /// CRITICAL FIX: Each card maintains its own @State for noteText and syncs with settings
 /// This prevents SwiftUI from confusing state between multiple TextEditors in the LazyVGrid
 /// RESPONSIVE DESIGN: Note editor expands vertically with window height (with minimum)
+///
+/// FEATURE: Double-click to edit Space name and emoji
+/// Users can double-click the name/emoji area to enter edit mode with inline editing UI
 struct OverviewSpaceCardView: View {
     let space: SpaceDetector.SpaceInfo
     @ObservedObject var viewModel: SuperSpacesViewModel
@@ -1270,59 +1396,55 @@ struct OverviewSpaceCardView: View {
     // Track if we've initialized from settings
     @State private var hasInitialized = false
     
+    // Editing state for Space name/emoji/color (FEATURE: Double-click to edit)
+    // FEATURE 5.5.9: Added color editing
+    @State private var isEditingSpaceName = false
+    @State private var editingSpaceNameText: String = ""
+    @State private var editingSpaceEmoji: String = ""
+    @State private var editingSpaceColor: String = ""  // Color editing state
+    @FocusState private var isNameFieldFocused: Bool
+    
+    // Show emoji and color picker popovers
+    @State private var showEmojiPicker = false
+    @State private var showColorPicker = false  // FEATURE 5.5.9
+    
     /// Scales a font size by the current font size multiplier
     /// This ensures consistent text scaling across the entire HUD
     private func scaledFontSize(_ baseSize: CGFloat) -> CGFloat {
         return baseSize * viewModel.fontSizeMultiplier
     }
     
+    /// Gets the Space color (FEATURE 5.5.9)
+    private func getSpaceColor() -> String? {
+        return settings.spaceColors[space.index]
+    }
+    
+    /// Gets the accent color for this Space (FEATURE 5.5.9)
+    private func getSpaceAccentColor() -> Color {
+        if let colorHex = getSpaceColor() {
+            return settings.hexToColor(colorHex)
+        }
+        return Color.accentColor  // Default blue
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header: Number, emoji, name, switch button
-            HStack(spacing: 8) {
-                // Number badge
-                Text("\(space.index)")
-                    .font(.system(size: scaledFontSize(12), weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 24, height: 24)
-                    .background(
-                        space.index == viewModel.currentSpaceNumber ?
-                            Color.accentColor : Color.secondary
-                    )
-                    .cornerRadius(6)
-                
-                // Emoji
-                if let emoji = getSpaceEmoji(space.index) {
-                    Text(emoji)
-                        .font(.system(size: scaledFontSize(16)))
-                }
-                
-                // Name
-                Text(getSpaceName(space.index) ?? "Unnamed")
-                    .font(.system(size: scaledFontSize(12), weight: .medium))
-                    .lineLimit(1)
-                
-                Spacer()
-                
-                // Switch button
-                Button(action: {
-                    viewModel.switchToSpace(space.index)
-                }) {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: scaledFontSize(16)))
-                        .foregroundColor(
-                            space.index == viewModel.currentSpaceNumber ?
-                                .accentColor : .secondary
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Switch to Space \(space.index)")
+            // Header: Emoji, name, switch button
+            // FEATURE: Double-click to edit name and emoji
+            // DESIGN CHANGE: Desktop number moved to note background watermark
+            if isEditingSpaceName {
+                // EDITING MODE: Inline editor for name and emoji
+                editingHeaderView
+            } else {
+                // DISPLAY MODE: Show name/emoji with double-click to edit
+                displayHeaderView
             }
             
             Divider()
             
             // Note editor (inline, always visible)
             // RESPONSIVE: Expands vertically with window height
+            // DESIGN: Desktop number displayed as large watermark in background
             VStack(alignment: .leading, spacing: 4) {
                 Text("Note")
                     .font(.system(size: scaledFontSize(9), weight: .medium))
@@ -1343,6 +1465,15 @@ struct OverviewSpaceCardView: View {
                 let calculatedHeight = min(maxNoteHeight, max(minNoteHeight, (availableHeight / 2) - fixedCardHeight))
                 
                 ZStack(alignment: .topLeading) {
+                    // BACKGROUND WATERMARK: Large desktop number
+                    // Positioned behind the text editor as a subtle visual indicator
+                    // This replaces the number badge in the header for a cleaner look
+                    Text("\(space.index)")
+                        .font(.system(size: scaledFontSize(80), weight: .black))
+                        .foregroundColor(.secondary.opacity(0.08))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .padding(.top, 10)
+                    
                     // TextEditor with local state
                     // CRITICAL: Using id() to force SwiftUI to create a unique TextEditor instance
                     TextEditor(text: $noteText)
@@ -1350,7 +1481,7 @@ struct OverviewSpaceCardView: View {
                         .frame(height: calculatedHeight)
                         .padding(6)  // Internal padding for text content
                         .scrollContentBackground(.hidden)
-                        .background(Color(NSColor.textBackgroundColor))
+                        .background(Color.clear)  // Transparent to show watermark
                         .cornerRadius(6)
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
@@ -1380,21 +1511,25 @@ struct OverviewSpaceCardView: View {
                             .allowsHitTesting(false)
                     }
                 }
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(6)
             }
         }
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(
+                    // FEATURE 5.5.9: Use Space's custom color or default
                     space.index == viewModel.currentSpaceNumber ?
-                        Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05)
+                        getSpaceAccentColor().opacity(0.1) : Color.secondary.opacity(0.05)
                 )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(
+                    // FEATURE 5.5.9: Use Space's custom color for border
                     space.index == viewModel.currentSpaceNumber ?
-                        Color.accentColor.opacity(0.3) : Color.clear,
+                        getSpaceAccentColor().opacity(0.3) : Color.clear,
                     lineWidth: 2
                 )
         )
@@ -1412,5 +1547,308 @@ struct OverviewSpaceCardView: View {
             }
         }
         .opacity(getSpaceOpacity(space.index))  // FEATURE: 5.5.8 - Dim to Indicate Order
+        // Emoji picker popover
+        .popover(
+            isPresented: $showEmojiPicker,
+            arrowEdge: .bottom
+        ) {
+            SuperSpacesEmojiPicker(
+                spaceNumber: space.index,
+                selectedEmoji: Binding(
+                    get: { editingSpaceEmoji.isEmpty ? nil : editingSpaceEmoji },
+                    set: { newEmoji in
+                        editingSpaceEmoji = newEmoji ?? ""
+                    }
+                ),
+                onEmojiSelected: { emoji in
+                    editingSpaceEmoji = emoji ?? ""
+                    showEmojiPicker = false
+                    // Auto-focus name field after emoji selection
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isNameFieldFocused = true
+                    }
+                }
+            )
+        }
+        // Color picker popover (FEATURE 5.5.9)
+        .popover(
+            isPresented: $showColorPicker,
+            arrowEdge: .bottom
+        ) {
+            SuperSpacesColorPicker(
+                spaceNumber: space.index,
+                selectedColorHex: Binding(
+                    get: { editingSpaceColor.isEmpty ? nil : editingSpaceColor },
+                    set: { newColor in
+                        editingSpaceColor = newColor ?? ""
+                    }
+                ),
+                onColorSelected: { color in
+                    editingSpaceColor = color ?? ""
+                    showColorPicker = false
+                    // Auto-focus name field after color selection
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isNameFieldFocused = true
+                    }
+                }
+            )
+            .environmentObject(settings)
+        }
+    }
+    
+    // MARK: - Header Views
+    
+    /// Display mode header: Shows name/emoji with click to switch, edit button to edit
+    /// DESIGN: Desktop number removed from header, now shown as watermark in note background
+    /// UX IMPROVEMENT: Single click on name/emoji bar switches to that Space (larger clickable area)
+    /// Arrow button becomes an edit button to enter editing mode
+    private var displayHeaderView: some View {
+        HStack(spacing: 8) {
+            // Emoji and Name - CLICKABLE BAR to switch to this Space
+            // DESIGN: Expanded to fill more space since number badge is removed
+            // UX: Entire bar is clickable for easy Space switching
+            Button(action: {
+                viewModel.switchToSpace(space.index)
+            }) {
+                HStack(spacing: 6) {
+                    // Emoji
+                    if let emoji = getSpaceEmoji(space.index), !emoji.isEmpty {
+                        Text(emoji)
+                            .font(.system(size: scaledFontSize(18)))
+                    } else {
+                        Text("➕")
+                            .font(.system(size: scaledFontSize(16)))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    // Name
+                    Text(getSpaceName(space.index) ?? "Unnamed")
+                        .font(.system(size: scaledFontSize(13), weight: .medium))
+                        .foregroundColor(getSpaceName(space.index) == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                    
+                    Spacer()
+                }
+                .contentShape(Rectangle())  // Make entire area clickable
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    // Highlight current Space with accent color
+                    space.index == viewModel.currentSpaceNumber ?
+                        Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.05)
+                )
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("Click to switch to Space \(space.index)")
+            
+            // Edit button (replaces arrow button)
+            // DESIGN: Pencil icon clearly indicates editing functionality
+            Button(action: {
+                startEditingSpaceName()
+            }) {
+                Image(systemName: "pencil.circle.fill")
+                    .font(.system(size: scaledFontSize(18)))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Edit name and emoji")
+        }
+    }
+    
+    /// Editing mode header: Inline editor for name and emoji
+    /// DESIGN: Desktop number visible in note background watermark during editing
+    private var editingHeaderView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Editing label and cancel button
+            HStack {
+                Text("Editing")
+                    .font(.system(size: scaledFontSize(11), weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                // Cancel button
+                Button(action: cancelSpaceNameEditing) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: scaledFontSize(16)))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Cancel (Esc)")
+            }
+            
+            // Emoji, color, and name editing fields
+            // FEATURE 5.5.9: Added color picker button
+            HStack(spacing: 6) {
+                // Emoji button (visual picker)
+                Button(action: {
+                    showEmojiPicker = true
+                }) {
+                    HStack {
+                        if editingSpaceEmoji.isEmpty {
+                            Image(systemName: "face.smiling")
+                                .font(.system(size: scaledFontSize(16)))
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text(editingSpaceEmoji)
+                                .font(.system(size: scaledFontSize(18)))
+                        }
+                    }
+                    .frame(width: 44, height: 32)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(showEmojiPicker ? getSpaceAccentColor() : Color.secondary.opacity(0.3), lineWidth: 2)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Click to choose emoji")
+                
+                // Color button (FEATURE 5.5.9: Color picker)
+                Button(action: {
+                    showColorPicker = true
+                }) {
+                    HStack {
+                        if editingSpaceColor.isEmpty {
+                            Image(systemName: "paintpalette")
+                                .font(.system(size: scaledFontSize(16)))
+                                .foregroundColor(.secondary)
+                        } else {
+                            // Show color swatch
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(settings.hexToColor(editingSpaceColor))
+                                .frame(width: 24, height: 24)
+                        }
+                    }
+                    .frame(width: 44, height: 32)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(showColorPicker ? getSpaceAccentColor() : Color.secondary.opacity(0.3), lineWidth: 2)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Click to choose color")
+                
+                // Name field
+                TextField("Space Name", text: $editingSpaceNameText)
+                    .font(.system(size: scaledFontSize(12)))
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(
+                                editingSpaceNameText.count > settings.maxSpaceNameLength ? Color.red : getSpaceAccentColor(),
+                                lineWidth: 2
+                            )
+                    )
+                    .focused($isNameFieldFocused)
+                    .onSubmit {
+                        saveSpaceNameAndEmoji()
+                    }
+                    .onChange(of: editingSpaceNameText) { newValue in
+                        // Enforce character limit
+                        if newValue.count > settings.maxSpaceNameLength {
+                            editingSpaceNameText = String(newValue.prefix(settings.maxSpaceNameLength))
+                        }
+                    }
+                    .onChange(of: isNameFieldFocused) { isFocused in
+                        // FEATURE: Auto-save when clicking off the name field
+                        // When the field loses focus (isFocused becomes false), save the changes
+                        // This provides a more intuitive UX where users don't need to explicitly
+                        // click the save button - just clicking elsewhere saves automatically
+                        if !isFocused && isEditingSpaceName {
+                            saveSpaceNameAndEmoji()
+                        }
+                    }
+                
+                // Save button
+                Button(action: saveSpaceNameAndEmoji) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: scaledFontSize(16)))
+                        .foregroundColor(.green)
+                }
+                .buttonStyle(.plain)
+                .help("Save (Enter)")
+            }
+            
+            // Character counter
+            HStack {
+                Spacer()
+                Text("\(editingSpaceNameText.count)/\(settings.maxSpaceNameLength)")
+                    .font(.system(size: scaledFontSize(9)))
+                    .foregroundColor(
+                        editingSpaceNameText.count > settings.maxSpaceNameLength - 5 ?
+                            (editingSpaceNameText.count >= settings.maxSpaceNameLength ? .red : .orange) :
+                            .secondary
+                    )
+            }
+        }
+    }
+    
+    // MARK: - Editing Actions
+    
+    /// Starts editing the Space name, emoji, and color
+    /// FEATURE 5.5.9: Added color editing support
+    private func startEditingSpaceName() {
+        isEditingSpaceName = true
+        editingSpaceNameText = getSpaceName(space.index) ?? ""
+        editingSpaceEmoji = getSpaceEmoji(space.index) ?? ""
+        editingSpaceColor = getSpaceColor() ?? ""  // Load current color
+        
+        // Focus the name field after a short delay to ensure the view is ready
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isNameFieldFocused = true
+        }
+    }
+    
+    /// Saves the edited Space name, emoji, and color
+    /// FEATURE 5.5.9: Added color saving
+    private func saveSpaceNameAndEmoji() {
+        // Validate and save name with character limit
+        let trimmedName = editingSpaceNameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName.isEmpty {
+            // Empty name: remove custom name, will show default
+            settings.spaceNames.removeValue(forKey: space.index)
+        } else {
+            // Validate and truncate to character limit
+            let validatedName = settings.validateSpaceName(trimmedName)
+            settings.spaceNames[space.index] = validatedName
+        }
+        
+        // Save emoji (limit to first 2 characters to handle multi-byte emojis)
+        let trimmedEmoji = String(editingSpaceEmoji.prefix(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedEmoji.isEmpty {
+            // Empty emoji: remove custom emoji, will show default
+            settings.spaceEmojis.removeValue(forKey: space.index)
+        } else {
+            settings.spaceEmojis[space.index] = trimmedEmoji
+        }
+        
+        // Save color (FEATURE 5.5.9)
+        let trimmedColor = editingSpaceColor.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedColor.isEmpty {
+            // Empty color: remove custom color, will use default blue
+            settings.spaceColors.removeValue(forKey: space.index)
+        } else {
+            settings.spaceColors[space.index] = trimmedColor
+        }
+        
+        isEditingSpaceName = false
+    }
+    
+    /// Cancels Space name/emoji/color editing
+    /// FEATURE 5.5.9: Added color clearing
+    private func cancelSpaceNameEditing() {
+        isEditingSpaceName = false
+        editingSpaceNameText = ""
+        editingSpaceEmoji = ""
+        editingSpaceColor = ""  // Clear color editing state
     }
 }

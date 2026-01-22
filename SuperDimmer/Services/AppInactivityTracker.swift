@@ -66,6 +66,12 @@ final class AppInactivityTracker: ObservableObject {
         
         /// PID of the running app
         var processID: pid_t
+        
+        /// Accumulated inactivity time (seconds) excluding idle periods
+        /// FEATURE (Jan 22, 2026): Idle-aware auto-hide
+        /// Tracks how long the app has been inactive during active user sessions only.
+        /// Idle time (lunch, meetings, etc.) is NOT counted toward auto-hide.
+        var accumulatedInactivityTime: TimeInterval
     }
     
     // ================================================================
@@ -83,6 +89,24 @@ final class AppInactivityTracker: ObservableObject {
     
     /// Currently frontmost app bundle ID
     private var currentFrontmostBundleID: String?
+    
+    /// Active usage tracker for idle detection
+    /// FEATURE (Jan 22, 2026): Idle-aware auto-hide
+    /// When user is idle (no mouse/keyboard activity), we pause auto-hide timers.
+    /// This prevents apps from being hidden when user is away from computer.
+    private let activeUsageTracker = ActiveUsageTracker.shared
+    
+    /// Timestamp when user became idle (for calculating pause duration)
+    /// FEATURE (Jan 22, 2026): Idle-aware auto-hide
+    /// When user goes idle, we store this timestamp and freeze all app timers.
+    /// When they return, we resume from where we left off.
+    private var idleSinceTime: Date?
+    
+    /// Timer for accumulating inactivity time (only when user is active)
+    /// FEATURE (Jan 22, 2026): Idle-aware auto-hide
+    /// Runs every 10 seconds to accumulate inactivity time for non-frontmost apps.
+    /// Only accumulates when user is actively using the computer.
+    private var accumulationTimer: Timer?
     
     /// System app bundle IDs that should be excluded by default
     /// These are apps that generally should never be auto-hidden
@@ -107,7 +131,13 @@ final class AppInactivityTracker: ObservableObject {
     private init() {
         setupObservers()
         initializeRunningApps()
+        setupIdleTracking()
+        startAccumulationTimer()
         print("✓ AppInactivityTracker initialized")
+    }
+    
+    deinit {
+        accumulationTimer?.invalidate()
     }
     
     // ================================================================
@@ -161,7 +191,8 @@ final class AppInactivityTracker: ObservableObject {
                 lastActiveTime: now,
                 bundleID: bundleID,
                 localizedName: app.localizedName ?? bundleID,
-                processID: app.processIdentifier
+                processID: app.processIdentifier,
+                accumulatedInactivityTime: 0
             )
             lock.unlock()
         }
@@ -197,7 +228,8 @@ final class AppInactivityTracker: ObservableObject {
             lastActiveTime: Date(),
             bundleID: bundleID,
             localizedName: app.localizedName ?? bundleID,
-            processID: app.processIdentifier
+            processID: app.processIdentifier,
+            accumulatedInactivityTime: 0  // Reset accumulated time when app becomes active
         )
         
         currentFrontmostBundleID = bundleID
@@ -218,7 +250,8 @@ final class AppInactivityTracker: ObservableObject {
             lastActiveTime: Date(),
             bundleID: bundleID,
             localizedName: app.localizedName ?? bundleID,
-            processID: app.processIdentifier
+            processID: app.processIdentifier,
+            accumulatedInactivityTime: 0
         )
     }
     
@@ -239,8 +272,17 @@ final class AppInactivityTracker: ObservableObject {
     /**
      Gets how long an app has been inactive (not frontmost).
      
+     CHANGED (Jan 22, 2026): Idle-aware auto-hide
+     Now returns accumulated inactivity time that excludes idle periods.
+     This prevents apps from being hidden due to time when user was away.
+     
+     HOW IT WORKS:
+     - Accumulated time only increases when user is actively using computer
+     - Idle periods (lunch, meetings, etc.) are NOT counted
+     - When app becomes frontmost, accumulated time resets to 0
+     
      - Parameter bundleID: The bundle identifier to check
-     - Returns: Time interval since last active, or 0 if app is currently active or unknown
+     - Returns: Time interval of active inactivity, or 0 if app is currently active or unknown
      */
     func getInactivityDuration(for bundleID: String) -> TimeInterval {
         lock.lock()
@@ -255,7 +297,8 @@ final class AppInactivityTracker: ObservableObject {
             return 0  // Unknown app
         }
         
-        return Date().timeIntervalSince(info.lastActiveTime)
+        // Return accumulated inactivity time (excludes idle periods)
+        return info.accumulatedInactivityTime
     }
     
     /**
@@ -334,5 +377,118 @@ final class AppInactivityTracker: ObservableObject {
      */
     static func isSystemApp(_ bundleID: String) -> Bool {
         return systemAppBundleIDs.contains(bundleID)
+    }
+    
+    // ================================================================
+    // MARK: - Idle Tracking & Accumulation
+    // ================================================================
+    
+    /**
+     Sets up idle state tracking to pause auto-hide timers when user is away.
+     
+     FEATURE (Jan 22, 2026): Idle-aware auto-hide
+     
+     WHY THIS MATTERS:
+     Without idle tracking, apps continue accumulating inactivity time even when
+     you're away from your computer (lunch break, meeting, overnight). This means
+     you come back to find apps hidden even though you weren't actively using
+     other apps - you were just away.
+     
+     HOW IT WORKS:
+     - Subscribe to ActiveUsageTracker's isUserActive property
+     - When user becomes idle: stop accumulating inactivity time
+     - When user returns: resume accumulation
+     - Result: Auto-hide only counts time during active computer use
+     */
+    private func setupIdleTracking() {
+        // Observe user activity state changes
+        activeUsageTracker.$isUserActive
+            .sink { [weak self] isActive in
+                guard let self = self else { return }
+                
+                self.lock.lock()
+                defer { self.lock.unlock() }
+                
+                if !isActive && self.idleSinceTime == nil {
+                    // User just became idle - record timestamp
+                    self.idleSinceTime = Date()
+                    print("⏸️ AppInactivityTracker: User idle - pausing auto-hide timers")
+                } else if isActive && self.idleSinceTime != nil {
+                    // User returned from idle - clear timestamp
+                    let idleDuration = Date().timeIntervalSince(self.idleSinceTime!)
+                    self.idleSinceTime = nil
+                    print("▶️ AppInactivityTracker: User active - resuming auto-hide timers (was idle for \(Int(idleDuration))s)")
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    /**
+     Starts the accumulation timer that tracks inactivity time for apps.
+     
+     FEATURE (Jan 22, 2026): Idle-aware auto-hide
+     
+     This timer runs every 10 seconds and accumulates inactivity time for
+     non-frontmost apps, but ONLY when the user is actively using the computer.
+     
+     WHY A TIMER:
+     We can't just calculate time on-demand because we need to exclude idle periods.
+     The timer allows us to accumulate time only during active sessions.
+     
+     HOW IT WORKS:
+     - Every 10 seconds, check if user is active
+     - If active: add 10 seconds to all non-frontmost apps' accumulated time
+     - If idle: don't accumulate (timer still runs, but doesn't add time)
+     - Result: Accurate tracking of active-only inactivity
+     */
+    private func startAccumulationTimer() {
+        // Run on main thread's RunLoop
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.accumulationTimer = Timer.scheduledTimer(
+                withTimeInterval: 10.0,  // Check every 10 seconds
+                repeats: true
+            ) { [weak self] _ in
+                self?.accumulateInactivityTime()
+            }
+            
+            // Ensure timer is added to RunLoop
+            if let timer = self.accumulationTimer {
+                RunLoop.main.add(timer, forMode: .common)
+                print("✓ AppInactivityTracker: Accumulation timer started (10s interval)")
+            }
+        }
+    }
+    
+    /**
+     Accumulates inactivity time for non-frontmost apps.
+     Called every 10 seconds by the accumulation timer.
+     
+     ONLY accumulates when user is actively using the computer.
+     Idle periods are automatically excluded.
+     */
+    private func accumulateInactivityTime() {
+        // Only accumulate if user is active
+        guard activeUsageTracker.isUserActive else {
+            return  // User is idle - don't accumulate
+        }
+        
+        lock.lock()
+        defer { lock.unlock() }
+        
+        let accumulationInterval: TimeInterval = 10.0  // Match timer interval
+        
+        // Add time to all non-frontmost apps
+        for (bundleID, var info) in appActivity {
+            // Skip frontmost app
+            if bundleID == currentFrontmostBundleID {
+                continue
+            }
+            
+            // Accumulate inactivity time
+            info.accumulatedInactivityTime += accumulationInterval
+            appActivity[bundleID] = info
+        }
     }
 }

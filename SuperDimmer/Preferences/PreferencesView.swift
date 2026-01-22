@@ -746,20 +746,42 @@ struct WindowManagementPreferencesTab: View {
                             HStack {
                                 Text("Start dimming after:")
                                 Spacer()
-                                Text("\(Int(settings.decayStartDelay)) sec")
-                                    .foregroundColor(.secondary)
+                                // FEATURE: Display in minutes if >= 60 seconds, otherwise seconds
+                                // This provides clearer UX for longer delays
+                                if settings.decayStartDelay >= 60 {
+                                    let minutes = Int(settings.decayStartDelay / 60)
+                                    Text("\(minutes) min")
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("\(Int(settings.decayStartDelay)) sec")
+                                        .foregroundColor(.secondary)
+                                }
                             }
-                            Slider(value: $settings.decayStartDelay, in: 5...120, step: 5)
+                            // CHANGED (Jan 21, 2026): Expanded range from 5-120 to 5-1800 seconds (5 sec to 30 min)
+                            // Step: 5 seconds for < 60s, 60 seconds (1 min) for >= 60s
+                            Slider(value: $settings.decayStartDelay, in: 5...1800, step: settings.decayStartDelay < 60 ? 5 : 60)
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text("Decay rate:")
+                                Text("Full decay in:")
                                 Spacer()
-                                Text("\(Int(settings.decayRate * 100))% per sec")
+                                // CHANGED (Jan 21, 2026): Display as "full decay time" instead of rate
+                                // This is more intuitive for users - "window fully dims after X minutes"
+                                let fullDecayMinutes = settings.getFullDecayTimeMinutes()
+                                Text("\(Int(fullDecayMinutes)) min")
                                     .foregroundColor(.secondary)
                             }
-                            Slider(value: $settings.decayRate, in: 0.005...0.05, step: 0.005)
+                            // CHANGED (Jan 21, 2026): Range 5-30 minutes for full decay
+                            // Internally converts to decay rate for calculations
+                            Slider(
+                                value: Binding(
+                                    get: { settings.getFullDecayTimeMinutes() },
+                                    set: { settings.setFullDecayTimeMinutes($0) }
+                                ),
+                                in: 5...30,
+                                step: 1
+                            )
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
