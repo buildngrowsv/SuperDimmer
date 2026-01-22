@@ -337,23 +337,29 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     
     /// Refreshes Space information
     ///
-    /// FEATURE: 5.5.8 - Dim to Indicate Order
-    /// Also initializes SpaceVisitTracker with all available Spaces
-    /// if the visit order is empty (first launch or after reset).
+    /// FEATURE: 5.5.8 - Dim to Indicate Order (Updated Jan 21, 2026)
+    /// 
+    /// BEHAVIOR CHANGE:
+    /// - Previously: All Spaces were pre-initialized in visit order on first launch
+    /// - Now: Only the current Space is added to visit order
+    /// - Unvisited Spaces default to 50% opacity until actually visited
+    /// - After being visited, they progressively dim based on recency
+    ///
+    /// WHY THIS CHANGE:
+    /// - Provides clearer visual feedback: 50% = neutral/unvisited, 100% = current
+    /// - Progressive dimming only applies to Spaces you've actually used
+    /// - More intuitive: brightness indicates recent activity, not arbitrary order
     private func refreshSpaces() {
         viewModel.allSpaces = SpaceDetector.getAllSpaces()
         
         if let currentSpace = SpaceDetector.getCurrentSpace() {
             viewModel.currentSpaceNumber = currentSpace.spaceNumber
             
-            // Initialize visit tracker if empty (5.5.8)
-            // This ensures all Spaces are in the visit order on first launch
+            // Record the current Space as visited (5.5.8)
+            // This ensures the current Space shows at 100% opacity
+            // Other Spaces will remain at 50% until visited
             if SpaceVisitTracker.shared.visitOrder.isEmpty {
-                let spaceNumbers = viewModel.allSpaces.map { $0.index }
-                SpaceVisitTracker.shared.initializeWithSpaces(
-                    spaceNumbers,
-                    currentSpace: currentSpace.spaceNumber
-                )
+                SpaceVisitTracker.shared.recordVisit(to: currentSpace.spaceNumber)
             }
         }
     }

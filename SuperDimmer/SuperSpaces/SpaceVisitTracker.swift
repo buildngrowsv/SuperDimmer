@@ -15,19 +15,23 @@
 //  - Helps identify "stale" Spaces you haven't visited in a while
 //  - Complements the existing window-level inactivity decay feature
 //
-//  HOW IT WORKS:
+//  HOW IT WORKS (Updated Jan 21, 2026):
 //  - Maintains an ordered array of Space numbers: [current, last, secondToLast, ...]
 //  - When user switches to a Space, it moves to position 0 (most recent)
 //  - Button opacity is calculated based on position in the array
+//  - Unvisited Spaces (not in array): 50% opacity (neutral/default state)
 //  - Current Space (position 0): 100% opacity (fully bright)
-//  - Last visited (position 1): Slightly dimmed (e.g., 95% opacity)
-//  - Older Spaces: Progressively more dimmed (down to minimum opacity)
+//  - Last visited (position 1): 50% opacity (just switched away)
+//  - Older visited Spaces: Progressively more dimmed (down to minimum opacity)
 //
 //  ALGORITHM:
-//  For N total Spaces with max dim level M (default 25%):
-//  - Opacity step = M / N
-//  - Space at position P: opacity = 1.0 - min(P * step, M)
-//  - Example: 10 Spaces, 25% max dim → 2.5% step per position
+//  For N total Spaces with max dim level M (default 25% = 75% min opacity):
+//  - Unvisited: opacity = 0.5 (50%)
+//  - Position 0 (current): opacity = 1.0 (100%)
+//  - Position 1+ (visited): opacity starts at 0.5 and dims progressively
+//  - Opacity step = (0.5 - minOpacity) / (N - 1)
+//  - Space at position P: opacity = 0.5 - ((P - 1) * step)
+//  - Example: 10 Spaces, 25% max dim → ~2.8% step per position from 50% down to 25%
 //
 //  PERFORMANCE:
 //  - Visit tracking: O(n) where n = number of Spaces (typically < 10)
@@ -132,21 +136,34 @@ final class SpaceVisitTracker: ObservableObject {
     
     /// Gets the opacity level for a Space based on visit recency
     ///
+    /// BEHAVIOR:
+    /// - All Spaces start at 50% opacity (default/neutral state)
+    /// - Position 0 (current Space): 100% opacity (fully bright)
+    /// - After being visited (positions 1+): Progressive dimming from 50% down
+    ///
     /// CALCULATION:
     /// 1. Find Space's position in visitOrder array
-    /// 2. Calculate dim level based on position and settings
-    /// 3. Convert dim level to opacity: opacity = 1.0 - dimLevel
-    /// 4. Clamp to [minOpacity, 1.0] range
+    /// 2. If position 0 (current): return 100% opacity
+    /// 3. If position > 0 (visited before): calculate progressive dim from 50%
+    /// 4. If not in visit order (never visited): return 50% opacity (default)
     ///
-    /// FORMULA:
-    /// dimLevel = min(position * dimStep, maxDimLevel)
-    /// opacity = 1.0 - dimLevel
+    /// FORMULA FOR VISITED SPACES (position > 0):
+    /// - Start at 50% opacity for position 1 (last visited)
+    /// - Progressively dim down to minOpacity based on position
+    /// - dimRange = 0.5 - minOpacity (e.g., 0.5 - 0.25 = 0.25 range)
+    /// - dimStep = dimRange / (totalSpaces - 1)
+    /// - opacity = 0.5 - ((position - 1) * dimStep)
     ///
-    /// EXAMPLE (10 Spaces, 25% max dim):
-    /// Position 0 (current): opacity = 1.0 (0% dim)
-    /// Position 1 (last): opacity = 0.975 (2.5% dim)
-    /// Position 2: opacity = 0.95 (5% dim)
-    /// Position 10+: opacity = 0.75 (25% dim, capped)
+    /// EXAMPLE (10 Spaces, 25% max dim = 75% min opacity):
+    /// Position 0 (current): opacity = 1.0 (100%)
+    /// Position 1 (last): opacity = 0.5 (50%, just switched away)
+    /// Position 2: opacity = ~0.47 (47%)
+    /// Position 3: opacity = ~0.44 (44%)
+    /// ...
+    /// Position 10+: opacity = 0.25 (25%, minimum)
+    ///
+    /// UNVISITED SPACES:
+    /// - Not in visitOrder array: opacity = 0.5 (50%, default state)
     ///
     /// - Parameters:
     ///   - spaceNumber: The Space number to get opacity for
@@ -156,24 +173,30 @@ final class SpaceVisitTracker: ObservableObject {
     func getOpacity(for spaceNumber: Int, maxDimLevel: Double = 0.25, totalSpaces: Int) -> Double {
         // Find position in visit order
         guard let position = visitOrder.firstIndex(of: spaceNumber) else {
-            // Space not in visit order yet (shouldn't happen after initialization)
-            // Default to maximum dimming for unvisited Spaces
-            return 1.0 - maxDimLevel
+            // Space not in visit order yet (unvisited)
+            // Default to 50% opacity (neutral state)
+            return 0.5
         }
         
-        // Calculate dim step per position
-        // If we have 10 Spaces and max 25% dim, each position adds 2.5% dimming
-        let dimStep = totalSpaces > 0 ? maxDimLevel / Double(totalSpaces) : 0.0
+        // Position 0 = current Space, always 100% opacity
+        if position == 0 {
+            return 1.0
+        }
         
-        // Calculate dim level for this position
-        let dimLevel = min(Double(position) * dimStep, maxDimLevel)
+        // For visited Spaces (position > 0):
+        // Start at 50% opacity and progressively dim down to minOpacity
+        let minOpacity = 1.0 - maxDimLevel  // e.g., 0.75 for 25% max dim
+        let dimRange = 0.5 - minOpacity     // Range from 50% down to min (e.g., 0.25)
         
-        // Convert to opacity (1.0 = fully visible, 0.0 = invisible)
-        let opacity = 1.0 - dimLevel
+        // Calculate dim step per position (excluding position 0 which is always 100%)
+        // If we have 10 Spaces, positions 1-9 will progressively dim
+        let dimStep = totalSpaces > 1 ? dimRange / Double(totalSpaces - 1) : 0.0
+        
+        // Calculate opacity for this position
+        // Position 1 starts at 50%, then progressively dims
+        let opacity = 0.5 - (Double(position - 1) * dimStep)
         
         // Clamp to valid range [minOpacity, 1.0]
-        // Minimum opacity is 1.0 - maxDimLevel (e.g., 0.75 for 25% max dim)
-        let minOpacity = 1.0 - maxDimLevel
         return max(minOpacity, min(1.0, opacity))
     }
     
@@ -196,15 +219,20 @@ final class SpaceVisitTracker: ObservableObject {
     
     /// Initializes visit order with all available Spaces
     ///
-    /// WHEN TO USE:
-    /// - On first launch when visitOrder is empty
-    /// - After user resets visit order
-    /// - When Spaces are added/removed (detected by SpaceDetector)
+    /// NOTE (Jan 21, 2026): This function is DEPRECATED for normal initialization.
+    /// We now prefer to only add Spaces to visitOrder when they are actually visited.
+    /// This creates clearer visual feedback: 50% = unvisited, 100% = current, progressive dim = visited.
+    ///
+    /// WHEN TO USE (Legacy/Special Cases):
+    /// - Manual testing or debugging
+    /// - User explicitly requests to "mark all Spaces as visited"
+    /// - Migration from old behavior (if needed)
     ///
     /// BEHAVIOR:
     /// - Adds all Spaces to visitOrder in numerical order
     /// - Current Space (if known) is placed at position 0
     /// - Other Spaces are added in order: [current, 1, 2, 3, ...]
+    /// - This will cause all Spaces to show progressive dimming from 1-N
     ///
     /// - Parameters:
     ///   - spaceNumbers: Array of all available Space numbers
