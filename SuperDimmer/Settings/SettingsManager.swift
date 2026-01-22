@@ -1740,22 +1740,27 @@ final class SettingsManager: ObservableObject {
      Value represents the maximum opacity reduction (0.0 - 1.0).
      
      EXAMPLES:
-     - 0.25 (25%): Least recent Space has 75% opacity
-     - 0.50 (50%): Least recent Space has 50% opacity
-     - 0.10 (10%): Least recent Space has 90% opacity (subtle)
+     - 0.25 (25%): Least recent Space has 75% opacity (subtle)
+     - 0.50 (50%): Least recent Space has 50% opacity (moderate)
+     - 0.80 (80%): Least recent Space has 20% opacity (strong indicator)
      
      CALCULATION:
      For N total Spaces:
      - Opacity step = maxDimLevel / N
      - Space at position P: opacity = 1.0 - min(P * step, maxDimLevel)
      
-     RANGE: 0.1 (10%) to 0.5 (50%)
-     DEFAULT: 0.25 (25% maximum dimming)
+     RANGE: 0.1 (10%) to 0.8 (80%)
+     DEFAULT: 0.5 (50% maximum dimming for better visibility)
+     
+     USER FEEDBACK (Jan 21, 2026):
+     - Original 25% max was too subtle, hard to read
+     - Increased range to 80% for stronger visual indicator
+     - Increased default to 50% for better out-of-box experience
      */
     @Published var spaceOrderMaxDimLevel: Double {
         didSet {
-            // Clamp to valid range [0.1, 0.5]
-            let clamped = max(0.1, min(0.5, spaceOrderMaxDimLevel))
+            // Clamp to valid range [0.1, 0.8]
+            let clamped = max(0.1, min(0.8, spaceOrderMaxDimLevel))
             if clamped != spaceOrderMaxDimLevel {
                 spaceOrderMaxDimLevel = clamped
                 return
@@ -2175,9 +2180,10 @@ final class SettingsManager: ObservableObject {
         // Button dimming is OFF by default (opt-in feature)
         self.spaceOrderDimmingEnabled = defaults.bool(forKey: Keys.spaceOrderDimmingEnabled.rawValue)
         
-        // Max dim level defaults to 25% (0.25)
+        // Max dim level defaults to 50% (0.5) for better visibility
+        // USER FEEDBACK (Jan 21, 2026): Increased from 25% to 50% for stronger indicator
         self.spaceOrderMaxDimLevel = defaults.object(forKey: Keys.spaceOrderMaxDimLevel.rawValue) != nil ?
-            defaults.double(forKey: Keys.spaceOrderMaxDimLevel.rawValue) : 0.25
+            defaults.double(forKey: Keys.spaceOrderMaxDimLevel.rawValue) : 0.5
         
         // Float on top defaults to true (original behavior)
         self.superSpacesFloatOnTop = defaults.object(forKey: Keys.superSpacesFloatOnTop.rawValue) != nil ?

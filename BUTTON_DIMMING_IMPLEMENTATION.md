@@ -29,9 +29,15 @@ Implemented progressive button dimming for Super Spaces HUD based on Space visit
 ### User Control
 
 - **Toggle**: Enable/disable button dimming
-- **Slider**: Adjust maximum fade (10% - 50%, default 25%)
+- **Slider**: Adjust maximum fade (10% - 80%, default 50%)
 - **Reset Button**: Clear visit history and equalize all buttons
 - **Default**: OFF (opt-in feature)
+
+**USER FEEDBACK (Jan 21, 2026):**
+- Original 25% max fade was too subtle and hard to read
+- Increased range to 80% for much stronger visual indicator
+- Increased default to 50% for better out-of-box experience
+- Slider now labeled "Subtle" to "Strong" for clarity
 
 ---
 
@@ -64,19 +70,34 @@ dimLevel = min(position * dimStep, M)
 opacity = 1.0 - dimLevel
 ```
 
-**Example (10 Spaces, 25% max dim):**
+**Example (10 Spaces, 50% max dim - DEFAULT):**
 ```
 Visit order: [3, 2, 6, 1, 4, 5, 7, 8, 9, 10]
              Current ↑
 
 Button Opacity:
 Space 3: 100.0% (current - fully bright)
-Space 2:  97.5% (last visited)
-Space 6:  95.0% (2nd-to-last)
-Space 1:  92.5% (3rd-to-last)
-Space 4:  90.0% (4th-to-last)
+Space 2:  95.0% (last visited)
+Space 6:  90.0% (2nd-to-last)
+Space 1:  85.0% (3rd-to-last)
+Space 4:  80.0% (4th-to-last)
 ...
-Space 10: 75.0% (least recent - max dim)
+Space 10: 50.0% (least recent - max dim)
+```
+
+**Example (10 Spaces, 80% max dim - STRONG INDICATOR):**
+```
+Visit order: [3, 2, 6, 1, 4, 5, 7, 8, 9, 10]
+             Current ↑
+
+Button Opacity:
+Space 3: 100.0% (current - fully bright)
+Space 2:  92.0% (last visited)
+Space 6:  84.0% (2nd-to-last)
+Space 1:  76.0% (3rd-to-last)
+Space 4:  68.0% (4th-to-last)
+...
+Space 10: 20.0% (least recent - very faded)
 ```
 
 ---

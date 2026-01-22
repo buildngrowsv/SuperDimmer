@@ -86,12 +86,22 @@ struct SuperSpacesQuickSettings: View {
                         
                         Slider(
                             value: $settings.spaceOrderMaxDimLevel,
-                            in: 0.1...0.5,
+                            in: 0.1...0.8,
                             step: 0.05
                         )
                         .help("Maximum dimming for least recently visited Spaces")
                         
-                        Text("Current: bright, Last: \(Int((settings.spaceOrderMaxDimLevel / 10) * 100))%")
+                        HStack {
+                            Text("Subtle")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("Strong")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Text("Oldest Space: \(Int((1.0 - settings.spaceOrderMaxDimLevel) * 100))% visible")
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     }
