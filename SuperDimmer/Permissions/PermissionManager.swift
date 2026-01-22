@@ -318,16 +318,32 @@ final class PermissionManager: NSObject, ObservableObject {
      IMPLEMENTATION:
      There's no direct API to check Automation permission.
      We try to send a simple AppleScript command and see if it fails.
+     
+     IMPORTANT: Automation permissions are per-target-app in macOS.
+     This checks permission to control "System Events" specifically,
+     which is what SuperSpaces needs for keyboard simulation.
+     
+     WHY "System Events":
+     - SuperSpaces uses AppleScript to simulate Control+Arrow keypresses
+     - This requires permission to control "System Events" app
+     - This is separate from controlling "Finder" or other apps
      */
     func checkAutomationPermission() -> Bool {
-        // Try a harmless AppleScript to test permission
-        let script = NSAppleScript(source: "tell application \"Finder\" to return name")
+        // Test permission to control "System Events" (needed for SuperSpaces)
+        // This is the specific permission that SuperSpaces requires
+        let script = NSAppleScript(source: """
+        tell application "System Events"
+            return name
+        end tell
+        """)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
         
         // If no error, permission is granted
         // Error -1743 means permission denied
+        // Error -1728 means "System Events got an error: Can't get object"
         if let error = error, let errorNumber = error[NSAppleScript.errorNumber] as? Int {
+            // -1743 is the specific "not authorized" error
             return errorNumber != -1743
         }
         return true
@@ -339,16 +355,29 @@ final class PermissionManager: NSObject, ObservableObject {
      BEHAVIOR:
      macOS will show a permission dialog when an app tries to
      control another app via AppleScript for the first time.
+     
+     IMPORTANT: This specifically requests permission to control "System Events"
+     which is what SuperSpaces needs for keyboard simulation to switch Spaces.
+     
+     NOTE: If user denies permission, they must manually grant it in:
+     System Settings > Privacy & Security > Automation > SuperDimmer > System Events
+     
+     There's no way to programmatically reset or re-request after denial.
      */
     func requestAutomationPermission() {
-        // Trigger the permission dialog by trying to control Finder
-        let script = NSAppleScript(source: "tell application \"Finder\" to return name")
+        // Trigger the permission dialog by trying to control System Events
+        // This is the specific permission SuperSpaces needs
+        let script = NSAppleScript(source: """
+        tell application "System Events"
+            return name
+        end tell
+        """)
         var error: NSDictionary?
         script?.executeAndReturnError(&error)
         
         // Update status after attempt
         automationGranted = checkAutomationPermission()
-        print("🤖 Requested automation permission")
+        print("🤖 Requested automation permission for System Events")
     }
     
     /**

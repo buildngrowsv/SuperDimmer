@@ -439,6 +439,7 @@ struct SuperSpacesHUDView: View {
             )
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()  // Disable focus ring/outline on click
         .help(getSpaceTooltip(space.index))
     }
     
@@ -800,6 +801,7 @@ struct SuperSpacesHUDView: View {
             )
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()  // Disable focus ring/outline on click
         .help(getSpaceName(space.index) ?? "Space \(space.index)")
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
@@ -1697,6 +1699,7 @@ struct OverviewSpaceCardView: View {
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
+            .focusEffectDisabled()  // Disable focus ring/outline on click
             .help("Click to switch to Space \(space.index)")
             
             // Edit button (replaces arrow button)
@@ -1709,6 +1712,7 @@ struct OverviewSpaceCardView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
+            .focusEffectDisabled()  // Disable focus ring/outline on click
             .help("Edit name and emoji")
         }
     }

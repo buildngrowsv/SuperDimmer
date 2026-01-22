@@ -427,6 +427,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// 2. Wait 1 second to see if it worked
     /// 3. If still on same Space, fall back to Control+Arrow cycling
     ///
+    /// PERMISSIONS REQUIRED (Jan 22, 2026):
+    /// - Accessibility: Required to send synthetic keyboard events
+    /// - Automation (System Events): Required to execute AppleScript
+    /// Both permissions must be granted for Space switching to work.
+    ///
     /// RATIONALE:
     /// - macOS has built-in shortcuts: Control+1, Control+2, etc.
     /// - These are instant (no cycling) but only work if user enabled them
@@ -450,6 +455,13 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         let currentSpace = viewModel.currentSpaceNumber
         if spaceNumber == currentSpace {
             print("✓ SuperSpacesHUD: Already on Space \(spaceNumber)")
+            return
+        }
+        
+        // Check for Accessibility permission (required for sending keystrokes)
+        if !AXIsProcessTrusted() {
+            print("⚠️ SuperSpacesHUD: Accessibility permission not granted - cannot send keystrokes")
+            showAccessibilityPermissionAlert()
             return
         }
         
@@ -606,24 +618,94 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             
             if let error = error {
                 print("⚠️ SuperSpacesHUD: AppleScript error: \(error)")
-                showPermissionAlert()
+                
+                // Check error type to show appropriate alert
+                if let errorNumber = error[NSAppleScript.errorNumber] as? Int {
+                    if errorNumber == 1002 {
+                        // Error 1002: Not allowed to send keystrokes (Accessibility)
+                        showAccessibilityPermissionAlert()
+                    } else if errorNumber == -1743 {
+                        // Error -1743: Not authorized (Automation)
+                        showAutomationPermissionAlert()
+                    } else {
+                        // Other error
+                        showAutomationPermissionAlert()
+                    }
+                }
             } else {
                 print("✓ SuperSpacesHUD: Space switch initiated via AppleScript (slow)")
             }
         }
     }
     
+    /// Shows alert about Accessibility permission (required for sending keystrokes)
+    ///
+    /// PERMISSION CONTEXT (Jan 22, 2026):
+    /// macOS requires BOTH Accessibility and Automation permissions for Space switching:
+    ///
+    /// 1. ACCESSIBILITY: Required to send synthetic keyboard events
+    ///    - Without this, AppleScript cannot simulate keypresses
+    ///    - Error: "SuperDimmer is not allowed to send keystrokes" (1002)
+    ///
+    /// 2. AUTOMATION: Required to control "System Events" app
+    ///    - Without this, AppleScript cannot talk to System Events
+    ///    - Error: "Not authorized" (-1743)
+    ///
+    /// WHY BOTH ARE NEEDED:
+    /// - AppleScript tells "System Events" to press keys (needs Automation)
+    /// - System Events sends the actual keystrokes (needs Accessibility)
+    /// - Both must be granted for Space switching to work
+    private func showAccessibilityPermissionAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permission Required"
+        alert.informativeText = """
+        SuperDimmer needs Accessibility permission to send keyboard shortcuts for Space switching.
+        
+        Please enable it in:
+        System Settings > Privacy & Security > Accessibility
+        
+        Then check the box next to "SuperDimmer".
+        
+        Note: You also need Automation permission for "System Events" (which you already have ✓).
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+        }
+    }
+    
     /// Shows alert about Automation permission
-    private func showPermissionAlert() {
+    ///
+    /// PERMISSION CONTEXT (Jan 22, 2026):
+    /// macOS Automation permissions are per-target-app, not global.
+    /// SuperSpaces needs permission to control "System Events" specifically
+    /// to simulate keyboard shortcuts (Control+Arrow, Control+Number).
+    ///
+    /// WHY THIS IS NEEDED:
+    /// - macOS doesn't provide a direct API to switch Spaces programmatically
+    /// - We use AppleScript to simulate keyboard shortcuts as a workaround
+    /// - This requires "SuperDimmer → System Events" automation permission
+    ///
+    /// USER EXPERIENCE:
+    /// - First time: macOS shows a permission dialog automatically
+    /// - If denied: User must manually enable in System Settings
+    /// - Cannot be reset programmatically - must be done in Settings
+    private func showAutomationPermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "Automation Permission Required"
         alert.informativeText = """
-        SuperDimmer needs Automation permission to switch between Spaces.
+        SuperDimmer needs permission to control "System Events" to switch between Spaces.
         
-        Please grant permission in:
-        System Settings > Privacy & Security > Automation
+        Please enable it in:
+        System Settings > Privacy & Security > Automation > SuperDimmer
         
-        Then try switching Spaces again.
+        Then check the box next to "System Events".
+        
+        Note: If you don't see this option, try clicking a Space button again to trigger the permission request.
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Open System Settings")
