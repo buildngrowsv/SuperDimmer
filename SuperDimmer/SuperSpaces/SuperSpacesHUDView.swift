@@ -715,34 +715,38 @@ struct SuperSpacesHUDView: View {
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(.secondary)
                 
-                TextEditor(text: Binding(
-                    get: { settings.spaceNotes[space.index] ?? "" },
-                    set: { newValue in
-                        if newValue.isEmpty {
-                            settings.spaceNotes.removeValue(forKey: space.index)
-                        } else {
-                            settings.spaceNotes[space.index] = newValue
+                // Use ZStack for proper placeholder positioning
+                ZStack(alignment: .topLeading) {
+                    // TextEditor with direct binding
+                    TextEditor(text: Binding(
+                        get: { settings.spaceNotes[space.index] ?? "" },
+                        set: { newValue in
+                            if newValue.isEmpty {
+                                settings.spaceNotes.removeValue(forKey: space.index)
+                            } else {
+                                settings.spaceNotes[space.index] = newValue
+                            }
                         }
+                    ))
+                    .font(.system(size: 11))
+                    .frame(height: 80)
+                    .scrollContentBackground(.hidden)  // Hide default background
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                    )
+                    
+                    // Placeholder when empty
+                    if (settings.spaceNotes[space.index] ?? "").isEmpty {
+                        Text("Add note...")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
+                            .allowsHitTesting(false)
                     }
-                ))
-                .font(.system(size: 11))
-                .frame(height: 80)
-                .padding(6)
-                .background(Color(NSColor.textBackgroundColor))
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                )
-                
-                // Placeholder when empty
-                if (settings.spaceNotes[space.index] ?? "").isEmpty {
-                    Text("Add note...")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.top, -70)
-                        .allowsHitTesting(false)
                 }
             }
         }
