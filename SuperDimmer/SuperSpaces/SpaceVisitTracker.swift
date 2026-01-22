@@ -15,23 +15,24 @@
 //  - Helps identify "stale" Spaces you haven't visited in a while
 //  - Complements the existing window-level inactivity decay feature
 //
-//  HOW IT WORKS (Updated Jan 21, 2026):
+//  HOW IT WORKS (Updated Jan 22, 2026 - More dramatic progressive dimming):
 //  - Maintains an ordered array of Space numbers: [current, last, secondToLast, ...]
 //  - When user switches to a Space, it moves to position 0 (most recent)
 //  - Button opacity is calculated based on position in the array
 //  - Unvisited Spaces (not in array): 50% opacity (neutral/default state)
 //  - Current Space (position 0): 100% opacity (fully bright)
-//  - Last visited (position 1): 50% opacity (just switched away)
+//  - Last visited (position 1): ~97.5% opacity (just switched away - still very bright)
 //  - Older visited Spaces: Progressively more dimmed (down to minimum opacity)
 //
 //  ALGORITHM:
 //  For N total Spaces with max dim level M (default 25% = 75% min opacity):
 //  - Unvisited: opacity = 0.5 (50%)
 //  - Position 0 (current): opacity = 1.0 (100%)
-//  - Position 1+ (visited): opacity starts at 0.5 and dims progressively
-//  - Opacity step = (0.5 - minOpacity) / (N - 1)
-//  - Space at position P: opacity = 0.5 - ((P - 1) * step)
-//  - Example: 10 Spaces, 25% max dim → ~2.8% step per position from 50% down to 25%
+//  - Position 1+ (visited): opacity dims progressively from 100% down
+//  - Opacity step = (1.0 - minOpacity) / N
+//  - Space at position P: opacity = 1.0 - (P * step)
+//  - Example: 10 Spaces, 25% max dim → 2.5% step per position from 100% down to 75%
+//  - This creates clear visual hierarchy: each rank away from current is noticeably dimmer
 //
 //  PERFORMANCE:
 //  - Visit tracking: O(n) where n = number of Spaces (typically < 10)
@@ -136,34 +137,43 @@ final class SpaceVisitTracker: ObservableObject {
     
     /// Gets the opacity level for a Space based on visit recency
     ///
-    /// BEHAVIOR:
+    /// BEHAVIOR (Updated Jan 22, 2026 - More dramatic progressive dimming):
     /// - All Spaces start at 50% opacity (default/neutral state)
     /// - Position 0 (current Space): 100% opacity (fully bright)
-    /// - After being visited (positions 1+): Progressive dimming from 50% down
+    /// - After being visited (positions 1+): Progressive dimming from 100% down to minOpacity
     ///
     /// CALCULATION:
     /// 1. Find Space's position in visitOrder array
     /// 2. If position 0 (current): return 100% opacity
-    /// 3. If position > 0 (visited before): calculate progressive dim from 50%
+    /// 3. If position > 0 (visited before): calculate progressive dim from 100% down
     /// 4. If not in visit order (never visited): return 50% opacity (default)
     ///
     /// FORMULA FOR VISITED SPACES (position > 0):
-    /// - Start at 50% opacity for position 1 (last visited)
-    /// - Progressively dim down to minOpacity based on position
-    /// - dimRange = 0.5 - minOpacity (e.g., 0.5 - 0.25 = 0.25 range)
-    /// - dimStep = dimRange / (totalSpaces - 1)
-    /// - opacity = 0.5 - ((position - 1) * dimStep)
+    /// - Start at 100% opacity for position 0 (current)
+    /// - Each position away from current progressively dims
+    /// - dimRange = 1.0 - minOpacity (e.g., 1.0 - 0.75 = 0.25 range)
+    /// - dimStep = dimRange / totalSpaces
+    /// - opacity = 1.0 - (position * dimStep)
     ///
     /// EXAMPLE (10 Spaces, 25% max dim = 75% min opacity):
     /// Position 0 (current): opacity = 1.0 (100%)
-    /// Position 1 (last): opacity = 0.5 (50%, just switched away)
-    /// Position 2: opacity = ~0.47 (47%)
-    /// Position 3: opacity = ~0.44 (44%)
+    /// Position 1 (last): opacity = ~0.975 (97.5%, just switched away - still very bright)
+    /// Position 2: opacity = ~0.95 (95%)
+    /// Position 3: opacity = ~0.925 (92.5%)
+    /// Position 4: opacity = ~0.90 (90%)
+    /// Position 5: opacity = ~0.875 (87.5%)
     /// ...
-    /// Position 10+: opacity = 0.25 (25%, minimum)
+    /// Position 10+: opacity = 0.75 (75%, minimum)
+    ///
+    /// WHY THIS WORKS BETTER:
+    /// - Creates clear visual hierarchy: current is brightest, progressively dims with each rank
+    /// - Each position has a noticeable ~2.5% opacity difference (for 10 Spaces)
+    /// - More dramatic than the old 50%→25% range which was too subtle
+    /// - The full 100%→75% range provides better visual distinction
     ///
     /// UNVISITED SPACES:
     /// - Not in visitOrder array: opacity = 0.5 (50%, default state)
+    /// - This makes them clearly distinct from visited Spaces (which are 75%+)
     ///
     /// - Parameters:
     ///   - spaceNumber: The Space number to get opacity for
@@ -175,6 +185,7 @@ final class SpaceVisitTracker: ObservableObject {
         guard let position = visitOrder.firstIndex(of: spaceNumber) else {
             // Space not in visit order yet (unvisited)
             // Default to 50% opacity (neutral state)
+            // This makes unvisited Spaces clearly distinct from visited ones
             return 0.5
         }
         
@@ -184,19 +195,22 @@ final class SpaceVisitTracker: ObservableObject {
         }
         
         // For visited Spaces (position > 0):
-        // Start at 50% opacity and progressively dim down to minOpacity
+        // Progressive dimming from 100% (current) down to minOpacity (oldest visited)
+        // This creates a clear visual hierarchy based on recency
         let minOpacity = 1.0 - maxDimLevel  // e.g., 0.75 for 25% max dim
-        let dimRange = 0.5 - minOpacity     // Range from 50% down to min (e.g., 0.25)
+        let dimRange = 1.0 - minOpacity     // Range from 100% down to min (e.g., 0.25)
         
-        // Calculate dim step per position (excluding position 0 which is always 100%)
-        // If we have 10 Spaces, positions 1-9 will progressively dim
-        let dimStep = totalSpaces > 1 ? dimRange / Double(totalSpaces - 1) : 0.0
+        // Calculate dim step per position
+        // Each position away from current gets progressively dimmer
+        // For 10 Spaces with 25% max dim: step = 0.25 / 10 = 0.025 (2.5% per position)
+        let dimStep = totalSpaces > 0 ? dimRange / Double(totalSpaces) : 0.0
         
         // Calculate opacity for this position
-        // Position 1 starts at 50%, then progressively dims
-        let opacity = 0.5 - (Double(position - 1) * dimStep)
+        // Position 1 = 100% - 1 step, Position 2 = 100% - 2 steps, etc.
+        let opacity = 1.0 - (Double(position) * dimStep)
         
         // Clamp to valid range [minOpacity, 1.0]
+        // This ensures we never go below the minimum opacity setting
         return max(minOpacity, min(1.0, opacity))
     }
     
