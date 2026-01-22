@@ -44,6 +44,11 @@ final class SuperSpacesViewModel: ObservableObject {
     /// All detected Spaces
     @Published var allSpaces: [SpaceDetector.SpaceInfo] = []
     
+    /// Font size multiplier for HUD text (1.0 = default, 0.8 = minimum, 1.5 = maximum)
+    /// This allows users to adjust text size with Cmd+/Cmd- shortcuts
+    /// The multiplier is applied to all font sizes in the HUD for consistent scaling
+    @Published var fontSizeMultiplier: CGFloat = 1.0
+    
     /// Callback for Space switching
     var onSpaceSwitch: ((Int) -> Void)?
     
@@ -59,6 +64,26 @@ final class SuperSpacesViewModel: ObservableObject {
     
     func closeHUD() {
         onClose?()
+    }
+    
+    /// Increases font size (Cmd+)
+    /// Maximum multiplier is 1.5x (150% of default size)
+    func increaseFontSize() {
+        let newSize = min(fontSizeMultiplier + 0.1, 1.5)
+        if newSize != fontSizeMultiplier {
+            fontSizeMultiplier = newSize
+            print("✓ SuperSpacesHUD: Font size increased to \(Int(fontSizeMultiplier * 100))%")
+        }
+    }
+    
+    /// Decreases font size (Cmd-)
+    /// Minimum multiplier is 0.8x (80% of default size)
+    func decreaseFontSize() {
+        let newSize = max(fontSizeMultiplier - 0.1, 0.8)
+        if newSize != fontSizeMultiplier {
+            fontSizeMultiplier = newSize
+            print("✓ SuperSpacesHUD: Font size decreased to \(Int(fontSizeMultiplier * 100))%")
+        }
     }
 }
 
@@ -99,6 +124,15 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Synced with SettingsManager.superSpacesDisplayMode
     private var currentDisplayMode: String = "compact"
     
+    /// Local event monitor for keyboard shortcuts (Cmd+/Cmd-)
+    /// Monitors key events when the HUD window is key (has focus)
+    /// This allows text size adjustment with standard keyboard shortcuts
+    private var keyboardMonitor: Any?
+    
+    /// Combine cancellables for settings observations
+    /// Used to observe changes to settings like float on top
+    private var cancellables = Set<AnyCancellable>()
+    
     // MARK: - Initialization
     
     /// Private initializer (singleton pattern)
@@ -122,6 +156,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         setupPanel()
         setupContent()
         setupSpaceMonitoring()
+        setupKeyboardShortcuts()
         
         // Set delegate for position tracking
         self.delegate = self
@@ -134,13 +169,22 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         print("✓ SuperSpacesHUD: Initialized")
     }
     
+    /// Cleanup on deinitialization
+    /// Removes keyboard event monitor to prevent memory leaks
+    deinit {
+        if let monitor = keyboardMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+    
     // MARK: - Setup Methods
     
     /// Configures panel appearance and behavior
     private func setupPanel() {
-        // Always on top of normal windows
-        isFloatingPanel = true
-        level = .floating
+        // Window level based on user preference
+        // Float on top (default): .floating level (above normal windows)
+        // Normal: .normal level (can be covered by other windows)
+        updateWindowLevel()
         
         // Appear on all Spaces (including fullscreen)
         collectionBehavior = [
@@ -213,6 +257,13 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         let hostingView = NSHostingView(rootView: finalView)
         contentView = hostingView
         
+        // Observe float on top setting changes
+        SettingsManager.shared.$superSpacesFloatOnTop
+            .sink { [weak self] _ in
+                self?.updateWindowLevel()
+            }
+            .store(in: &cancellables)
+        
         print("✓ SuperSpacesHUD: Content view created")
     }
     
@@ -247,21 +298,82 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         print("✓ SuperSpacesHUD: Monitoring started")
     }
     
+    /// Sets up keyboard shortcuts for text size adjustment
+    /// Monitors Cmd+ and Cmd- key combinations to increase/decrease font size
+    /// Uses local event monitor so shortcuts only work when HUD has focus
+    private func setupKeyboardShortcuts() {
+        // Local monitor for keyboard events (only when window is key)
+        keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            
+            // Check for Command key modifier
+            let hasCommand = event.modifierFlags.contains(.command)
+            guard hasCommand else { return event }
+            
+            // Get the key character
+            guard let characters = event.charactersIgnoringModifiers else { return event }
+            
+            // Handle Cmd+ (increase font size)
+            // Both "=" and "+" keys work (since + requires Shift on US keyboards)
+            if characters == "=" || characters == "+" {
+                self.viewModel.increaseFontSize()
+                return nil  // Consume the event
+            }
+            
+            // Handle Cmd- (decrease font size)
+            if characters == "-" {
+                self.viewModel.decreaseFontSize()
+                return nil  // Consume the event
+            }
+            
+            // Pass through other events
+            return event
+        }
+        
+        print("✓ SuperSpacesHUD: Keyboard shortcuts configured (Cmd+/Cmd-)")
+    }
+    
     // MARK: - Space Management
     
     /// Refreshes Space information
+    ///
+    /// FEATURE: 5.5.8 - Dim to Indicate Order
+    /// Also initializes SpaceVisitTracker with all available Spaces
+    /// if the visit order is empty (first launch or after reset).
     private func refreshSpaces() {
         viewModel.allSpaces = SpaceDetector.getAllSpaces()
         
         if let currentSpace = SpaceDetector.getCurrentSpace() {
             viewModel.currentSpaceNumber = currentSpace.spaceNumber
+            
+            // Initialize visit tracker if empty (5.5.8)
+            // This ensures all Spaces are in the visit order on first launch
+            if SpaceVisitTracker.shared.visitOrder.isEmpty {
+                let spaceNumbers = viewModel.allSpaces.map { $0.index }
+                SpaceVisitTracker.shared.initializeWithSpaces(
+                    spaceNumbers,
+                    currentSpace: currentSpace.spaceNumber
+                )
+            }
         }
     }
     
     /// Handles Space change notification
+    ///
+    /// FEATURE: 5.5.8 - Dim to Indicate Order
+    /// When a Space changes, we:
+    /// 1. Update the current Space number in the view model
+    /// 2. Record the visit in SpaceVisitTracker for button dimming
+    ///
+    /// This ensures the HUD stays in sync with the current Space
+    /// and the visit history is maintained for progressive button dimming.
     private func handleSpaceChange(_ spaceNumber: Int) {
         DispatchQueue.main.async { [weak self] in
             self?.viewModel.currentSpaceNumber = spaceNumber
+            
+            // Record visit for button dimming feature (5.5.8)
+            // This updates the visit order so button opacity reflects recency
+            SpaceVisitTracker.shared.recordVisit(to: spaceNumber)
         }
     }
     
@@ -329,6 +441,34 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+        }
+    }
+    
+    /// Updates window level based on float on top setting
+    ///
+    /// FEATURE: Float on Top Toggle (Jan 21, 2026)
+    ///
+    /// When superSpacesFloatOnTop is true:
+    /// - Window level = .floating (above normal windows)
+    /// - isFloatingPanel = true
+    ///
+    /// When superSpacesFloatOnTop is false:
+    /// - Window level = .normal (can be covered by other windows)
+    /// - isFloatingPanel = false
+    ///
+    /// This allows users to choose whether the HUD stays above everything
+    /// or behaves like a normal window that can be covered.
+    func updateWindowLevel() {
+        let settings = SettingsManager.shared
+        
+        if settings.superSpacesFloatOnTop {
+            isFloatingPanel = true
+            level = .floating
+            print("✓ SuperSpacesHUD: Window level set to .floating (always on top)")
+        } else {
+            isFloatingPanel = false
+            level = .normal
+            print("✓ SuperSpacesHUD: Window level set to .normal (can be covered)")
         }
     }
     

@@ -16,17 +16,16 @@
 //  - Similar UX to Control Center, Spotlight settings, etc.
 //
 //  SETTINGS INCLUDED:
-//  - Display mode (Mini/Compact/Expanded)
 //  - Auto-hide toggle
-//  - Position presets (4 corners)
-//  - Link to full Preferences for advanced settings
+//  - Float on top toggle
+//  - Button dimming (dim to indicate order) toggle
+//  - Button fade slider (when dimming enabled)
 //
 //  UI DESIGN:
 //  - Clean, minimal popover
-//  - Segmented control for display mode
-//  - Toggle for auto-hide
-//  - 2x2 grid for position presets
-//  - Button to open full Preferences
+//  - Toggles for key features
+//  - Slider for button fade intensity
+//  - Reset visit history button
 //
 
 import SwiftUI
@@ -43,16 +42,6 @@ struct SuperSpacesQuickSettings: View {
     /// Settings manager for persisting changes
     @EnvironmentObject var settings: SettingsManager
     
-    /// Callback to reposition HUD when position preset changes
-    var onPositionChange: ((String) -> Void)?
-    
-    /// Display mode options
-    enum DisplayMode: String, CaseIterable {
-        case mini = "Mini"
-        case compact = "Compact"
-        case expanded = "Expanded"
-    }
-    
     // MARK: - Body
     
     var body: some View {
@@ -63,110 +52,83 @@ struct SuperSpacesQuickSettings: View {
             
             Divider()
             
-            // Display Mode Picker (PHASE 4: Added Overview)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Display Mode")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                
-                Picker("", selection: $settings.superSpacesDisplayMode) {
-                    Text("Compact").tag("compact")
-                    Text("Note").tag("note")
-                    Text("Overview").tag("overview")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-            
             // Auto-Hide Toggle
             Toggle("Auto-hide after switch", isOn: $settings.superSpacesAutoHide)
                 .font(.system(size: 12))
+                .help("Automatically hide HUD after switching to a Space")
+            
+            // Float on Top Toggle
+            Toggle("Float on top", isOn: $settings.superSpacesFloatOnTop)
+                .font(.system(size: 12))
+                .help("Keep HUD above all other windows")
             
             Divider()
             
-            // Position Presets
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Position")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+            // Button Dimming Section
+            VStack(alignment: .leading, spacing: 12) {
+                // Dimming Toggle
+                Toggle("Dim to indicate order", isOn: $settings.spaceOrderDimmingEnabled)
+                    .font(.system(size: 12))
+                    .help("Dim Space buttons based on visit recency")
                 
-                // 2x2 grid of position buttons
-                HStack(spacing: 8) {
-                    // Top row
-                    VStack(spacing: 8) {
-                        positionButton("Top Left", position: "topLeft", icon: "arrow.up.left")
-                        positionButton("Bottom Left", position: "bottomLeft", icon: "arrow.down.left")
+                // Fade Slider (only shown when dimming is enabled)
+                if settings.spaceOrderDimmingEnabled {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Button Fade")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(Int(settings.spaceOrderMaxDimLevel * 100))%")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                        
+                        Slider(
+                            value: $settings.spaceOrderMaxDimLevel,
+                            in: 0.1...0.5,
+                            step: 0.05
+                        )
+                        .help("Maximum dimming for least recently visited Spaces")
+                        
+                        Text("Current: bright, Last: \(Int((settings.spaceOrderMaxDimLevel / 10) * 100))%")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
                     }
+                    .padding(.leading, 20)
                     
-                    VStack(spacing: 8) {
-                        positionButton("Top Right", position: "topRight", icon: "arrow.up.right")
-                        positionButton("Bottom Right", position: "bottomRight", icon: "arrow.down.right")
+                    // Reset Visit History Button
+                    Button(action: resetVisitHistory) {
+                        HStack {
+                            Image(systemName: "arrow.counterclockwise")
+                            Text("Reset Visit History")
+                        }
+                        .font(.system(size: 11))
+                        .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.plain)
+                    .padding(6)
+                    .background(Color.secondary.opacity(0.1))
+                    .cornerRadius(6)
+                    .help("Clear visit order and reset all buttons to equal opacity")
                 }
             }
-            
-            Divider()
-            
-            // Link to full Preferences
-            Button(action: openPreferences) {
-                HStack {
-                    Image(systemName: "gearshape")
-                    Text("Edit Space Names & Emojis...")
-                }
-                .font(.system(size: 11))
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.plain)
-            .padding(6)
-            .background(Color.secondary.opacity(0.1))
-            .cornerRadius(6)
         }
         .padding(16)
-        .frame(width: 260)
-    }
-    
-    // MARK: - Helper Views
-    
-    /// Creates a position preset button
-    private func positionButton(_ label: String, position: String, icon: String) -> some View {
-        Button(action: {
-            settings.superSpacesPosition = position
-            onPositionChange?(position)
-        }) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 16))
-                Text(label.replacingOccurrences(of: " ", with: "\n"))
-                    .font(.system(size: 9))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-            }
-            .frame(width: 70, height: 60)
-            .background(
-                settings.superSpacesPosition == position ?
-                    Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.1)
-            )
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(
-                        settings.superSpacesPosition == position ?
-                            Color.accentColor : Color.clear,
-                        lineWidth: 2
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-        .help("Move HUD to \(label.lowercased())")
+        .frame(width: 280)
     }
     
     // MARK: - Actions
     
-    /// Opens full Preferences window
-    private func openPreferences() {
-        // TODO: Implement opening Preferences to Super Spaces tab
-        // For now, just open Preferences
-        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+    /// Resets the Space visit history
+    ///
+    /// BEHAVIOR:
+    /// - Clears the visit order tracked by SpaceVisitTracker
+    /// - All Space buttons will have equal opacity until visited again
+    /// - Useful for starting fresh or debugging
+    private func resetVisitHistory() {
+        SpaceVisitTracker.shared.resetVisitOrder()
+        print("✓ SuperSpacesQuickSettings: Visit history reset by user")
     }
 }
 

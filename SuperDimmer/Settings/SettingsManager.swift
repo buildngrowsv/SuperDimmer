@@ -447,6 +447,15 @@ final class SettingsManager: ObservableObject {
         case hudSizeOverviewWidth = "superdimmer.hudSizeOverviewWidth"
         case hudSizeOverviewHeight = "superdimmer.hudSizeOverviewHeight"
         
+        // Super Spaces Button Dimming (5.5.8 - Dim to Indicate Order)
+        // Progressive dimming of Space buttons based on visit recency
+        case spaceOrderDimmingEnabled = "superdimmer.spaceOrderDimmingEnabled"
+        case spaceOrderMaxDimLevel = "superdimmer.spaceOrderMaxDimLevel"
+        
+        // Super Spaces Float on Top (Jan 21, 2026)
+        // Controls whether HUD stays above all other windows
+        case superSpacesFloatOnTop = "superdimmer.superSpacesFloatOnTop"
+        
         // Appearance Mode System (2.2.1.1)
         case appearanceMode = "superdimmer.comearanceMode"
         case darkModeProfile = "superdimmer.darkModeProfile"
@@ -1687,6 +1696,100 @@ final class SettingsManager: ObservableObject {
         }
     }
     
+    /**
+     Whether Space button dimming based on visit order is enabled.
+     
+     FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
+     
+     When enabled, Space buttons in the HUD are progressively dimmed based on
+     how recently each Space was visited. This creates a visual "heat map" of
+     your workflow.
+     
+     BEHAVIOR:
+     - Current Space: 100% opacity (fully bright)
+     - Last visited: Slightly dimmed (e.g., 95% opacity)
+     - Older Spaces: Progressively more dimmed (down to minimum opacity)
+     - Maximum dimming controlled by spaceOrderMaxDimLevel
+     
+     WHY THIS FEATURE:
+     - Provides instant visual feedback on which Spaces you've been using
+     - Helps identify "stale" Spaces you haven't visited in a while
+     - Creates natural visual hierarchy without manual configuration
+     - Complements the existing window-level inactivity decay feature
+     
+     TECHNICAL NOTES:
+     - Only dims HUD buttons, NOT the actual Spaces themselves
+     - Visit order tracked by SpaceVisitTracker service
+     - Opacity calculated based on position in visit history
+     - Visit history persists across app restarts
+     
+     DEFAULT: false (opt-in feature)
+     */
+    @Published var spaceOrderDimmingEnabled: Bool {
+        didSet {
+            defaults.set(spaceOrderDimmingEnabled, forKey: Keys.spaceOrderDimmingEnabled.rawValue)
+        }
+    }
+    
+    /**
+     Maximum dim level for Space button visit order dimming.
+     
+     FEATURE: 5.5.8 - Dim to Indicate Order
+     
+     Controls how much the least recently visited Space buttons are dimmed.
+     Value represents the maximum opacity reduction (0.0 - 1.0).
+     
+     EXAMPLES:
+     - 0.25 (25%): Least recent Space has 75% opacity
+     - 0.50 (50%): Least recent Space has 50% opacity
+     - 0.10 (10%): Least recent Space has 90% opacity (subtle)
+     
+     CALCULATION:
+     For N total Spaces:
+     - Opacity step = maxDimLevel / N
+     - Space at position P: opacity = 1.0 - min(P * step, maxDimLevel)
+     
+     RANGE: 0.1 (10%) to 0.5 (50%)
+     DEFAULT: 0.25 (25% maximum dimming)
+     */
+    @Published var spaceOrderMaxDimLevel: Double {
+        didSet {
+            // Clamp to valid range [0.1, 0.5]
+            let clamped = max(0.1, min(0.5, spaceOrderMaxDimLevel))
+            if clamped != spaceOrderMaxDimLevel {
+                spaceOrderMaxDimLevel = clamped
+                return
+            }
+            defaults.set(spaceOrderMaxDimLevel, forKey: Keys.spaceOrderMaxDimLevel.rawValue)
+        }
+    }
+    
+    /**
+     Whether Super Spaces HUD should float on top of all other windows.
+     
+     FEATURE: Float on Top Toggle (Jan 21, 2026)
+     
+     When true, the HUD uses .floating window level and stays above all other windows.
+     When false, the HUD uses .normal window level and can be covered by other windows.
+     
+     WHY THIS SETTING:
+     - Some users want the HUD always visible (float on top)
+     - Others prefer it to behave like a normal window (can be covered)
+     - Allows users to choose based on their workflow
+     
+     TECHNICAL NOTES:
+     - Changes NSWindow.level between .floating and .normal
+     - Applied immediately when setting changes
+     - Persists across app restarts
+     
+     DEFAULT: true (float on top - original behavior)
+     */
+    @Published var superSpacesFloatOnTop: Bool {
+        didSet {
+            defaults.set(superSpacesFloatOnTop, forKey: Keys.superSpacesFloatOnTop.rawValue)
+        }
+    }
+    
     // ================================================================
     // MARK: - Appearance Mode System (2.2.1.1)
     // ================================================================
@@ -2065,6 +2168,20 @@ final class SettingsManager: ObservableObject {
         } else {
             self.hudSizeOverview = nil
         }
+        
+        // ============================================================
+        // Load Super Spaces Button Dimming Settings (5.5.8)
+        // ============================================================
+        // Button dimming is OFF by default (opt-in feature)
+        self.spaceOrderDimmingEnabled = defaults.bool(forKey: Keys.spaceOrderDimmingEnabled.rawValue)
+        
+        // Max dim level defaults to 25% (0.25)
+        self.spaceOrderMaxDimLevel = defaults.object(forKey: Keys.spaceOrderMaxDimLevel.rawValue) != nil ?
+            defaults.double(forKey: Keys.spaceOrderMaxDimLevel.rawValue) : 0.25
+        
+        // Float on top defaults to true (original behavior)
+        self.superSpacesFloatOnTop = defaults.object(forKey: Keys.superSpacesFloatOnTop.rawValue) != nil ?
+            defaults.bool(forKey: Keys.superSpacesFloatOnTop.rawValue) : true
         
         // ============================================================
         // Load Appearance Mode System (2.2.1.1)

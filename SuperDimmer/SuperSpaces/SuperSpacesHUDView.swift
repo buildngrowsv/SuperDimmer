@@ -232,20 +232,20 @@ struct SuperSpacesHUDView: View {
                 // Emoji if set
                 if let emoji = getSpaceEmoji(displaySpace) {
                     Text(emoji)
-                        .font(.system(size: 16))
+                        .font(.system(size: scaledFontSize(16)))
                 } else {
                     Image(systemName: displayMode == .note ? "note.text" : "square.grid.3x3")
-                        .font(.system(size: 16))
+                        .font(.system(size: scaledFontSize(16)))
                         .foregroundColor(.secondary)
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Space \(displaySpace)")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: scaledFontSize(14), weight: .semibold))
                     
                     if let spaceName = getSpaceName(displaySpace) {
                         Text(spaceName)
-                            .font(.system(size: 11))
+                            .font(.system(size: scaledFontSize(11)))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -260,7 +260,7 @@ struct SuperSpacesHUDView: View {
                 // Compact mode button
                 Button(action: { switchToMode(.compact) }) {
                     Image(systemName: "list.bullet")
-                        .font(.system(size: 11))
+                        .font(.system(size: scaledFontSize(11)))
                         .foregroundColor(displayMode == .compact ? .white : .secondary)
                         .frame(width: 24, height: 20)
                         .background(displayMode == .compact ? Color.accentColor : Color.clear)
@@ -272,7 +272,7 @@ struct SuperSpacesHUDView: View {
                 // Note mode button
                 Button(action: { switchToMode(.note) }) {
                     Image(systemName: "note.text")
-                        .font(.system(size: 11))
+                        .font(.system(size: scaledFontSize(11)))
                         .foregroundColor(displayMode == .note ? .white : .secondary)
                         .frame(width: 24, height: 20)
                         .background(displayMode == .note ? Color.accentColor : Color.clear)
@@ -284,7 +284,7 @@ struct SuperSpacesHUDView: View {
                 // Overview mode button
                 Button(action: { switchToMode(.overview) }) {
                     Image(systemName: "square.grid.2x2")
-                        .font(.system(size: 11))
+                        .font(.system(size: scaledFontSize(11)))
                         .foregroundColor(displayMode == .overview ? .white : .secondary)
                         .frame(width: 24, height: 20)
                         .background(displayMode == .overview ? Color.accentColor : Color.clear)
@@ -300,7 +300,7 @@ struct SuperSpacesHUDView: View {
             // Close button
             Button(action: { viewModel.closeHUD() }) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: scaledFontSize(14)))
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
@@ -343,19 +343,19 @@ struct SuperSpacesHUDView: View {
             HStack(spacing: 6) {
                 // Number
                 Text("\(space.index)")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: scaledFontSize(12), weight: .semibold))
                     .frame(width: 20)
                 
                 // Emoji if set
                 if let emoji = getSpaceEmoji(space.index) {
                     Text(emoji)
-                        .font(.system(size: 14))
+                        .font(.system(size: scaledFontSize(14)))
                 }
                 
                 // Name if set
                 if let name = getSpaceName(space.index), !name.isEmpty {
                     Text(name)
-                        .font(.system(size: 12))
+                        .font(.system(size: scaledFontSize(12)))
                         .lineLimit(1)
                 }
                 
@@ -379,6 +379,7 @@ struct SuperSpacesHUDView: View {
         }
         .buttonStyle(.plain)
         .help(getSpaceTooltip(space.index))
+        .opacity(getSpaceOpacity(space.index))  // FEATURE: 5.5.8 - Dim to Indicate Order
     }
     
     /// Note display mode: Persistent note editor with Space selector and inline editing
@@ -412,7 +413,7 @@ struct SuperSpacesHUDView: View {
                 if let spaceNumber = selectedNoteSpace {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Space \(spaceNumber)")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: scaledFontSize(10), weight: .medium))
                             .foregroundColor(.secondary)
                         
                         if isEditingSpaceName {
@@ -427,11 +428,11 @@ struct SuperSpacesHUDView: View {
                                         HStack {
                                             if editingSpaceEmoji.isEmpty {
                                                 Image(systemName: "face.smiling")
-                                                    .font(.system(size: 18))
+                                                    .font(.system(size: scaledFontSize(18)))
                                                     .foregroundColor(.secondary)
                                             } else {
                                                 Text(editingSpaceEmoji)
-                                                    .font(.system(size: 20))
+                                                    .font(.system(size: scaledFontSize(20)))
                                             }
                                         }
                                         .frame(width: 50, height: 36)
@@ -447,7 +448,7 @@ struct SuperSpacesHUDView: View {
                                     
                                     // Name field
                                     TextField("Space Name", text: $editingSpaceNameText)
-                                        .font(.system(size: 14))
+                                        .font(.system(size: scaledFontSize(14)))
                                         .textFieldStyle(.plain)
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 8)
@@ -474,7 +475,7 @@ struct SuperSpacesHUDView: View {
                                     // Save button
                                     Button(action: saveSpaceNameAndEmoji) {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 18))
+                                            .font(.system(size: scaledFontSize(18)))
                                             .foregroundColor(.green)
                                     }
                                     .buttonStyle(.plain)
@@ -483,7 +484,7 @@ struct SuperSpacesHUDView: View {
                                     // Cancel button
                                     Button(action: cancelSpaceNameEditing) {
                                         Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 18))
+                                            .font(.system(size: scaledFontSize(18)))
                                             .foregroundColor(.secondary)
                                     }
                                     .buttonStyle(.plain)
@@ -494,7 +495,7 @@ struct SuperSpacesHUDView: View {
                                 HStack {
                                     Spacer()
                                     Text("\(editingSpaceNameText.count)/\(settings.maxSpaceNameLength)")
-                                        .font(.system(size: 10))
+                                        .font(.system(size: scaledFontSize(10)))
                                         .foregroundColor(
                                             editingSpaceNameText.count > settings.maxSpaceNameLength - 5 ?
                                                 (editingSpaceNameText.count >= settings.maxSpaceNameLength ? .red : .orange) :
@@ -508,23 +509,23 @@ struct SuperSpacesHUDView: View {
                                 // Emoji display
                                 if let emoji = getSpaceEmoji(spaceNumber), !emoji.isEmpty {
                                     Text(emoji)
-                                        .font(.system(size: 20))
+                                        .font(.system(size: scaledFontSize(20)))
                                 } else {
                                     Text("➕")
-                                        .font(.system(size: 16))
+                                        .font(.system(size: scaledFontSize(16)))
                                         .foregroundColor(.secondary)
                                 }
                                 
                                 // Name display
                                 Text(getSpaceName(spaceNumber) ?? "Unnamed Space")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.system(size: scaledFontSize(14), weight: .medium))
                                     .foregroundColor(getSpaceName(spaceNumber) == nil ? .secondary : .primary)
                                 
                                 Spacer()
                                 
                                 // Edit hint
                                 Text("Double-click to edit")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: scaledFontSize(9)))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.horizontal, 10)
@@ -545,14 +546,14 @@ struct SuperSpacesHUDView: View {
                     // Note header
                     HStack {
                         Text("Note")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: scaledFontSize(11), weight: .medium))
                             .foregroundColor(.secondary)
                         
                         Spacer()
                         
                         // Character count
                         Text("\(noteText.count)/500")
-                            .font(.system(size: 10))
+                            .font(.system(size: scaledFontSize(10)))
                             .foregroundColor(noteText.count > 500 ? .red : .secondary)
                     }
                     
@@ -565,7 +566,7 @@ struct SuperSpacesHUDView: View {
                     
                     ZStack(alignment: .topLeading) {
                         TextEditor(text: $noteText)
-                            .font(.system(size: 12))
+                            .font(.system(size: scaledFontSize(12)))
                             .frame(height: noteEditorHeight)
                             .padding(8)
                             .scrollContentBackground(.hidden)
@@ -582,7 +583,7 @@ struct SuperSpacesHUDView: View {
                         // Placeholder when empty - positioned to match TextEditor cursor
                         if noteText.isEmpty {
                             Text("Add notes, reminders, or tasks for this Space...")
-                                .font(.system(size: 12))
+                                .font(.system(size: scaledFontSize(12)))
                                 .foregroundColor(.secondary)
                                 .padding(.leading, 13)
                                 .padding(.top, 8)
@@ -601,7 +602,7 @@ struct SuperSpacesHUDView: View {
                                 Image(systemName: "arrow.right.circle")
                                 Text("Switch to Space")
                             }
-                            .font(.system(size: 11))
+                            .font(.system(size: scaledFontSize(11)))
                         }
                         .buttonStyle(.plain)
                         .padding(6)
@@ -616,7 +617,7 @@ struct SuperSpacesHUDView: View {
                                     Image(systemName: "trash")
                                     Text("Clear")
                                 }
-                                .font(.system(size: 11))
+                                .font(.system(size: scaledFontSize(11)))
                             }
                             .buttonStyle(.plain)
                             .padding(6)
@@ -655,20 +656,20 @@ struct SuperSpacesHUDView: View {
             HStack(spacing: 4) {
                 // NUMBER: Always shown (user requirement - "keep the number there all the time")
                 Text("\(space.index)")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: scaledFontSize(11), weight: .semibold))
                     .frame(width: 16)
                 
                 // EMOJI: Show when we have medium or more space
                 if buttonMode != .compact, let emoji = getSpaceEmoji(space.index) {
                     Text(emoji)
-                        .font(.system(size: 14))
+                        .font(.system(size: scaledFontSize(14)))
                 }
                 
                 // NAME: Show when we have expanded space (even if it clips)
                 // User preference: "I rather have to scroll than not" - show names aggressively
                 if buttonMode == .expanded, let name = getSpaceName(space.index) {
                     Text(name)
-                        .font(.system(size: 11))
+                        .font(.system(size: scaledFontSize(11)))
                         .lineLimit(1)
                 }
                 
@@ -693,6 +694,7 @@ struct SuperSpacesHUDView: View {
         }
         .buttonStyle(.plain)
         .help(getSpaceName(space.index) ?? "Space \(space.index)")
+        .opacity(getSpaceOpacity(space.index))  // FEATURE: 5.5.8 - Dim to Indicate Order
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
                 // Double-click: Switch to this Space
@@ -754,7 +756,7 @@ struct SuperSpacesHUDView: View {
     private var footerView: some View {
         HStack {
             Text("\(viewModel.allSpaces.count) Spaces")
-                .font(.system(size: 10))
+                .font(.system(size: scaledFontSize(10)))
                 .foregroundColor(.secondary)
             
             Spacer()
@@ -766,15 +768,12 @@ struct SuperSpacesHUDView: View {
                     Image(systemName: "gear")
                     Text("Settings")
                 }
-                .font(.system(size: 10))
+                .font(.system(size: scaledFontSize(10)))
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
-                SuperSpacesQuickSettings(viewModel: viewModel) { position in
-                    // Handle position change
-                    viewModel.onPositionChange?(position)
-                }
-                .environmentObject(settings)
+                SuperSpacesQuickSettings(viewModel: viewModel)
+                    .environmentObject(settings)
             }
         }
     }
@@ -829,11 +828,20 @@ struct SuperSpacesHUDView: View {
             settings: settings,
             getSpaceEmoji: getSpaceEmoji,
             getSpaceName: getSpaceName,
+            getSpaceOpacity: getSpaceOpacity,  // FEATURE: 5.5.8 - Pass opacity calculator
             availableHeight: availableHeight
         )
     }
     
     // MARK: - Helper Methods
+    
+    /// Scales a font size by the current font size multiplier
+    /// This ensures consistent text scaling across the entire HUD
+    /// - Parameter baseSize: The default font size (at 1.0x multiplier)
+    /// - Returns: The scaled font size based on current multiplier
+    private func scaledFontSize(_ baseSize: CGFloat) -> CGFloat {
+        return baseSize * viewModel.fontSizeMultiplier
+    }
     
     /// Calculates minimum width based on display mode
     private func calculateMinWidth() -> CGFloat {
@@ -923,6 +931,40 @@ struct SuperSpacesHUDView: View {
     /// Gets tooltip text for a Space button
     private func getSpaceTooltip(_ spaceNumber: Int) -> String {
         return "Switch to Space \(spaceNumber)"
+    }
+    
+    /// Gets opacity for a Space button based on visit recency
+    ///
+    /// FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
+    ///
+    /// When spaceOrderDimmingEnabled is true, buttons are dimmed based on
+    /// how recently each Space was visited. This creates a visual "heat map"
+    /// of your workflow.
+    ///
+    /// CALCULATION:
+    /// - Current Space: 100% opacity (fully bright)
+    /// - Last visited: Slightly dimmed (e.g., 95% opacity)
+    /// - Older Spaces: Progressively more dimmed (down to minimum opacity)
+    /// - Maximum dimming controlled by spaceOrderMaxDimLevel setting
+    ///
+    /// WHEN DISABLED:
+    /// - All buttons have 100% opacity (no dimming)
+    ///
+    /// - Parameter spaceNumber: The Space number to get opacity for
+    /// - Returns: Opacity value (0.0-1.0) where 1.0 is fully visible
+    private func getSpaceOpacity(_ spaceNumber: Int) -> Double {
+        // If dimming is disabled, return full opacity
+        guard settings.spaceOrderDimmingEnabled else {
+            return 1.0
+        }
+        
+        // Get opacity from visit tracker
+        let totalSpaces = viewModel.allSpaces.count
+        return SpaceVisitTracker.shared.getOpacity(
+            for: spaceNumber,
+            maxDimLevel: settings.spaceOrderMaxDimLevel,
+            totalSpaces: totalSpaces
+        )
     }
     
     /// Handles Space button click (always switches Space in mini/compact/expanded modes)
@@ -1210,6 +1252,7 @@ struct OverviewSpaceCardView: View {
     @ObservedObject var settings: SettingsManager
     let getSpaceEmoji: (Int) -> String?
     let getSpaceName: (Int) -> String?
+    let getSpaceOpacity: (Int) -> Double  // FEATURE: 5.5.8 - Opacity calculator
     let availableHeight: CGFloat
     
     // Local state for this card's note - this is the source of truth for the TextEditor
@@ -1219,13 +1262,19 @@ struct OverviewSpaceCardView: View {
     // Track if we've initialized from settings
     @State private var hasInitialized = false
     
+    /// Scales a font size by the current font size multiplier
+    /// This ensures consistent text scaling across the entire HUD
+    private func scaledFontSize(_ baseSize: CGFloat) -> CGFloat {
+        return baseSize * viewModel.fontSizeMultiplier
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header: Number, emoji, name, switch button
             HStack(spacing: 8) {
                 // Number badge
                 Text("\(space.index)")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: scaledFontSize(12), weight: .bold))
                     .foregroundColor(.white)
                     .frame(width: 24, height: 24)
                     .background(
@@ -1237,12 +1286,12 @@ struct OverviewSpaceCardView: View {
                 // Emoji
                 if let emoji = getSpaceEmoji(space.index) {
                     Text(emoji)
-                        .font(.system(size: 16))
+                        .font(.system(size: scaledFontSize(16)))
                 }
                 
                 // Name
                 Text(getSpaceName(space.index) ?? "Unnamed")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: scaledFontSize(12), weight: .medium))
                     .lineLimit(1)
                 
                 Spacer()
@@ -1252,7 +1301,7 @@ struct OverviewSpaceCardView: View {
                     viewModel.switchToSpace(space.index)
                 }) {
                     Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: scaledFontSize(16)))
                         .foregroundColor(
                             space.index == viewModel.currentSpaceNumber ?
                                 .accentColor : .secondary
@@ -1268,7 +1317,7 @@ struct OverviewSpaceCardView: View {
             // RESPONSIVE: Expands vertically with window height
             VStack(alignment: .leading, spacing: 4) {
                 Text("Note")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: scaledFontSize(9), weight: .medium))
                     .foregroundColor(.secondary)
                 
                 // Use ZStack for proper placeholder positioning
@@ -1283,7 +1332,7 @@ struct OverviewSpaceCardView: View {
                     // TextEditor with local state
                     // CRITICAL: Using id() to force SwiftUI to create a unique TextEditor instance
                     TextEditor(text: $noteText)
-                        .font(.system(size: 11))
+                        .font(.system(size: scaledFontSize(11)))
                         .frame(height: calculatedHeight)
                         .padding(6)  // Internal padding for text content
                         .scrollContentBackground(.hidden)
@@ -1310,7 +1359,7 @@ struct OverviewSpaceCardView: View {
                     // Position to match TextEditor's cursor position
                     if noteText.isEmpty {
                         Text("Add note...")
-                            .font(.system(size: 11))
+                            .font(.system(size: scaledFontSize(11)))
                             .foregroundColor(.secondary)
                             .padding(.leading, 11)
                             .padding(.top, 6)
@@ -1348,5 +1397,6 @@ struct OverviewSpaceCardView: View {
                 noteText = newValue ?? ""
             }
         }
+        .opacity(getSpaceOpacity(space.index))  // FEATURE: 5.5.8 - Dim to Indicate Order
     }
 }
