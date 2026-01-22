@@ -1127,12 +1127,12 @@ struct OverviewSpaceCardView: View {
                         }
                     
                     // Placeholder when empty
-                    // Position to match TextEditor's padding
+                    // Position to match TextEditor's cursor position
                     if noteText.isEmpty {
                         Text("Add note...")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
-                            .padding(.leading, 6)
+                            .padding(.leading, 11)
                             .padding(.top, 6)
                             .allowsHitTesting(false)
                     }
