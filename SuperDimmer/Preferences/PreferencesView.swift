@@ -134,8 +134,10 @@ struct PreferencesView: View {
             .padding()
         }
         // Make window resizable with min/max constraints
+        // HEIGHT: No max constraint (.infinity) so user can expand as tall as needed
+        // for long settings panels like SuperSpaces
         .frame(minWidth: 550, idealWidth: 700, maxWidth: 900,
-               minHeight: 400, idealHeight: 500, maxHeight: 700)
+               minHeight: 400, idealHeight: 500, maxHeight: .infinity)
     }
 }
 
