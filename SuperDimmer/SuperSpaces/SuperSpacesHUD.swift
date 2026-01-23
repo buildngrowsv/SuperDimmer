@@ -89,6 +89,13 @@ final class SuperSpacesViewModel: ObservableObject {
     /// Callback for duplicating HUD
     var onDuplicate: (() -> Void)?
     
+    /// Callback for display mode changes
+    var onDisplayModeChange: ((String) -> Void)?
+    
+    /// Current display mode string for this HUD instance
+    /// This is per-HUD, not global
+    @Published var currentDisplayModeString: String = "compact"
+    
     func switchToSpace(_ spaceNumber: Int) {
         onSpaceSwitch?(spaceNumber)
     }
@@ -135,6 +142,43 @@ final class SuperSpacesViewModel: ObservableObject {
     }
 }
 
+// MARK: - HUD Configuration
+
+/// Configuration structure for persisting HUD state
+/// Each HUD instance has its own configuration that is saved to UserDefaults
+///
+/// PERSISTENCE ARCHITECTURE (Jan 23, 2026):
+/// - Each HUD has independent settings (mode, position, size)
+/// - Configurations are saved as JSON array in UserDefaults
+/// - On app launch, HUDs are restored from saved configurations
+/// - Changes to any HUD automatically trigger save
+struct HUDConfiguration: Codable {
+    /// Unique identifier for this HUD
+    let id: String
+    
+    /// Display mode: "compact", "note", or "overview"
+    var displayMode: String
+    
+    /// Window position (top-left corner)
+    var position: CGPoint
+    
+    /// Window size
+    var size: CGSize
+    
+    /// Whether the HUD is currently visible
+    var isVisible: Bool
+    
+    /// Creates a default configuration
+    /// - Parameter id: Unique identifier for the HUD
+    init(id: String) {
+        self.id = id
+        self.displayMode = "compact"
+        self.position = CGPoint(x: 0, y: 0)  // Will be set to default position
+        self.size = CGSize(width: 480, height: 140)
+        self.isVisible = true
+    }
+}
+
 // MARK: - HUD Manager
 
 /// Manager class for handling multiple HUD instances
@@ -151,6 +195,12 @@ final class SuperSpacesViewModel: ObservableObject {
 /// - Different HUDs can show different display modes (compact, note, overview)
 /// - Each HUD can be positioned independently on screen
 /// - Useful for multi-monitor setups
+///
+/// PERSISTENCE (Jan 23, 2026):
+/// - Each HUD's configuration is saved independently
+/// - Configurations stored as JSON array in UserDefaults
+/// - On launch, HUDs are restored from saved configurations
+/// - Changes automatically trigger save
 final class SuperSpacesHUDManager {
     
     // MARK: - Singleton
@@ -254,24 +304,83 @@ final class SuperSpacesHUDManager {
     
     // MARK: - Persistence
     
+    /// UserDefaults key for storing HUD configurations
+    private let hudConfigsKey = "superdimmer.hudConfigurations"
+    
     /// Loads persisted HUD configurations from UserDefaults
     /// Called on app startup to restore HUDs from previous session
+    ///
+    /// PERSISTENCE BEHAVIOR (Jan 23, 2026):
+    /// - Reads JSON array of HUD configurations from UserDefaults
+    /// - Creates HUD instances with saved settings (mode, position, size)
+    /// - If no saved configurations exist, creates one default HUD
+    /// - Restores visibility state for each HUD
     private func loadPersistedHUDs() {
-        // For now, just create one default HUD
-        // TODO: Implement full persistence in future update
-        let hud = createHUD()
+        guard let data = UserDefaults.standard.data(forKey: hudConfigsKey),
+              let configs = try? JSONDecoder().decode([HUDConfiguration].self, from: data),
+              !configs.isEmpty else {
+            // No saved configurations, create default HUD
+            print("ℹ️ HUDManager: No saved configurations, creating default HUD")
+            let hud = createHUD()
+            
+            // Show HUD by default on launch
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                hud.show()
+            }
+            return
+        }
         
-        // Show HUD by default on launch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            hud.show()
+        print("✓ HUDManager: Loading \(configs.count) saved HUD configuration(s)")
+        
+        // Restore HUDs from saved configurations
+        for config in configs {
+            let hud = createHUD(withConfiguration: config)
+            
+            // Show HUD if it was visible when saved
+            if config.isVisible {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    hud.show()
+                }
+            }
         }
     }
     
     /// Saves all HUD configurations to UserDefaults
     /// Called when HUDs are modified (position, size, mode changes)
+    ///
+    /// PERSISTENCE BEHAVIOR (Jan 23, 2026):
+    /// - Collects configuration from all active HUDs
+    /// - Encodes as JSON array
+    /// - Saves to UserDefaults
+    /// - Automatically called when HUDs change
     func saveHUDConfigurations() {
-        // TODO: Implement full persistence in future update
-        // For now, individual HUDs save their own position/size
+        let configs = hudInstances.values.map { $0.getConfiguration() }
+        
+        if let data = try? JSONEncoder().encode(configs) {
+            UserDefaults.standard.set(data, forKey: hudConfigsKey)
+            print("💾 HUDManager: Saved \(configs.count) HUD configuration(s)")
+        } else {
+            print("⚠️ HUDManager: Failed to encode HUD configurations")
+        }
+    }
+    
+    /// Creates a HUD with a specific configuration
+    /// Used when restoring HUDs from saved state
+    /// - Parameter config: The configuration to apply
+    /// - Returns: The newly created HUD instance
+    private func createHUD(withConfiguration config: HUDConfiguration) -> SuperSpacesHUD {
+        // Use the saved ID to maintain consistency
+        let hud = SuperSpacesHUD(id: config.id, manager: self, configuration: config)
+        hudInstances[config.id] = hud
+        
+        // Update nextHUDID if necessary to avoid conflicts
+        if let idNumber = Int(config.id.replacingOccurrences(of: "hud_", with: "")),
+           idNumber >= nextHUDID {
+            nextHUDID = idNumber + 1
+        }
+        
+        print("✓ HUDManager: Restored HUD with ID: \(config.id), mode: \(config.displayMode)")
+        return hud
     }
 }
 
@@ -314,8 +423,14 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Prevents excessive UserDefaults writes during window resizing
     private var sizeSaveTimer: Timer?
     
-    /// Current display mode (tracked to know which size setting to save)
-    /// Synced with SettingsManager.superSpacesDisplayMode
+    /// Current display mode for this HUD instance (per-HUD setting)
+    /// Each HUD can have its own independent display mode
+    /// Values: "compact", "note", "overview"
+    ///
+    /// ARCHITECTURE CHANGE (Jan 23, 2026):
+    /// Previously this was synced with global SettingsManager.superSpacesDisplayMode
+    /// Now each HUD maintains its own mode independently
+    /// This allows multiple HUDs to show different modes simultaneously
     private var currentDisplayMode: String = "compact"
     
     /// Local event monitor for keyboard shortcuts (Cmd+/Cmd-)
@@ -333,9 +448,24 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// - Parameters:
     ///   - id: Unique identifier for this HUD instance
     ///   - manager: Reference to the HUD manager
-    init(id: String, manager: SuperSpacesHUDManager) {
+    ///   - configuration: Optional configuration to restore saved state
+    init(id: String, manager: SuperSpacesHUDManager, configuration: HUDConfiguration? = nil) {
         self.hudID = id
         self.manager = manager
+        
+        // Apply configuration if provided
+        if let config = configuration {
+            self.currentDisplayMode = config.displayMode
+        }
+        
+        // Determine initial size based on display mode
+        let initialSize: CGSize
+        if let config = configuration {
+            initialSize = config.size
+        } else {
+            // Default size for compact mode
+            initialSize = CGSize(width: 480, height: 140)
+        }
         
         // Create panel with HUD style
         // PHASE 1.2 FIX: Use .borderless to remove title bar artifact
@@ -343,7 +473,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         // CRITICAL FIX: Removed .nonactivatingPanel to allow TextEditor input
         // The panel MUST be able to become key window for text editing to work
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 450),
+            contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [
                 .borderless,          // No title bar or borders (fixes artifact)
                 .fullSizeContentView, // Content extends to edges
@@ -361,7 +491,12 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         // Set delegate for position tracking
         self.delegate = self
         
-        print("✓ SuperSpacesHUD: Initialized with ID: \(hudID)")
+        // Apply position if provided in configuration
+        if let config = configuration {
+            setFrameOrigin(config.position)
+        }
+        
+        print("✓ SuperSpacesHUD: Initialized with ID: \(hudID), mode: \(currentDisplayMode)")
     }
     
     /// Cleanup on deinitialization
@@ -427,6 +562,9 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     
     /// Creates and sets SwiftUI content view
     private func setupContent() {
+        // Set initial display mode in view model
+        viewModel.currentDisplayModeString = currentDisplayMode
+        
         // Set up callbacks
         viewModel.onSpaceSwitch = { [weak self] spaceNumber in
             self?.switchToSpace(spaceNumber)
@@ -440,6 +578,9 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         viewModel.onDuplicate = { [weak self] in
             guard let self = self else { return }
             self.manager?.duplicateHUD(self)
+        }
+        viewModel.onDisplayModeChange = { [weak self] mode in
+            self?.setDisplayMode(mode)
         }
         
         // Create SwiftUI view with view model and inject settings
@@ -1017,11 +1158,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             
             // Restore window size for the current display mode
             // This ensures the HUD appears with the user's preferred size after app restart
-            // The size is restored based on the current mode setting from SettingsManager
+            // ARCHITECTURE CHANGE (Jan 23, 2026):
+            // Now uses per-HUD currentDisplayMode instead of global setting
             // We use animated: false here because the window isn't visible yet,
             // so there's no need to animate the initial size restoration
-            let currentMode = SettingsManager.shared.superSpacesDisplayMode
-            self.restoreSizeForMode(currentMode, animated: false)
+            self.restoreSizeForMode(self.currentDisplayMode, animated: false)
             
             // Refresh Space data
             self.refreshSpaces()
@@ -1069,9 +1210,8 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Used when duplicating a HUD to preserve user preferences
     /// - Parameter sourceHUD: The HUD to copy settings from
     func copySettings(from sourceHUD: SuperSpacesHUD) {
-        // Copy display mode
-        let sourceMode = SettingsManager.shared.superSpacesDisplayMode
-        // Note: Display mode is global, so it's already shared
+        // Copy display mode (per-HUD setting)
+        self.currentDisplayMode = sourceHUD.currentDisplayMode
         
         // Copy window size
         let sourceSize = sourceHUD.frame.size
@@ -1079,7 +1219,41 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         newFrame.size = sourceSize
         setFrame(newFrame, display: true)
         
-        print("✓ SuperSpacesHUD: Copied settings from \(sourceHUD.hudID)")
+        // Notify view to update mode
+        viewModel.currentDisplayModeString = self.currentDisplayMode
+        
+        print("✓ SuperSpacesHUD: Copied settings from \(sourceHUD.hudID), mode: \(currentDisplayMode)")
+    }
+    
+    /// Returns the current configuration for this HUD
+    /// Used for persistence
+    /// - Returns: HUDConfiguration with current state
+    func getConfiguration() -> HUDConfiguration {
+        var config = HUDConfiguration(id: hudID)
+        config.displayMode = currentDisplayMode
+        config.position = frame.origin
+        config.size = frame.size
+        config.isVisible = isCurrentlyVisible
+        return config
+    }
+    
+    /// Updates the display mode for this HUD instance
+    /// Called when user changes mode in the UI
+    /// - Parameter mode: The new display mode string ("compact", "note", "overview")
+    func setDisplayMode(_ mode: String) {
+        guard mode != currentDisplayMode else { return }
+        
+        currentDisplayMode = mode
+        print("✓ SuperSpacesHUD (\(hudID)): Display mode changed to \(mode)")
+        
+        // Trigger save of all HUD configurations
+        manager?.saveHUDConfigurations()
+    }
+    
+    /// Returns the current display mode for this HUD
+    /// - Returns: The display mode string ("compact", "note", "overview")
+    func getDisplayMode() -> String {
+        return currentDisplayMode
     }
     
     // MARK: - Position Persistence (Phase 1.1)
@@ -1140,7 +1314,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     // MARK: - NSWindowDelegate (Phase 1.1)
     
     /// Called when window moves
-    /// Saves position to UserDefaults (debounced)
+    /// Saves all HUD configurations (debounced)
+    ///
+    /// PERSISTENCE (Jan 23, 2026):
+    /// Now triggers save of all HUD configurations via manager
+    /// instead of saving to global lastHUDPosition
     func windowDidMove(_ notification: Notification) {
         // Cancel previous save timer
         positionSaveTimer?.invalidate()
@@ -1150,15 +1328,19 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             guard let self = self else { return }
             
             let position = self.frame.origin
-            SettingsManager.shared.lastHUDPosition = position
+            print("💾 SuperSpacesHUD (\(self.hudID)): Position changed to \(position)")
             
-            print("💾 SuperSpacesHUD: Saved position to \(position)")
+            // Trigger save of all HUD configurations
+            self.manager?.saveHUDConfigurations()
         }
     }
     
     /// Called when window resizes
-    /// Saves size to UserDefaults per display mode (debounced)
-    /// This allows each mode to remember the user's preferred window size
+    /// Saves all HUD configurations (debounced)
+    ///
+    /// PERSISTENCE (Jan 23, 2026):
+    /// Now triggers save of all HUD configurations via manager
+    /// Each HUD's size is saved independently per-instance
     func windowDidResize(_ notification: Notification) {
         // Cancel previous save timer
         sizeSaveTimer?.invalidate()
@@ -1168,22 +1350,10 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             guard let self = self else { return }
             
             let size = self.frame.size
-            let mode = SettingsManager.shared.superSpacesDisplayMode
+            print("💾 SuperSpacesHUD (\(self.hudID)): Size changed to \(size)")
             
-            // Save size to the appropriate mode setting
-            switch mode {
-            case "compact":
-                SettingsManager.shared.hudSizeCompact = size
-                print("💾 SuperSpacesHUD: Saved Compact mode size to \(size)")
-            case "note":
-                SettingsManager.shared.hudSizeNote = size
-                print("💾 SuperSpacesHUD: Saved Note mode size to \(size)")
-            case "overview":
-                SettingsManager.shared.hudSizeOverview = size
-                print("💾 SuperSpacesHUD: Saved Overview mode size to \(size)")
-            default:
-                break
-            }
+            // Trigger save of all HUD configurations
+            self.manager?.saveHUDConfigurations()
         }
     }
     

@@ -147,19 +147,25 @@ struct SuperSpacesHUDView: View {
         .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: displayMode)
         .onAppear {
-            // Load display mode from settings
-            displayMode = displayModeFromString(settings.superSpacesDisplayMode)
+            // Load display mode from view model (per-HUD setting)
+            // ARCHITECTURE CHANGE (Jan 23, 2026):
+            // Previously loaded from global settings.superSpacesDisplayMode
+            // Now each HUD maintains its own mode via viewModel.currentDisplayModeString
+            displayMode = displayModeFromString(viewModel.currentDisplayModeString)
             
             // Calculate initial button width (PHASE 2.1)
             updateButtonWidth()
         }
-        .onChange(of: settings.superSpacesDisplayMode) { newValue in
-            // Sync when settings change
+        .onChange(of: viewModel.currentDisplayModeString) { newValue in
+            // Sync when view model changes (from HUD instance)
             displayMode = displayModeFromString(newValue)
         }
         .onChange(of: displayMode) { newValue in
-            // Save to settings when mode changes
-            settings.superSpacesDisplayMode = displayModeToString(newValue)
+            // Notify HUD instance when mode changes in UI
+            // This triggers per-HUD save instead of global settings save
+            let modeString = displayModeToString(newValue)
+            viewModel.currentDisplayModeString = modeString
+            viewModel.onDisplayModeChange?(modeString)
         }
         .onChange(of: settings.spaceNames) { _ in
             // Recalculate button width when names change (PHASE 2.1)
