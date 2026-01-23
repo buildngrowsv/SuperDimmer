@@ -565,8 +565,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("SuperDimmerPreferences")
         
         // Set min/max size constraints for resizable window
+        // MIN SIZE: Ensures the window doesn't get too small to be usable
+        // MAX SIZE: Width is constrained to prevent overly wide window, but height is
+        // unconstrained (using .greatestFiniteMagnitude) so user can expand vertically
+        // as much as needed - especially useful for long settings panels like SuperSpaces
         window.minSize = NSSize(width: 550, height: 400)
-        window.maxSize = NSSize(width: 900, height: 700)
+        window.maxSize = NSSize(width: 900, height: CGFloat.greatestFiniteMagnitude)
         
         // Make it a proper preferences window
         window.isReleasedWhenClosed = false
