@@ -1264,6 +1264,31 @@ final class DimmingCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
         
+        // ============================================================
+        // Observe dimming TYPE changes (Settings Redesign Jan 23, 2026)
+        // ============================================================
+        // When user switches between Full Screen / Window Level / Zone modes,
+        // we need to restart the dimming system with the new configuration.
+        // The SettingsManager already synchronizes the underlying settings
+        // (intelligentDimmingEnabled, detectionMode) based on the type.
+        NotificationCenter.default.publisher(for: .dimmingTypeChanged)
+            .sink { [weak self] notification in
+                guard let self = self else { return }
+                guard SettingsManager.shared.isDimmingEnabled else { return }
+                
+                print("🔄 Dimming type changed - restarting with new configuration")
+                
+                // Stop and restart to apply the new mode
+                // This ensures overlays are recreated appropriately for the new mode
+                self.stop()
+                
+                // Small delay to allow cleanup to complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.start()
+                }
+            }
+            .store(in: &cancellables)
+        
         // Observe scan interval changes
         SettingsManager.shared.$scanInterval
             .dropFirst()

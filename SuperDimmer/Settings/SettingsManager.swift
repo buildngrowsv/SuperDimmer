@@ -89,6 +89,121 @@ enum DetectionMode: String, Codable, CaseIterable, Identifiable {
 }
 
 // ====================================================================
+// MARK: - Dimming Type Enum (Settings Redesign Jan 23, 2026)
+// ====================================================================
+
+/**
+ Dimming type/mode selection for the SuperDimmer feature.
+ 
+ SETTINGS REDESIGN (Jan 23, 2026):
+ Users can now choose between 3 distinct dimming approaches via a clear
+ 3-button selector in the SuperDimmer settings tab.
+ 
+ This replaces the confusing combination of:
+ - isDimmingEnabled + intelligentDimmingEnabled + detectionMode
+ 
+ With a single, clear selection.
+ 
+ MODES:
+ - fullScreen: Dims the entire screen uniformly (simplest, lowest CPU)
+ - windowLevel: Analyzes each window, dims bright ones individually
+ - zoneLevel: Finds bright regions WITHIN windows and dims only those areas
+ 
+ The underlying settings are still maintained for backwards compatibility,
+ but this enum provides the user-facing selection.
+ */
+enum DimmingType: String, Codable, CaseIterable, Identifiable {
+    /// Full-screen adaptive dimming - one overlay covers entire display
+    /// Uses: isDimmingEnabled=true, intelligentDimmingEnabled=false
+    case fullScreen = "fullScreen"
+    
+    /// Window-level adaptive dimming - one overlay per window
+    /// Uses: isDimmingEnabled=true, intelligentDimmingEnabled=true, detectionMode=.perWindow
+    case windowLevel = "windowLevel"
+    
+    /// Zone/Region-level dimming - overlays for specific bright areas
+    /// Uses: isDimmingEnabled=true, intelligentDimmingEnabled=true, detectionMode=.perRegion
+    case zoneLevel = "zoneLevel"
+    
+    var id: String { rawValue }
+    
+    /// User-facing display name for the 3-button selector
+    var displayName: String {
+        switch self {
+        case .fullScreen: return "Full Screen"
+        case .windowLevel: return "Window Level"
+        case .zoneLevel: return "Zone Level"
+        }
+    }
+    
+    /// Short description shown below the mode selector
+    var shortDescription: String {
+        switch self {
+        case .fullScreen:
+            return "Dims your entire screen uniformly"
+        case .windowLevel:
+            return "Dims each window based on its brightness"
+        case .zoneLevel:
+            return "Dims only bright areas within windows"
+        }
+    }
+    
+    /// Detailed explanation shown when mode is selected
+    var detailedDescription: String {
+        switch self {
+        case .fullScreen:
+            return """
+            Full Screen Adaptive Dimming applies a comfortable dimming overlay across your entire display. \
+            With Auto Mode enabled, the dimming level automatically adjusts based on your screen's \
+            overall brightness - dimming more when viewing bright content, less when viewing dark content. \
+            This is the simplest mode with the lowest system resource usage.
+            """
+        case .windowLevel:
+            return """
+            Window Level Adaptive Dimming analyzes each window individually and applies appropriate \
+            dimming based on that window's content brightness. Bright windows get dimmed while dark \
+            windows are left untouched. You can set different dimming levels for the window you're \
+            actively using versus background windows. Requires Screen Recording permission.
+            """
+        case .zoneLevel:
+            return """
+            Zone Level Dimming is the most precise mode. It detects bright regions WITHIN windows \
+            and dims only those specific areas. Perfect for apps like Mail where the interface is \
+            dark but email content is bright, or code editors with light-colored preview panes. \
+            Uses more system resources but provides the most targeted dimming. Requires Screen Recording permission.
+            """
+        }
+    }
+    
+    /// Icon for the mode button
+    var icon: String {
+        switch self {
+        case .fullScreen: return "rectangle.fill"
+        case .windowLevel: return "macwindow"
+        case .zoneLevel: return "rectangle.split.3x3"
+        }
+    }
+    
+    /// Whether this mode requires Screen Recording permission
+    var requiresScreenRecording: Bool {
+        switch self {
+        case .fullScreen: return false
+        case .windowLevel: return true
+        case .zoneLevel: return true
+        }
+    }
+    
+    /// Relative CPU usage indicator
+    var cpuUsage: String {
+        switch self {
+        case .fullScreen: return "Low"
+        case .windowLevel: return "Medium"
+        case .zoneLevel: return "Higher"
+        }
+    }
+}
+
+// ====================================================================
 // MARK: - Dimming Profile Model
 // ====================================================================
 
@@ -369,6 +484,10 @@ final class SettingsManager: ObservableObject {
         case scanInterval = "superdimmer.scanInterval"
         case windowTrackingInterval = "superdimmer.windowTrackingInterval"
         
+        // Dimming Type (Settings Redesign Jan 23, 2026)
+        // Single selection replacing the complex combination of isDimmingEnabled + intelligentDimmingEnabled + detectionMode
+        case dimmingType = "superdimmer.dimmingType"
+        
         // Super Dimming Auto Mode (2.2.1.2)
         // Auto mode adjusts dim level based on overall screen brightness
         case superDimmingAutoEnabled = "superdimmer.superDimmingAutoEnabled"
@@ -553,6 +672,68 @@ final class SettingsManager: ObservableObject {
                 object: nil,
                 userInfo: ["enabled": isDimmingEnabled]
             )
+        }
+    }
+    
+    /**
+     The currently selected dimming type/mode.
+     
+     SETTINGS REDESIGN (Jan 23, 2026):
+     This is the primary way users select their dimming approach via the
+     3-button selector in SuperDimmer settings. This property automatically
+     synchronizes the underlying settings:
+     
+     - .fullScreen: isDimmingEnabled=true, intelligentDimmingEnabled=false
+     - .windowLevel: isDimmingEnabled=true, intelligentDimmingEnabled=true, detectionMode=.perWindow
+     - .zoneLevel: isDimmingEnabled=true, intelligentDimmingEnabled=true, detectionMode=.perRegion
+     
+     When changed, the underlying settings are updated to match, ensuring
+     backwards compatibility with the existing dimming system.
+     */
+    @Published var dimmingType: DimmingType {
+        didSet {
+            defaults.set(dimmingType.rawValue, forKey: Keys.dimmingType.rawValue)
+            
+            // Synchronize underlying settings based on the selected type
+            // This ensures the dimming coordinator works correctly
+            synchronizeSettingsForDimmingType(dimmingType)
+            
+            // Notify that dimming configuration changed
+            NotificationCenter.default.post(
+                name: .dimmingTypeChanged,
+                object: nil,
+                userInfo: ["type": dimmingType]
+            )
+        }
+    }
+    
+    /**
+     Synchronizes the underlying dimming settings based on the selected dimming type.
+     
+     This ensures backwards compatibility - the DimmingCoordinator still uses
+     isDimmingEnabled, intelligentDimmingEnabled, and detectionMode internally.
+     
+     Called when dimmingType changes to update these values accordingly.
+     */
+    private func synchronizeSettingsForDimmingType(_ type: DimmingType) {
+        switch type {
+        case .fullScreen:
+            // Full-screen mode: disable intelligent mode, enable basic dimming
+            if isDimmingEnabled {
+                intelligentDimmingEnabled = false
+            }
+        case .windowLevel:
+            // Window-level mode: enable intelligent mode with perWindow detection
+            if isDimmingEnabled {
+                intelligentDimmingEnabled = true
+                detectionMode = .perWindow
+            }
+        case .zoneLevel:
+            // Zone-level mode: enable intelligent mode with perRegion detection
+            if isDimmingEnabled {
+                intelligentDimmingEnabled = true
+                detectionMode = .perRegion
+            }
         }
     }
     
@@ -2062,6 +2243,35 @@ final class SettingsManager: ObservableObject {
             defaults.double(forKey: Keys.windowTrackingInterval.rawValue) : 0.5
         
         // ============================================================
+        // Load Dimming Type (Settings Redesign Jan 23, 2026)
+        // ============================================================
+        // This is the new primary way users select dimming approach.
+        // Default: fullScreen (simple, low CPU, works without permissions)
+        // For existing users with intelligentDimmingEnabled, we infer the type.
+        if let typeString = defaults.string(forKey: Keys.dimmingType.rawValue),
+           let type = DimmingType(rawValue: typeString) {
+            self.dimmingType = type
+        } else {
+            // Migrate from old settings if they exist
+            // If intelligent dimming was enabled, determine which type based on detection mode
+            let wasIntelligentEnabled = defaults.object(forKey: Keys.intelligentDimmingEnabled.rawValue) != nil ?
+                defaults.bool(forKey: Keys.intelligentDimmingEnabled.rawValue) : false
+            
+            if wasIntelligentEnabled {
+                // Check detection mode to determine windowLevel vs zoneLevel
+                let modeString = defaults.string(forKey: Keys.detectionMode.rawValue) ?? "perWindow"
+                if modeString == "perRegion" {
+                    self.dimmingType = .zoneLevel
+                } else {
+                    self.dimmingType = .windowLevel
+                }
+            } else {
+                // Default to fullScreen for new users
+                self.dimmingType = .fullScreen
+            }
+        }
+        
+        // ============================================================
         // Load Super Dimming Auto Mode Settings (2.2.1.2)
         // ============================================================
         // Super Dimming Auto is the DEFAULT experience - automatically adjusts
@@ -3132,6 +3342,9 @@ final class SettingsManager: ObservableObject {
 extension Notification.Name {
     /// Posted when isDimmingEnabled changes
     static let dimmingEnabledChanged = Notification.Name("superdimmer.dimmingEnabledChanged")
+    
+    /// Posted when dimmingType changes (Settings Redesign Jan 23, 2026)
+    static let dimmingTypeChanged = Notification.Name("superdimmer.dimmingTypeChanged")
     
     /// Posted when colorTemperatureEnabled changes
     static let colorTemperatureEnabledChanged = Notification.Name("superdimmer.colorTemperatureEnabledChanged")
