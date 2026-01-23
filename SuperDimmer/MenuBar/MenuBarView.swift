@@ -947,7 +947,7 @@ struct MenuBarView: View {
             // Show HUD button (only when enabled)
             if settings.superSpacesEnabled {
                 Button(action: {
-                    SuperSpacesHUD.shared.toggle()
+                    SuperSpacesHUDManager.shared.togglePrimaryHUD()
                 }) {
                     HStack {
                         Image(systemName: "eye")

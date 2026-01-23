@@ -277,11 +277,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("🌟 SuperDimmer launch complete!")
         print("ℹ️  Toggle dimming ON in the menu bar to see the effect")
         
-        // Initialize Super Spaces HUD if enabled
+        // Initialize Super Spaces HUD Manager if enabled
+        // The manager will create and show the default HUD
         if SettingsManager.shared.superSpacesEnabled {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                _ = SuperSpacesHUD.shared  // Initialize singleton and auto-show
-                print("✓ Super Spaces HUD initialized")
+                _ = SuperSpacesHUDManager.shared  // Initialize manager and auto-show default HUD
+                print("✓ Super Spaces HUD Manager initialized")
             }
         }
     }

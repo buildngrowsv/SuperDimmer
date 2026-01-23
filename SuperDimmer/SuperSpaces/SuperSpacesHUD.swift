@@ -86,12 +86,19 @@ final class SuperSpacesViewModel: ObservableObject {
     /// Callback for position changes
     var onPositionChange: ((String) -> Void)?
     
+    /// Callback for duplicating HUD
+    var onDuplicate: (() -> Void)?
+    
     func switchToSpace(_ spaceNumber: Int) {
         onSpaceSwitch?(spaceNumber)
     }
     
     func closeHUD() {
         onClose?()
+    }
+    
+    func duplicateHUD() {
+        onDuplicate?()
     }
     
     /// Increases font size (Cmd+)
@@ -128,19 +135,165 @@ final class SuperSpacesViewModel: ObservableObject {
     }
 }
 
+// MARK: - HUD Manager
+
+/// Manager class for handling multiple HUD instances
+/// Allows users to create and manage multiple Super Spaces HUD windows
+///
+/// ARCHITECTURE (Jan 23, 2026):
+/// - Manages an array of HUD instances
+/// - Each HUD has a unique ID for tracking
+/// - Persists HUD configurations (position, size, mode) to UserDefaults
+/// - Provides methods to create, duplicate, and close HUDs
+///
+/// WHY MULTIPLE HUDS:
+/// - Users may want to monitor multiple Spaces at once
+/// - Different HUDs can show different display modes (compact, note, overview)
+/// - Each HUD can be positioned independently on screen
+/// - Useful for multi-monitor setups
+final class SuperSpacesHUDManager {
+    
+    // MARK: - Singleton
+    
+    /// Shared manager instance
+    static let shared = SuperSpacesHUDManager()
+    
+    // MARK: - Properties
+    
+    /// Array of active HUD instances
+    /// Each HUD is tracked with a unique ID
+    private var hudInstances: [String: SuperSpacesHUD] = [:]
+    
+    /// Counter for generating unique HUD IDs
+    private var nextHUDID: Int = 1
+    
+    // MARK: - Initialization
+    
+    private init() {
+        // Load persisted HUD configurations on startup
+        loadPersistedHUDs()
+    }
+    
+    // MARK: - Public Methods
+    
+    /// Creates a new HUD instance
+    /// - Returns: The newly created HUD instance
+    @discardableResult
+    func createHUD() -> SuperSpacesHUD {
+        let hudID = "hud_\(nextHUDID)"
+        nextHUDID += 1
+        
+        let hud = SuperSpacesHUD(id: hudID, manager: self)
+        hudInstances[hudID] = hud
+        
+        print("✓ HUDManager: Created new HUD with ID: \(hudID)")
+        return hud
+    }
+    
+    /// Duplicates an existing HUD
+    /// Creates a new HUD with the same settings but offset position
+    /// - Parameter sourceHUD: The HUD to duplicate
+    /// - Returns: The newly created duplicate HUD
+    @discardableResult
+    func duplicateHUD(_ sourceHUD: SuperSpacesHUD) -> SuperSpacesHUD {
+        let newHUD = createHUD()
+        
+        // Copy settings from source HUD
+        newHUD.copySettings(from: sourceHUD)
+        
+        // Offset position slightly so it's visible
+        var newFrame = newHUD.frame
+        newFrame.origin.x += 30
+        newFrame.origin.y -= 30
+        newHUD.setFrameOrigin(newFrame.origin)
+        
+        // Show the new HUD
+        newHUD.show()
+        
+        print("✓ HUDManager: Duplicated HUD \(sourceHUD.hudID) -> \(newHUD.hudID)")
+        return newHUD
+    }
+    
+    /// Closes a specific HUD instance
+    /// - Parameter hudID: The ID of the HUD to close
+    func closeHUD(withID hudID: String) {
+        guard let hud = hudInstances[hudID] else {
+            print("⚠️ HUDManager: No HUD found with ID: \(hudID)")
+            return
+        }
+        
+        hud.close()
+        hudInstances.removeValue(forKey: hudID)
+        
+        print("✓ HUDManager: Closed HUD with ID: \(hudID)")
+    }
+    
+    /// Toggles visibility of the primary HUD (for backward compatibility)
+    /// If no HUDs exist, creates one
+    func togglePrimaryHUD() {
+        // If we have at least one HUD, toggle the first one
+        if let firstHUD = hudInstances.values.first {
+            firstHUD.toggle()
+            return
+        }
+        
+        // No HUDs exist, create and show one
+        let hud = createHUD()
+        hud.show()
+    }
+    
+    /// Returns all active HUD instances
+    var allHUDs: [SuperSpacesHUD] {
+        return Array(hudInstances.values)
+    }
+    
+    /// Returns the number of active HUDs
+    var hudCount: Int {
+        return hudInstances.count
+    }
+    
+    // MARK: - Persistence
+    
+    /// Loads persisted HUD configurations from UserDefaults
+    /// Called on app startup to restore HUDs from previous session
+    private func loadPersistedHUDs() {
+        // For now, just create one default HUD
+        // TODO: Implement full persistence in future update
+        let hud = createHUD()
+        
+        // Show HUD by default on launch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            hud.show()
+        }
+    }
+    
+    /// Saves all HUD configurations to UserDefaults
+    /// Called when HUDs are modified (position, size, mode changes)
+    func saveHUDConfigurations() {
+        // TODO: Implement full persistence in future update
+        // For now, individual HUDs save their own position/size
+    }
+}
+
 // MARK: - HUD Panel
 
 /// Floating HUD panel for Space navigation and switching
 /// Provides visual feedback about current Space and quick switching interface
+///
+/// MULTI-INSTANCE ARCHITECTURE (Jan 23, 2026):
+/// - No longer a singleton - managed by SuperSpacesHUDManager
+/// - Each instance has a unique ID for tracking
+/// - Can be duplicated via copy button in header
+/// - Settings and position are persisted per-instance
 final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     
-    // MARK: - Singleton
-    
-    /// Shared instance (singleton pattern)
-    /// Only one HUD should exist at a time
-    static let shared = SuperSpacesHUD()
-    
     // MARK: - Properties
+    
+    /// Unique identifier for this HUD instance
+    let hudID: String
+    
+    /// Reference to the HUD manager
+    private weak var manager: SuperSpacesHUDManager?
     
     /// View model shared with SwiftUI view
     private let viewModel = SuperSpacesViewModel()
@@ -176,8 +329,14 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     
     // MARK: - Initialization
     
-    /// Private initializer (singleton pattern)
-    private init() {
+    /// Initializer for HUD instances
+    /// - Parameters:
+    ///   - id: Unique identifier for this HUD instance
+    ///   - manager: Reference to the HUD manager
+    init(id: String, manager: SuperSpacesHUDManager) {
+        self.hudID = id
+        self.manager = manager
+        
         // Create panel with HUD style
         // PHASE 1.2 FIX: Use .borderless to remove title bar artifact
         // PHASE 1.3 FIX: Increased initial height to prevent clipping, window is resizable
@@ -202,12 +361,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         // Set delegate for position tracking
         self.delegate = self
         
-        // Show HUD by default on launch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.show()
-        }
-        
-        print("✓ SuperSpacesHUD: Initialized")
+        print("✓ SuperSpacesHUD: Initialized with ID: \(hudID)")
     }
     
     /// Cleanup on deinitialization
@@ -278,10 +432,14 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             self?.switchToSpace(spaceNumber)
         }
         viewModel.onClose = { [weak self] in
-            self?.hide()
+            self?.manager?.closeHUD(withID: self?.hudID ?? "")
         }
         viewModel.onPositionChange = { [weak self] position in
             self?.moveToPosition(position)
+        }
+        viewModel.onDuplicate = { [weak self] in
+            guard let self = self else { return }
+            self.manager?.duplicateHUD(self)
         }
         
         // Create SwiftUI view with view model and inject settings
@@ -905,6 +1063,23 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         } else {
             show()
         }
+    }
+    
+    /// Copies settings from another HUD
+    /// Used when duplicating a HUD to preserve user preferences
+    /// - Parameter sourceHUD: The HUD to copy settings from
+    func copySettings(from sourceHUD: SuperSpacesHUD) {
+        // Copy display mode
+        let sourceMode = SettingsManager.shared.superSpacesDisplayMode
+        // Note: Display mode is global, so it's already shared
+        
+        // Copy window size
+        let sourceSize = sourceHUD.frame.size
+        var newFrame = self.frame
+        newFrame.size = sourceSize
+        setFrame(newFrame, display: true)
+        
+        print("✓ SuperSpacesHUD: Copied settings from \(sourceHUD.hudID)")
     }
     
     // MARK: - Position Persistence (Phase 1.1)

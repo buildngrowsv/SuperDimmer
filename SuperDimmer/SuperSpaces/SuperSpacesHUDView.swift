@@ -335,6 +335,20 @@ struct SuperSpacesHUDView: View {
             .background(Color.secondary.opacity(0.1))
             .cornerRadius(6)
             
+            // Copy button - Duplicates the HUD (Jan 23, 2026)
+            // Creates a new HUD instance with the same settings but offset position
+            // This allows users to have multiple HUDs open simultaneously for monitoring different Spaces
+            Button(action: {
+                viewModel.duplicateHUD()
+            }) {
+                Image(systemName: "plus.square.on.square")
+                    .font(.system(size: scaledFontSize(14)))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()  // Disable focus ring/outline on click
+            .help("Duplicate HUD")
+            
             // Settings button (moved from footer)
             Button(action: {
                 showQuickSettings.toggle()
