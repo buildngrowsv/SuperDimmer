@@ -304,8 +304,11 @@ final class AppInactivityTracker: ObservableObject {
     /**
      Gets all apps that have been inactive longer than the specified duration.
      
+     IMPORTANT (Jan 24, 2026): Uses accumulated inactivity time, which excludes idle periods.
+     This ensures apps are only hidden based on active usage time, not time when user was away.
+     
      - Parameters:
-       - duration: Minimum inactivity time in seconds
+       - duration: Minimum inactivity time in seconds (active time only)
        - excludeSystemApps: Whether to exclude system apps
        - excludedBundleIDs: Additional bundle IDs to exclude
      - Returns: Array of bundle IDs that have been inactive too long
@@ -318,7 +321,6 @@ final class AppInactivityTracker: ObservableObject {
         lock.lock()
         defer { lock.unlock() }
         
-        let now = Date()
         var inactiveApps: [String] = []
         
         for (bundleID, info) in appActivity {
@@ -331,8 +333,9 @@ final class AppInactivityTracker: ObservableObject {
             // Skip system apps if requested
             if excludeSystemApps && Self.systemAppBundleIDs.contains(bundleID) { continue }
             
-            // Check inactivity duration
-            let inactivity = now.timeIntervalSince(info.lastActiveTime)
+            // FIX (Jan 24, 2026): Use accumulated inactivity time instead of lastActiveTime
+            // This properly excludes idle periods so apps aren't hidden when user is away
+            let inactivity = info.accumulatedInactivityTime
             if inactivity >= duration {
                 inactiveApps.append(bundleID)
             }

@@ -16,8 +16,8 @@
 //  - Similar UX to Control Center, Spotlight settings, etc.
 //
 //  SETTINGS INCLUDED:
-//  - Auto-hide toggle
-//  - Float on top toggle
+//  - Auto-hide toggle (global setting)
+//  - Float on top toggle (per-HUD setting as of Jan 23, 2026)
 //  - Button dimming (dim to indicate order) toggle
 //  - Button fade slider (when dimming enabled)
 //
@@ -26,6 +26,12 @@
 //  - Toggles for key features
 //  - Slider for button fade intensity
 //  - Reset visit history button
+//
+//  ARCHITECTURE NOTE (Jan 23, 2026):
+//  Float on top is now a per-HUD setting, not global. Each HUD instance
+//  can have its own independent float on top preference. The toggle in
+//  this quick settings view controls the specific HUD it belongs to.
+//  Other settings like auto-hide remain global (affecting all HUDs).
 //
 
 import SwiftUI
@@ -37,9 +43,10 @@ struct SuperSpacesQuickSettings: View {
     // MARK: - Properties
     
     /// View model for HUD state
+    /// Contains per-HUD settings like floatOnTop (Jan 23, 2026)
     @ObservedObject var viewModel: SuperSpacesViewModel
     
-    /// Settings manager for persisting changes
+    /// Settings manager for global settings (auto-hide, button dimming, etc.)
     @EnvironmentObject var settings: SettingsManager
     
     // MARK: - Body
@@ -52,15 +59,17 @@ struct SuperSpacesQuickSettings: View {
             
             Divider()
             
-            // Auto-Hide Toggle
+            // Auto-Hide Toggle (global setting - affects all HUDs)
             Toggle("Auto-hide after switch", isOn: $settings.superSpacesAutoHide)
                 .font(.system(size: 12))
                 .help("Automatically hide HUD after switching to a Space")
             
-            // Float on Top Toggle
-            Toggle("Float on top", isOn: $settings.superSpacesFloatOnTop)
+            // Float on Top Toggle (per-HUD setting as of Jan 23, 2026)
+            // This controls only THIS specific HUD, not all HUDs
+            // Uses Binding to viewModel.floatOnTop which triggers onFloatOnTopChange callback
+            Toggle("Float on top", isOn: floatOnTopBinding)
                 .font(.system(size: 12))
-                .help("Keep HUD above all other windows")
+                .help("Keep THIS HUD above all other windows (per-HUD setting)")
             
             Divider()
             
@@ -126,6 +135,25 @@ struct SuperSpacesQuickSettings: View {
         }
         .padding(16)
         .frame(width: 280)
+    }
+    
+    // MARK: - Bindings
+    
+    /// Custom binding for float on top toggle (per-HUD setting)
+    /// This binding updates the viewModel and triggers the onFloatOnTopChange callback
+    /// which updates the actual window level for this specific HUD
+    ///
+    /// ARCHITECTURE (Jan 23, 2026):
+    /// Float on top is now per-HUD, not global. Each HUD has its own setting.
+    /// When user toggles this, only THIS HUD's window level changes.
+    private var floatOnTopBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.floatOnTop },
+            set: { newValue in
+                viewModel.floatOnTop = newValue
+                viewModel.onFloatOnTopChange?(newValue)
+            }
+        )
     }
     
     // MARK: - Actions

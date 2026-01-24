@@ -92,9 +92,18 @@ final class SuperSpacesViewModel: ObservableObject {
     /// Callback for display mode changes
     var onDisplayModeChange: ((String) -> Void)?
     
+    /// Callback for float on top setting changes (per-HUD)
+    /// Called when user toggles the float on top setting for this specific HUD
+    var onFloatOnTopChange: ((Bool) -> Void)?
+    
     /// Current display mode string for this HUD instance
     /// This is per-HUD, not global
     @Published var currentDisplayModeString: String = "compact"
+    
+    /// Whether this specific HUD floats on top of other windows
+    /// This is now a per-HUD setting (Jan 23, 2026) instead of global
+    /// Each HUD instance can have its own independent float on top setting
+    @Published var floatOnTop: Bool = true
     
     func switchToSpace(_ spaceNumber: Int) {
         onSpaceSwitch?(spaceNumber)
@@ -148,10 +157,16 @@ final class SuperSpacesViewModel: ObservableObject {
 /// Each HUD instance has its own configuration that is saved to UserDefaults
 ///
 /// PERSISTENCE ARCHITECTURE (Jan 23, 2026):
-/// - Each HUD has independent settings (mode, position, size)
+/// - Each HUD has independent settings (mode, position, size, floatOnTop)
 /// - Configurations are saved as JSON array in UserDefaults
 /// - On app launch, HUDs are restored from saved configurations
 /// - Changes to any HUD automatically trigger save
+///
+/// INDEPENDENT FLOAT ON TOP (Jan 23, 2026):
+/// Each HUD now has its own floatOnTop setting, allowing users to:
+/// - Have one HUD that floats above all windows
+/// - Have another HUD that can be covered by other windows
+/// - Mix and match based on workflow needs
 struct HUDConfiguration: Codable {
     /// Unique identifier for this HUD
     let id: String
@@ -168,6 +183,12 @@ struct HUDConfiguration: Codable {
     /// Whether the HUD is currently visible
     var isVisible: Bool
     
+    /// Whether this specific HUD should float on top of other windows
+    /// This is now a per-HUD setting (Jan 23, 2026) instead of global
+    /// - true: Window level = .floating (above normal windows)
+    /// - false: Window level = .normal (can be covered by other windows)
+    var floatOnTop: Bool
+    
     /// Creates a default configuration
     /// - Parameter id: Unique identifier for the HUD
     init(id: String) {
@@ -176,6 +197,7 @@ struct HUDConfiguration: Codable {
         self.position = CGPoint(x: 0, y: 0)  // Will be set to default position
         self.size = CGSize(width: 480, height: 140)
         self.isVisible = true
+        self.floatOnTop = true  // Default to floating on top (original behavior)
     }
 }
 
@@ -433,13 +455,28 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// This allows multiple HUDs to show different modes simultaneously
     private var currentDisplayMode: String = "compact"
     
+    /// Whether this specific HUD floats on top of other windows (per-HUD setting)
+    /// Each HUD can have its own independent float on top setting
+    ///
+    /// ARCHITECTURE CHANGE (Jan 23, 2026):
+    /// Previously this was synced with global SettingsManager.superSpacesFloatOnTop
+    /// Now each HUD maintains its own float on top setting independently
+    /// This allows users to have one HUD floating above everything and another
+    /// that can be covered by other windows - useful for different workflows
+    ///
+    /// BEHAVIOR:
+    /// - true: Window level = .floating (above normal windows)
+    /// - false: Window level = .normal (can be covered by other windows)
+    private var isFloatOnTop: Bool = true
+    
     /// Local event monitor for keyboard shortcuts (Cmd+/Cmd-)
     /// Monitors key events when the HUD window is key (has focus)
     /// This allows text size adjustment with standard keyboard shortcuts
     private var keyboardMonitor: Any?
     
-    /// Combine cancellables for settings observations
-    /// Used to observe changes to settings like float on top
+    /// Combine cancellables for future settings observations
+    /// NOTE (Jan 23, 2026): Float on top is now per-HUD, so the global observer was removed.
+    /// This property is kept for potential future Combine observers.
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
@@ -454,8 +491,10 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         self.manager = manager
         
         // Apply configuration if provided
+        // Each HUD has independent settings: displayMode, floatOnTop, position, size
         if let config = configuration {
             self.currentDisplayMode = config.displayMode
+            self.isFloatOnTop = config.floatOnTop
         }
         
         // Determine initial size based on display mode
@@ -565,6 +604,10 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         // Set initial display mode in view model
         viewModel.currentDisplayModeString = currentDisplayMode
         
+        // Set initial float on top value in view model (per-HUD setting)
+        // This is now independent for each HUD instance (Jan 23, 2026)
+        viewModel.floatOnTop = isFloatOnTop
+        
         // Set up callbacks
         viewModel.onSpaceSwitch = { [weak self] spaceNumber in
             self?.switchToSpace(spaceNumber)
@@ -583,6 +626,12 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             self?.setDisplayMode(mode)
         }
         
+        // Handle float on top changes (per-HUD setting)
+        // When user toggles float on top in quick settings, update this HUD's window level
+        viewModel.onFloatOnTopChange = { [weak self] newValue in
+            self?.setFloatOnTop(newValue)
+        }
+        
         // Create SwiftUI view with view model and inject settings
         var hudView = SuperSpacesHUDView(viewModel: viewModel)
         
@@ -597,17 +646,9 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         let hostingView = NSHostingView(rootView: finalView)
         contentView = hostingView
         
-        // Observe float on top setting changes
-        // dropFirst() prevents the initial value from triggering updateWindowLevel()
-        // We only want to respond to actual user changes to the setting
-        SettingsManager.shared.$superSpacesFloatOnTop
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] newValue in
-                print("🔔 SuperSpacesHUD: Float on top setting changed to \(newValue)")
-                self?.updateWindowLevel()
-            }
-            .store(in: &cancellables)
+        // NOTE: Removed Combine observer for global superSpacesFloatOnTop (Jan 23, 2026)
+        // Float on top is now a per-HUD setting, not global
+        // Each HUD tracks its own isFloatOnTop property and updates via onFloatOnTopChange callback
         
         print("✓ SuperSpacesHUD: Content view created")
     }
@@ -1032,18 +1073,20 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         }
     }
     
-    /// Updates window level based on float on top setting
+    /// Updates window level based on per-HUD float on top setting
     ///
     /// FEATURE: Float on Top Toggle (Jan 21, 2026)
+    /// ARCHITECTURE CHANGE (Jan 23, 2026): Now uses per-HUD setting instead of global
     ///
-    /// When superSpacesFloatOnTop is true:
+    /// When isFloatOnTop is true (for THIS HUD):
     /// - Window level = .floating (above normal windows)
     ///
-    /// When superSpacesFloatOnTop is false:
+    /// When isFloatOnTop is false (for THIS HUD):
     /// - Window level = .normal (can be covered by other windows)
     ///
-    /// This allows users to choose whether the HUD stays above everything
+    /// This allows users to choose whether EACH HUD stays above everything
     /// or behaves like a normal window that can be covered.
+    /// Different HUDs can have different settings simultaneously.
     ///
     /// BUG FIX (Jan 22, 2026):
     /// The issue was that NSPanel.isFloatingPanel property overrides the window level.
@@ -1061,22 +1104,42 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// - .normal level = 0 (regular window behavior)
     /// - Setting level directly works as expected when isFloatingPanel is not used
     func updateWindowLevel() {
-        let settings = SettingsManager.shared
-        
-        print("→ SuperSpacesHUD: updateWindowLevel() called, superSpacesFloatOnTop = \(settings.superSpacesFloatOnTop)")
+        print("→ SuperSpacesHUD (\(hudID)): updateWindowLevel() called, isFloatOnTop = \(isFloatOnTop)")
         print("   Current level before change: \(level.rawValue)")
         
-        if settings.superSpacesFloatOnTop {
+        if isFloatOnTop {
             // Set window level to floating (above normal windows)
             level = .floating
-            print("✓ SuperSpacesHUD: Window level set to .floating (always on top)")
+            print("✓ SuperSpacesHUD (\(hudID)): Window level set to .floating (always on top)")
             print("   Level after change: \(level.rawValue)")
         } else {
             // Set window level to normal (can be covered by other windows)
             level = .normal
-            print("✓ SuperSpacesHUD: Window level set to .normal (can be covered)")
+            print("✓ SuperSpacesHUD (\(hudID)): Window level set to .normal (can be covered)")
             print("   Level after change: \(level.rawValue)")
         }
+    }
+    
+    /// Sets the float on top setting for this specific HUD
+    /// Called when user toggles the setting in quick settings
+    ///
+    /// ARCHITECTURE (Jan 23, 2026):
+    /// This is a per-HUD setting, not global. Each HUD instance can have
+    /// its own independent float on top preference. This allows users to:
+    /// - Have one HUD always floating (for quick reference)
+    /// - Have another HUD that can be covered (less intrusive)
+    ///
+    /// - Parameter newValue: true to float on top, false to allow covering
+    func setFloatOnTop(_ newValue: Bool) {
+        guard newValue != isFloatOnTop else { return }
+        
+        isFloatOnTop = newValue
+        updateWindowLevel()
+        
+        print("✓ SuperSpacesHUD (\(hudID)): Float on top changed to \(newValue)")
+        
+        // Trigger save of all HUD configurations
+        manager?.saveHUDConfigurations()
     }
     
     // MARK: - Positioning
@@ -1209,9 +1272,19 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Copies settings from another HUD
     /// Used when duplicating a HUD to preserve user preferences
     /// - Parameter sourceHUD: The HUD to copy settings from
+    ///
+    /// SETTINGS COPIED (Jan 23, 2026):
+    /// - Display mode (compact, note, overview)
+    /// - Float on top setting (per-HUD)
+    /// - Window size
     func copySettings(from sourceHUD: SuperSpacesHUD) {
         // Copy display mode (per-HUD setting)
         self.currentDisplayMode = sourceHUD.currentDisplayMode
+        
+        // Copy float on top setting (per-HUD setting)
+        // Each HUD can have its own independent float on top preference
+        self.isFloatOnTop = sourceHUD.isFloatOnTop
+        updateWindowLevel()
         
         // Copy window size
         let sourceSize = sourceHUD.frame.size
@@ -1219,21 +1292,31 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         newFrame.size = sourceSize
         setFrame(newFrame, display: true)
         
-        // Notify view to update mode
+        // Notify view to update mode and float on top
         viewModel.currentDisplayModeString = self.currentDisplayMode
+        viewModel.floatOnTop = self.isFloatOnTop
         
-        print("✓ SuperSpacesHUD: Copied settings from \(sourceHUD.hudID), mode: \(currentDisplayMode)")
+        print("✓ SuperSpacesHUD: Copied settings from \(sourceHUD.hudID), mode: \(currentDisplayMode), floatOnTop: \(isFloatOnTop)")
     }
     
     /// Returns the current configuration for this HUD
     /// Used for persistence
     /// - Returns: HUDConfiguration with current state
+    ///
+    /// SETTINGS PERSISTED (Jan 23, 2026):
+    /// - id: Unique identifier for the HUD
+    /// - displayMode: compact, note, or overview
+    /// - position: Window position on screen
+    /// - size: Window dimensions
+    /// - isVisible: Whether HUD is currently shown
+    /// - floatOnTop: Per-HUD float on top setting (independent for each HUD)
     func getConfiguration() -> HUDConfiguration {
         var config = HUDConfiguration(id: hudID)
         config.displayMode = currentDisplayMode
         config.position = frame.origin
         config.size = frame.size
         config.isVisible = isCurrentlyVisible
+        config.floatOnTop = isFloatOnTop
         return config
     }
     
