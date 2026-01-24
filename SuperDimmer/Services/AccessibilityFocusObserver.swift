@@ -117,6 +117,11 @@ final class AccessibilityFocusObserver {
      
      THREAD-SAFE: Can be called from any thread.
      
+     FIX (Jan 24, 2026): Add observers asynchronously to prevent main thread freeze.
+     When switching to zone level dimming, we were adding observers for 30+ apps
+     synchronously on the main thread, causing a multi-second freeze. Now we add
+     observers in batches on a background queue to keep the UI responsive.
+     
      - Returns: true if successfully started, false if permission not granted
      */
     @discardableResult
@@ -139,14 +144,44 @@ final class AccessibilityFocusObserver {
         
         isObserving = true
         
-        // Start observing all currently running applications
-        for app in NSWorkspace.shared.runningApplications {
-            if shouldTrackApp(app) {
-                addObserverForApp(pid: app.processIdentifier)
+        // FIX (Jan 24, 2026): Add observers asynchronously to prevent UI freeze
+        // Collect apps to track first (fast operation)
+        let appsToTrack = NSWorkspace.shared.runningApplications.filter { shouldTrackApp($0) }
+        let totalApps = appsToTrack.count
+        
+        print("🔍 AccessibilityFocusObserver starting (will track \(totalApps) apps asynchronously)")
+        
+        // Add observers in batches on a background queue to avoid blocking main thread
+        // We add 5 apps at a time with small delays between batches
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            let batchSize = 5
+            var addedCount = 0
+            
+            for (index, app) in appsToTrack.enumerated() {
+                // Check if we're still observing (user might have stopped)
+                guard self.isObserving else {
+                    print("🔍 AccessibilityFocusObserver: Stopped during async initialization")
+                    return
+                }
+                
+                // Add observer (thread-safe via lock)
+                self.observerLock.lock()
+                self.addObserverForApp(pid: app.processIdentifier)
+                addedCount = self.appObservers.count
+                self.observerLock.unlock()
+                
+                // Small delay every batch to let main thread breathe
+                // This prevents overwhelming the system with AX API calls
+                if (index + 1) % batchSize == 0 {
+                    Thread.sleep(forTimeInterval: 0.05) // 50ms between batches
+                }
             }
+            
+            print("🔍 AccessibilityFocusObserver: Finished adding observers (\(addedCount) apps tracked)")
         }
         
-        print("🔍 AccessibilityFocusObserver started (tracking \(appObservers.count) apps)")
         return true
     }
     

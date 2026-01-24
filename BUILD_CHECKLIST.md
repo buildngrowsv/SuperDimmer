@@ -2110,5 +2110,18 @@ xcodebuild -scheme SuperDimmer -configuration Release archive -archivePath Super
 
 ---
 
+## 🐛 Bug Fixes & Performance Improvements
+
+### January 24, 2026 - Zone Dimming Freeze Fix
+- [x] **FIXED:** App froze for 3-5 seconds when switching to Zone Level dimming mode
+  - **Root Cause:** Synchronous initialization of 30+ Accessibility observers on main thread
+  - **Solution:** Moved observer initialization to background queue with batch processing
+  - **Impact:** Instant mode switching, no UI freeze
+  - **Files Modified:** `AccessibilityFocusObserver.swift`
+  - **Documentation:** `ZONE_DIMMING_FREEZE_FIX.md`
+
+---
+
 *Checklist Version: 1.0*
 *Created: January 7, 2026*
+*Last Updated: January 24, 2026*
