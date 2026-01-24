@@ -89,6 +89,17 @@ final class AutoMinimizeManager: ObservableObject {
     /// Timer for periodic checks and accumulation
     private var updateTimer: Timer?
     
+    /// CRITICAL FIX (Jan 24, 2026): Track windows currently being minimized
+    /// to prevent infinite loop where same window gets minimized repeatedly
+    /// before the AppleScript completes and removes it from tracking.
+    /// This was causing the rainbow spinning cursor crash.
+    private var currentlyMinimizing = Set<CGWindowID>()
+    
+    /// ADDITIONAL SAFETY (Jan 24, 2026): Track last time checkAndMinimizeWindows ran
+    /// to prevent it from running too frequently if called from multiple places
+    private var lastCheckTime: Date = .distantPast
+    private let minCheckInterval: TimeInterval = 5.0  // Don't check more than once per 5 seconds
+    
     /// Active usage time per window
     private var windowActiveTimes: [CGWindowID: WindowActiveTime] = [:]
     
@@ -331,8 +342,23 @@ final class AutoMinimizeManager: ObservableObject {
     
     /**
      Checks each app's window count and minimizes excess inactive windows.
+     
+     CRITICAL FIX (Jan 24, 2026): Added throttle to prevent this from running too frequently.
+     Without this, if called from multiple places or in rapid succession, it can cause
+     an infinite loop where windows are minimized repeatedly.
      */
     private func checkAndMinimizeWindows() {
+        // THROTTLE: Don't run more frequently than minCheckInterval
+        lock.lock()
+        let now = Date()
+        let timeSinceLastCheck = now.timeIntervalSince(lastCheckTime)
+        if timeSinceLastCheck < minCheckInterval {
+            lock.unlock()
+            return
+        }
+        lastCheckTime = now
+        lock.unlock()
+        
         let threshold = settings.autoMinimizeWindowThreshold
         let delaySeconds = settings.autoMinimizeDelay * 60.0  // Convert minutes to seconds
         
@@ -403,11 +429,27 @@ final class AutoMinimizeManager: ObservableObject {
      IMPORTANT (2.2.1.10): We remove all overlays for this window BEFORE minimizing it
      to prevent orphaned overlays that remain visible after the window is minimized.
      
+     CRITICAL FIX (Jan 24, 2026): Added guard to prevent minimizing same window multiple times.
+     The AppleScript execution is slow (100-500ms), and during that time the analysis cycle
+     continues running. Without this guard, the same window gets queued for minimization
+     repeatedly, causing an infinite loop and rainbow spinning cursor crash.
+     
      - Parameters:
        - windowID: The CGWindowID of the window to minimize
        - appName: The app name (for logging and tracking)
      */
     private func minimizeWindow(windowID: CGWindowID, appName: String) {
+        // CRITICAL: Check if this window is already being minimized
+        lock.lock()
+        if currentlyMinimizing.contains(windowID) {
+            lock.unlock()
+            // Already minimizing this window, skip to prevent infinite loop
+            return
+        }
+        // Mark as currently minimizing
+        currentlyMinimizing.insert(windowID)
+        lock.unlock()
+        
         // CRITICAL FIX (2.2.1.10): Remove all overlays for this window BEFORE minimizing it
         // This prevents orphaned overlays that remain visible after the window is minimized.
         // The overlays will be recreated when the window is unminimized and becomes visible again.
@@ -438,20 +480,29 @@ final class AutoMinimizeManager: ObservableObject {
         if let scriptObject = NSAppleScript(source: script) {
             let result = scriptObject.executeAndReturnError(&error)
             
+            lock.lock()
+            // Always remove from currentlyMinimizing, whether success or failure
+            currentlyMinimizing.remove(windowID)
+            
             if error == nil && result.booleanValue {
                 // Track in recently minimized
                 addToRecentlyMinimized(windowID: windowID, appName: appName)
                 
                 // Remove from tracking
-                lock.lock()
                 windowActiveTimes.removeValue(forKey: windowID)
                 lock.unlock()
                 
                 print("📥 AutoMinimizeManager: Minimized window \(windowID) from '\(appName)'")
             } else {
+                lock.unlock()
                 // AppleScript may fail for some windows - not critical
                 // The window might have been closed or the app doesn't support it
             }
+        } else {
+            // Failed to create script object
+            lock.lock()
+            currentlyMinimizing.remove(windowID)
+            lock.unlock()
         }
     }
     
