@@ -471,7 +471,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Previously this was synced with global SettingsManager.superSpacesDisplayMode
     /// Now each HUD maintains its own mode independently
     /// This allows multiple HUDs to show different modes simultaneously
-    private var currentDisplayMode: String = "compact"
+    ///
+    /// ACCESS LEVEL FIX (Jan 24, 2026):
+    /// Changed from private to fileprivate to allow copySettings(from:) to access
+    /// this property from another SuperSpacesHUD instance
+    fileprivate var currentDisplayMode: String = "compact"
     
     /// Whether this specific HUD floats on top of other windows (per-HUD setting)
     /// Each HUD can have its own independent float on top setting
@@ -485,7 +489,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// BEHAVIOR:
     /// - true: Window level = .floating (above normal windows)
     /// - false: Window level = .normal (can be covered by other windows)
-    private var isFloatOnTop: Bool = true
+    ///
+    /// ACCESS LEVEL FIX (Jan 24, 2026):
+    /// Changed from private to fileprivate to allow copySettings(from:) to access
+    /// this property from another SuperSpacesHUD instance
+    fileprivate var isFloatOnTop: Bool = true
     
     /// Stored configuration for this HUD instance (per-HUD persistence)
     /// When a HUD is restored from saved state, this holds its configuration
