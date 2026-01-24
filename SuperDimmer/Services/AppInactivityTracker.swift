@@ -108,6 +108,16 @@ final class AppInactivityTracker: ObservableObject {
     /// Only accumulates when user is actively using the computer.
     private var accumulationTimer: Timer?
     
+    /// Current active space number
+    /// FEATURE (Jan 24, 2026): Space-aware auto-hide
+    /// Tracks which space is currently active. Apps without windows on the current
+    /// space don't accumulate inactivity time (their timer is paused).
+    private var currentSpaceNumber: Int = 1
+    
+    /// Window tracker service for checking which apps have windows on current space
+    /// FEATURE (Jan 24, 2026): Space-aware auto-hide
+    private let windowTracker = WindowTrackerService.shared
+    
     /// System app bundle IDs that should be excluded by default
     /// These are apps that generally should never be auto-hidden
     static let systemAppBundleIDs: Set<String> = [
@@ -132,6 +142,7 @@ final class AppInactivityTracker: ObservableObject {
         setupObservers()
         initializeRunningApps()
         setupIdleTracking()
+        setupSpaceTracking()
         startAccumulationTimer()
         print("✓ AppInactivityTracker initialized")
     }
@@ -468,8 +479,13 @@ final class AppInactivityTracker: ObservableObject {
      Accumulates inactivity time for non-frontmost apps.
      Called every 10 seconds by the accumulation timer.
      
-     ONLY accumulates when user is actively using the computer.
-     Idle periods are automatically excluded.
+     ONLY accumulates when:
+     1. User is actively using the computer (not idle)
+     2. App has at least one window on the current space
+     
+     FEATURE (Jan 24, 2026): Space-aware auto-hide
+     Apps without windows on the current space don't accumulate time.
+     This prevents hiding apps that are on other spaces and not visible.
      */
     private func accumulateInactivityTime() {
         // Only accumulate if user is active
@@ -477,21 +493,105 @@ final class AppInactivityTracker: ObservableObject {
             return  // User is idle - don't accumulate
         }
         
+        // Get all visible windows to check which apps have windows on current space
+        let allWindows = windowTracker.getVisibleWindows()
+        
+        // Build set of bundle IDs that have windows on current space
+        var appsWithWindowsOnCurrentSpace = Set<String>()
+        for window in allWindows {
+            if let bundleID = window.bundleID {
+                appsWithWindowsOnCurrentSpace.insert(bundleID)
+            }
+        }
+        
         lock.lock()
         defer { lock.unlock() }
         
         let accumulationInterval: TimeInterval = 10.0  // Match timer interval
         
-        // Add time to all non-frontmost apps
+        // Add time to all non-frontmost apps that have windows on current space
         for (bundleID, var info) in appActivity {
             // Skip frontmost app
             if bundleID == currentFrontmostBundleID {
                 continue
             }
             
+            // FEATURE (Jan 24, 2026): Space-aware auto-hide
+            // Only accumulate if app has windows on current space
+            // If app has no windows on current space, its timer is paused
+            guard appsWithWindowsOnCurrentSpace.contains(bundleID) else {
+                continue  // App not on current space - don't accumulate
+            }
+            
             // Accumulate inactivity time
             info.accumulatedInactivityTime += accumulationInterval
             appActivity[bundleID] = info
         }
+    }
+    
+    // ================================================================
+    // MARK: - Space Tracking
+    // ================================================================
+    
+    /**
+     Sets up space change tracking to pause timers for apps on other spaces.
+     
+     FEATURE (Jan 24, 2026): Space-aware auto-hide
+     
+     WHY THIS MATTERS:
+     Without space tracking, apps on other spaces continue accumulating inactivity
+     time even though they're not visible to the user. This means switching to
+     Space 2 for a while would cause apps on Space 1 to be hidden, which is
+     unexpected and confusing.
+     
+     HOW IT WORKS:
+     - Subscribe to space change notifications from SpaceChangeMonitor
+     - Update currentSpaceNumber when user switches spaces
+     - accumulateInactivityTime() only counts time for apps with windows on current space
+     - Result: Apps only accumulate time when their windows are actually visible
+     
+     INTEGRATION:
+     - Works alongside idle tracking (both features are independent)
+     - Auto-hide pauses for BOTH idle periods AND when app is on different space
+     */
+    private func setupSpaceTracking() {
+        // Get initial space number
+        if let currentSpace = SpaceDetector.getCurrentSpace() {
+            lock.lock()
+            currentSpaceNumber = currentSpace.spaceNumber
+            lock.unlock()
+            print("✓ AppInactivityTracker: Initial space \(currentSpace.spaceNumber)")
+        }
+        
+        // Monitor for space changes
+        let spaceMonitor = SpaceChangeMonitor()
+        spaceMonitor.startMonitoring { [weak self] newSpaceNumber in
+            guard let self = self else { return }
+            
+            self.lock.lock()
+            let oldSpace = self.currentSpaceNumber
+            self.currentSpaceNumber = newSpaceNumber
+            self.lock.unlock()
+            
+            print("⏰ AppInactivityTracker: Space changed \(oldSpace) → \(newSpaceNumber) - timers paused for apps on other spaces")
+        }
+    }
+    
+    /**
+     Updates the current space number.
+     Called by external components when space changes are detected.
+     
+     - Parameter spaceNumber: The new current space number (1-based)
+     */
+    func updateCurrentSpace(_ spaceNumber: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard spaceNumber != currentSpaceNumber else { return }
+        
+        let oldSpace = currentSpaceNumber
+        currentSpaceNumber = spaceNumber
+        
+        print("⏰ AppInactivityTracker: Space updated \(oldSpace) → \(spaceNumber)")
     }
 }

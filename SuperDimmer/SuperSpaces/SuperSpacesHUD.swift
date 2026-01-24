@@ -469,6 +469,17 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// - false: Window level = .normal (can be covered by other windows)
     private var isFloatOnTop: Bool = true
     
+    /// Stored configuration for this HUD instance (per-HUD persistence)
+    /// When a HUD is restored from saved state, this holds its configuration
+    /// Used to restore position and size on show() instead of global settings
+    ///
+    /// ARCHITECTURE (Jan 23, 2026):
+    /// Each HUD stores its own configuration so that:
+    /// - Position is restored per-HUD, not from global lastHUDPosition
+    /// - Size is restored per-HUD, not from global mode-specific sizes
+    /// - Multiple HUDs can have different positions/sizes simultaneously
+    private var storedConfiguration: HUDConfiguration?
+    
     /// Local event monitor for keyboard shortcuts (Cmd+/Cmd-)
     /// Monitors key events when the HUD window is key (has focus)
     /// This allows text size adjustment with standard keyboard shortcuts
@@ -489,6 +500,10 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     init(id: String, manager: SuperSpacesHUDManager, configuration: HUDConfiguration? = nil) {
         self.hudID = id
         self.manager = manager
+        
+        // Store configuration for per-HUD persistence (Jan 23, 2026)
+        // This is used in show() to restore position/size instead of global settings
+        self.storedConfiguration = configuration
         
         // Apply configuration if provided
         // Each HUD has independent settings: displayMode, floatOnTop, position, size
