@@ -1149,6 +1149,10 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         guard newValue != isFloatOnTop else { return }
         
         isFloatOnTop = newValue
+        
+        // Update stored configuration
+        storedConfiguration?.floatOnTop = newValue
+        
         updateWindowLevel()
         
         print("✓ SuperSpacesHUD (\(hudID)): Float on top changed to \(newValue)")
@@ -1222,6 +1226,11 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     // MARK: - Public Interface
     
     /// Shows the HUD
+    ///
+    /// PERSISTENCE FIX (Jan 23, 2026):
+    /// Now uses per-HUD stored configuration for position and size restoration
+    /// instead of global SettingsManager settings. This ensures each HUD
+    /// remembers its own position and size independently.
     func show() {
         guard !isCurrentlyVisible else {
             print("⚠️ SuperSpacesHUD: Already visible")
@@ -1231,16 +1240,36 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Restore last position if available and valid
-            self.restorePosition()
-            
-            // Restore window size for the current display mode
-            // This ensures the HUD appears with the user's preferred size after app restart
-            // ARCHITECTURE CHANGE (Jan 23, 2026):
-            // Now uses per-HUD currentDisplayMode instead of global setting
-            // We use animated: false here because the window isn't visible yet,
-            // so there's no need to animate the initial size restoration
-            self.restoreSizeForMode(self.currentDisplayMode, animated: false)
+            // Restore position from per-HUD configuration if available
+            // Otherwise fall back to default position (top-right corner)
+            // NOTE: We no longer use global SettingsManager.lastHUDPosition
+            // Each HUD has its own independent position stored in storedConfiguration
+            if let config = self.storedConfiguration {
+                // Per-HUD position restoration
+                if self.isPositionValid(config.position) {
+                    self.setFrameOrigin(config.position)
+                    print("✓ SuperSpacesHUD (\(self.hudID)): Restored per-HUD position to \(config.position)")
+                } else {
+                    // Saved position is off-screen (monitor changed), use default
+                    self.positionToDefaultLocation()
+                    print("⚠️ SuperSpacesHUD (\(self.hudID)): Saved position invalid, using default")
+                }
+                
+                // Per-HUD size restoration
+                // Use the size from stored configuration instead of global mode-specific sizes
+                var newFrame = self.frame
+                newFrame.size = config.size
+                // Adjust origin to keep top-left corner fixed
+                let heightDiff = config.size.height - self.frame.height
+                newFrame.origin.y -= heightDiff
+                self.setFrame(newFrame, display: true)
+                print("✓ SuperSpacesHUD (\(self.hudID)): Restored per-HUD size to \(config.size)")
+            } else {
+                // No stored configuration (new HUD), use defaults
+                self.positionToDefaultLocation()
+                // Size was already set in init, no need to restore
+                print("✓ SuperSpacesHUD (\(self.hudID)): Using default position (no saved config)")
+            }
             
             // Refresh Space data
             self.refreshSpaces()
@@ -1254,7 +1283,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             // Setting it after ensures our desired level is applied and sticks
             self.updateWindowLevel()
             
-            print("✓ SuperSpacesHUD: Shown")
+            print("✓ SuperSpacesHUD (\(self.hudID)): Shown")
         }
     }
     
@@ -1342,6 +1371,10 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         guard mode != currentDisplayMode else { return }
         
         currentDisplayMode = mode
+        
+        // Update stored configuration
+        storedConfiguration?.displayMode = mode
+        
         print("✓ SuperSpacesHUD (\(hudID)): Display mode changed to \(mode)")
         
         // Trigger save of all HUD configurations
@@ -1415,9 +1448,24 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Saves all HUD configurations (debounced)
     ///
     /// PERSISTENCE (Jan 23, 2026):
-    /// Now triggers save of all HUD configurations via manager
-    /// instead of saving to global lastHUDPosition
+    /// - Updates storedConfiguration with new position for immediate use
+    /// - Triggers save of all HUD configurations via manager for persistence
+    /// - Each HUD's position is saved independently per-instance
     func windowDidMove(_ notification: Notification) {
+        // Update stored configuration immediately so show() uses latest position
+        if storedConfiguration != nil {
+            storedConfiguration?.position = frame.origin
+        } else {
+            // Create stored configuration if it doesn't exist
+            var config = HUDConfiguration(id: hudID)
+            config.position = frame.origin
+            config.size = frame.size
+            config.displayMode = currentDisplayMode
+            config.floatOnTop = isFloatOnTop
+            config.isVisible = isCurrentlyVisible
+            storedConfiguration = config
+        }
+        
         // Cancel previous save timer
         positionSaveTimer?.invalidate()
         
@@ -1437,9 +1485,24 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// Saves all HUD configurations (debounced)
     ///
     /// PERSISTENCE (Jan 23, 2026):
-    /// Now triggers save of all HUD configurations via manager
-    /// Each HUD's size is saved independently per-instance
+    /// - Updates storedConfiguration with new size for immediate use
+    /// - Triggers save of all HUD configurations via manager for persistence
+    /// - Each HUD's size is saved independently per-instance
     func windowDidResize(_ notification: Notification) {
+        // Update stored configuration immediately so show() uses latest size
+        if storedConfiguration != nil {
+            storedConfiguration?.size = frame.size
+        } else {
+            // Create stored configuration if it doesn't exist
+            var config = HUDConfiguration(id: hudID)
+            config.position = frame.origin
+            config.size = frame.size
+            config.displayMode = currentDisplayMode
+            config.floatOnTop = isFloatOnTop
+            config.isVisible = isCurrentlyVisible
+            storedConfiguration = config
+        }
+        
         // Cancel previous save timer
         sizeSaveTimer?.invalidate()
         
