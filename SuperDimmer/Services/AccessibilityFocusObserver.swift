@@ -157,7 +157,6 @@ final class AccessibilityFocusObserver {
             guard let self = self else { return }
             
             let batchSize = 5
-            var addedCount = 0
             
             for (index, app) in appsToTrack.enumerated() {
                 // Check if we're still observing (user might have stopped)
@@ -166,11 +165,8 @@ final class AccessibilityFocusObserver {
                     return
                 }
                 
-                // Add observer (thread-safe via lock)
-                self.observerLock.lock()
+                // Add observer (handles its own locking and main thread dispatch)
                 self.addObserverForApp(pid: app.processIdentifier)
-                addedCount = self.appObservers.count
-                self.observerLock.unlock()
                 
                 // Small delay every batch to let main thread breathe
                 // This prevents overwhelming the system with AX API calls
@@ -179,7 +175,15 @@ final class AccessibilityFocusObserver {
                 }
             }
             
-            print("🔍 AccessibilityFocusObserver: Finished adding observers (\(addedCount) apps tracked)")
+            // Wait a moment for all async main thread dispatches to complete
+            Thread.sleep(forTimeInterval: 0.2)
+            
+            // Get final count
+            self.observerLock.lock()
+            let finalCount = self.appObservers.count
+            self.observerLock.unlock()
+            
+            print("🔍 AccessibilityFocusObserver: Finished adding observers (\(finalCount) apps tracked)")
         }
         
         return true
@@ -295,14 +299,20 @@ final class AccessibilityFocusObserver {
      The observer watches for kAXFocusedWindowChangedNotification which
      fires when any window in that app gains focus.
      
-     MUST be called with observerLock held.
+     FIX (Jan 24, 2026): This method now handles its own locking and main thread dispatch.
+     It can be called from any thread safely.
      
      - Parameter pid: Process ID of the application to observe
      */
     private func addObserverForApp(pid: pid_t) {
-        guard !trackedPIDs.contains(pid) else { return }
+        // Check if already tracked (with lock)
+        observerLock.lock()
+        let alreadyTracked = trackedPIDs.contains(pid)
+        observerLock.unlock()
         
-        // Create AXObserver for this process
+        guard !alreadyTracked else { return }
+        
+        // Create AXObserver for this process (can be done off main thread)
         var observer: AXObserver?
         let result = AXObserverCreate(pid, axObserverCallback, &observer)
         
@@ -335,18 +345,29 @@ final class AccessibilityFocusObserver {
             UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         )
         
-        // Add observer to main run loop
-        CFRunLoopAddSource(
-            CFRunLoopGetMain(),
-            AXObserverGetRunLoopSource(observer),
-            .defaultMode
-        )
-        
-        // Store observer and mark PID as tracked
-        appObservers[pid] = observer
-        trackedPIDs.insert(pid)
-        
-        print("🔍 Added AX observer for PID \(pid)")
+        // FIX (Jan 24, 2026): Add observer to main run loop on MAIN THREAD
+        // CFRunLoopAddSource MUST be called from the main thread when using CFRunLoopGetMain()
+        // This was causing EXC_BAD_ACCESS crashes when called from background thread.
+        // We use async (not sync) to avoid deadlocks when called while holding locks.
+        let runLoopSource = AXObserverGetRunLoopSource(observer)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Add to run loop
+            CFRunLoopAddSource(
+                CFRunLoopGetMain(),
+                runLoopSource,
+                .defaultMode
+            )
+            
+            // Now store observer and mark PID as tracked (with lock)
+            self.observerLock.lock()
+            self.appObservers[pid] = observer
+            self.trackedPIDs.insert(pid)
+            self.observerLock.unlock()
+            
+            print("🔍 Added AX observer for PID \(pid)")
+        }
     }
     
     /**

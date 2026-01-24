@@ -53,9 +53,9 @@ All 34 observers were added synchronously before the app could respond to user i
 
 ## Solution
 
-**Asynchronous Observer Initialization**
+**Asynchronous Observer Initialization with Main Thread Run Loop Handling**
 
-Modified `AccessibilityFocusObserver.startObserving()` to add observers **asynchronously in batches** on a background queue:
+Modified `AccessibilityFocusObserver.startObserving()` and `addObserverForApp()` to add observers **asynchronously in batches** on a background queue, while ensuring run loop operations happen on the main thread:
 
 ### Key Changes
 
@@ -64,9 +64,11 @@ Modified `AccessibilityFocusObserver.startObserving()` to add observers **asynch
 3. **Batch processing** - Add 5 apps at a time with 50ms delays between batches
 4. **Thread safety** - Use existing `observerLock` to protect shared state
 5. **Graceful cancellation** - Check `isObserving` flag to stop if user disables during init
+6. **CRITICAL FIX (Jan 24, 2026):** Run loop operations on main thread - `CFRunLoopAddSource` with `CFRunLoopGetMain()` MUST be called from the main thread, not background threads. This was causing EXC_BAD_ACCESS crashes.
 
 ### Implementation
 
+**Part 1: Async Initialization (startObserving)**
 ```swift
 // FIX (Jan 24, 2026): Add observers asynchronously to prevent UI freeze
 let appsToTrack = NSWorkspace.shared.runningApplications.filter { shouldTrackApp($0) }
@@ -79,7 +81,6 @@ DispatchQueue.global(qos: .userInitiated).async { [weak self] in
     guard let self = self else { return }
     
     let batchSize = 5
-    var addedCount = 0
     
     for (index, app) in appsToTrack.enumerated() {
         // Check if we're still observing
@@ -88,11 +89,8 @@ DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             return
         }
         
-        // Add observer (thread-safe via lock)
-        self.observerLock.lock()
+        // Add observer (handles its own locking and main thread dispatch)
         self.addObserverForApp(pid: app.processIdentifier)
-        addedCount = self.appObservers.count
-        self.observerLock.unlock()
         
         // Small delay every batch to let main thread breathe
         if (index + 1) % batchSize == 0 {
@@ -100,7 +98,42 @@ DispatchQueue.global(qos: .userInitiated).async { [weak self] in
         }
     }
     
-    print("🔍 AccessibilityFocusObserver: Finished adding observers (\(addedCount) apps tracked)")
+    // Wait for async main thread dispatches to complete
+    Thread.sleep(forTimeInterval: 0.2)
+    
+    // Get final count
+    self.observerLock.lock()
+    let finalCount = self.appObservers.count
+    self.observerLock.unlock()
+    
+    print("🔍 AccessibilityFocusObserver: Finished adding observers (\(finalCount) apps tracked)")
+}
+```
+
+**Part 2: Main Thread Run Loop Handling (addObserverForApp)**
+```swift
+// FIX (Jan 24, 2026): Add observer to main run loop on MAIN THREAD
+// CFRunLoopAddSource MUST be called from the main thread when using CFRunLoopGetMain()
+// This was causing EXC_BAD_ACCESS crashes when called from background thread.
+// We use async (not sync) to avoid deadlocks when called while holding locks.
+let runLoopSource = AXObserverGetRunLoopSource(observer)
+DispatchQueue.main.async { [weak self] in
+    guard let self = self else { return }
+    
+    // Add to run loop
+    CFRunLoopAddSource(
+        CFRunLoopGetMain(),
+        runLoopSource,
+        .defaultMode
+    )
+    
+    // Now store observer and mark PID as tracked (with lock)
+    self.observerLock.lock()
+    self.appObservers[pid] = observer
+    self.trackedPIDs.insert(pid)
+    self.observerLock.unlock()
+    
+    print("🔍 Added AX observer for PID \(pid)")
 }
 ```
 
@@ -109,10 +142,11 @@ DispatchQueue.global(qos: .userInitiated).async { [weak self] in
 ## Benefits
 
 1. **No UI freeze** - Main thread remains responsive during mode switch
-2. **Graceful degradation** - Observers are added progressively, so focus detection starts working immediately for the first batch
-3. **Efficient** - Batch delays prevent overwhelming the system with AX API calls
-4. **Safe** - Proper locking ensures thread safety
-5. **Cancellable** - If user disables dimming during initialization, the process stops cleanly
+2. **No crashes** - Run loop operations correctly dispatched to main thread
+3. **Graceful degradation** - Observers are added progressively, so focus detection starts working immediately for the first batch
+4. **Efficient** - Batch delays prevent overwhelming the system with AX API calls
+5. **Safe** - Proper locking ensures thread safety, async dispatch avoids deadlocks
+6. **Cancellable** - If user disables dimming during initialization, the process stops cleanly
 
 ---
 
@@ -151,9 +185,10 @@ The fix maintains thread safety via:
 
 ### Performance Impact
 
-- **Before:** 34 apps × ~100ms per observer = ~3400ms blocked on main thread
-- **After:** Main thread blocked for <10ms (just collecting app list), observers added over ~1700ms in background
-- **User experience:** Instant vs frozen
+- **Before Fix 1:** 34 apps × ~100ms per observer = ~3400ms blocked on main thread → **UI freeze**
+- **After Fix 1:** Main thread blocked for <10ms, observers added in background → **Still crashed with EXC_BAD_ACCESS**
+- **After Fix 2:** Main thread blocked for <10ms, run loop operations on main thread → **No freeze, no crash**
+- **User experience:** Instant mode switching with no perceptible delay
 
 ---
 
