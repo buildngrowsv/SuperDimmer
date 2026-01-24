@@ -182,6 +182,16 @@ final class AppInactivityTracker: ObservableObject {
             name: NSWorkspace.didLaunchApplicationNotification,
             object: nil
         )
+        
+        // CRITICAL FIX (Jan 24, 2026): Observe extended idle returns to reset timers
+        // Without this, accumulated time from before idle period persists after return,
+        // causing apps to be immediately hidden when user comes back from extended idle.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleExtendedIdleReturn(_:)),
+            name: .userReturnedFromExtendedIdle,
+            object: nil
+        )
     }
     
     /**
@@ -274,6 +284,21 @@ final class AppInactivityTracker: ObservableObject {
         defer { lock.unlock() }
         
         appActivity.removeValue(forKey: bundleID)
+    }
+    
+    @objc private func handleExtendedIdleReturn(_ notification: Notification) {
+        // CRITICAL FIX (Jan 24, 2026): Reset all accumulated times when user returns from extended idle
+        // This prevents apps from being immediately hidden after returning from lunch/breaks
+        lock.lock()
+        defer { lock.unlock() }
+        
+        for (bundleID, var info) in appActivity {
+            info.accumulatedInactivityTime = 0
+            appActivity[bundleID] = info
+        }
+        
+        let idleDuration = notification.userInfo?["idleDuration"] as? TimeInterval ?? 0
+        print("🔄 AppInactivityTracker: Reset all \(appActivity.count) app timers (user returned from \(Int(idleDuration))s idle)")
     }
     
     // ================================================================
