@@ -266,20 +266,38 @@ final class SuperSpacesHUDManager {
     /// Creates a new HUD with the same settings but offset position
     /// - Parameter sourceHUD: The HUD to duplicate
     /// - Returns: The newly created duplicate HUD
+    ///
+    /// BUG FIX (Jan 24, 2026):
+    /// Previously, the offset position was being overwritten by show() because
+    /// the new HUD had no storedConfiguration. Now we create a storedConfiguration
+    /// with the offset position BEFORE calling show(), so show() uses it correctly.
     @discardableResult
     func duplicateHUD(_ sourceHUD: SuperSpacesHUD) -> SuperSpacesHUD {
         let newHUD = createHUD()
         
-        // Copy settings from source HUD
+        // Copy settings from source HUD (display mode, float on top, size)
         newHUD.copySettings(from: sourceHUD)
         
-        // Offset position slightly so it's visible
-        var newFrame = newHUD.frame
-        newFrame.origin.x += 30
-        newFrame.origin.y -= 30
-        newHUD.setFrameOrigin(newFrame.origin)
+        // Get source HUD's current configuration
+        let sourceConfig = sourceHUD.getConfiguration()
         
-        // Show the new HUD
+        // Calculate offset position (slightly down and to the right)
+        var offsetPosition = sourceConfig.position
+        offsetPosition.x += 30
+        offsetPosition.y -= 30
+        
+        // Create stored configuration with offset position
+        // This is CRITICAL: show() checks storedConfiguration to restore position
+        // Without this, show() would call positionToDefaultLocation() and ignore our offset
+        var config = HUDConfiguration(id: newHUD.hudID)
+        config.displayMode = sourceConfig.displayMode
+        config.position = offsetPosition
+        config.size = sourceConfig.size
+        config.floatOnTop = sourceConfig.floatOnTop
+        config.isVisible = true
+        newHUD.setStoredConfiguration(config)
+        
+        // Show the new HUD (will use storedConfiguration for position)
         newHUD.show()
         
         print("✓ HUDManager: Duplicated HUD \(sourceHUD.hudID) -> \(newHUD.hudID)")
@@ -1362,6 +1380,18 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         config.isVisible = isCurrentlyVisible
         config.floatOnTop = isFloatOnTop
         return config
+    }
+    
+    /// Sets the stored configuration for this HUD
+    /// Used when duplicating to ensure show() uses the correct position
+    /// - Parameter config: The configuration to store
+    ///
+    /// BUG FIX (Jan 24, 2026):
+    /// This method is needed for duplication to work correctly.
+    /// When duplicating, we need to set storedConfiguration BEFORE calling show()
+    /// so that show() restores the offset position instead of using default position.
+    func setStoredConfiguration(_ config: HUDConfiguration) {
+        self.storedConfiguration = config
     }
     
     /// Updates the display mode for this HUD instance
