@@ -269,7 +269,6 @@ struct DimmingProfile: Codable, Equatable {
     var autoHideDelay: Double = 30.0  // 30 minutes
     var autoMinimizeEnabled: Bool = false  // Auto-minimize windows
     var autoMinimizeDelay: Double = 15.0  // 15 minutes
-    var autoMinimizeIdleResetTime: Double = 5.0  // 5 minutes idle resets timers
     var autoMinimizeWindowThreshold: Int = 3  // Keep at least 3 windows
     
     /// Creates a profile with default values for Dark Mode
@@ -297,38 +296,38 @@ struct DimmingProfile: Codable, Equatable {
             autoHideDelay: 30.0,
             autoMinimizeEnabled: false,
             autoMinimizeDelay: 15.0,
-            autoMinimizeIdleResetTime: 5.0,
             autoMinimizeWindowThreshold: 3
         )
     }
     
     /// Creates a profile with default values for Light Mode
     /// Light mode users typically don't want aggressive dimming
+    /// DESIGN DECISION: Zero dimming by default for all regular dimming modes.
+    /// Only time decay dimming is configured (but OFF by default) for users who want it.
     static func defaultLightMode() -> DimmingProfile {
         return DimmingProfile(
             isDimmingEnabled: false,  // OFF by default in light mode
-            globalDimLevel: 0.15,  // Lighter dimming if enabled
+            globalDimLevel: 0.0,  // Zero dimming - light mode users don't need screen dimming
             superDimmingAutoEnabled: false,  // No auto-adjustment
             autoAdjustRange: 0.10,  // Smaller range if enabled
             intelligentDimmingEnabled: false,
             detectionMode: .perWindow,
             brightnessThreshold: 0.90,  // Higher threshold (less aggressive)
-            activeDimLevel: 0.10,  // Lighter dimming
-            inactiveDimLevel: 0.25,  // Lighter dimming
+            activeDimLevel: 0.0,  // Zero dimming for active windows
+            inactiveDimLevel: 0.0,  // Zero dimming for inactive windows
             differentiateActiveInactive: true,
             regionGridSize: 6,
             scanInterval: 2.0,
             windowTrackingInterval: 0.5,
             superFocusEnabled: false,
-            inactivityDecayEnabled: false,
-            decayRate: 0.01,
+            inactivityDecayEnabled: false,  // OFF by default, but available if user wants it
+            decayRate: 0.01,  // Decay settings configured for users who enable it
             decayStartDelay: 30.0,
-            maxDecayDimLevel: 0.6,  // Lower max decay
+            maxDecayDimLevel: 0.6,  // Lower max decay than dark mode (60% vs 80%)
             autoHideEnabled: false,  // OFF by default in light mode
             autoHideDelay: 30.0,
             autoMinimizeEnabled: false,
             autoMinimizeDelay: 15.0,
-            autoMinimizeIdleResetTime: 5.0,
             autoMinimizeWindowThreshold: 3
         )
     }
@@ -521,7 +520,6 @@ final class SettingsManager: ObservableObject {
         // Auto-Minimize Inactive Windows (WINDOW-LEVEL)
         case autoMinimizeEnabled = "superdimmer.autoMinimizeEnabled"
         case autoMinimizeDelay = "superdimmer.autoMinimizeDelay"
-        case autoMinimizeIdleResetTime = "superdimmer.autoMinimizeIdleResetTime"
         case autoMinimizeWindowThreshold = "superdimmer.autoMinimizeWindowThreshold"
         case autoMinimizeExcludedApps = "superdimmer.autoMinimizeExcludedApps"
         
@@ -1359,22 +1357,6 @@ final class SettingsManager: ObservableObject {
     @Published var autoMinimizeDelay: Double {
         didSet {
             defaults.set(autoMinimizeDelay, forKey: Keys.autoMinimizeDelay.rawValue)
-        }
-    }
-    
-    /**
-     Minutes of user idle time that resets ALL window minimize timers.
-     
-     Range: 2-30 minutes
-     Default: 5 minutes
-     
-     WHY: If you walk away for 5+ minutes (coffee break, meeting),
-     all timers reset. This prevents coming back to everything minimized.
-     Also resets on wake from sleep.
-     */
-    @Published var autoMinimizeIdleResetTime: Double {
-        didSet {
-            defaults.set(autoMinimizeIdleResetTime, forKey: Keys.autoMinimizeIdleResetTime.rawValue)
         }
     }
     
@@ -2344,9 +2326,6 @@ final class SettingsManager: ObservableObject {
         self.autoMinimizeDelay = defaults.object(forKey: Keys.autoMinimizeDelay.rawValue) != nil ?
             defaults.double(forKey: Keys.autoMinimizeDelay.rawValue) : 15.0  // 15 minutes of active use
         
-        self.autoMinimizeIdleResetTime = defaults.object(forKey: Keys.autoMinimizeIdleResetTime.rawValue) != nil ?
-            defaults.double(forKey: Keys.autoMinimizeIdleResetTime.rawValue) : 5.0  // 5 minutes idle resets timers
-        
         self.autoMinimizeWindowThreshold = defaults.object(forKey: Keys.autoMinimizeWindowThreshold.rawValue) != nil ?
             defaults.integer(forKey: Keys.autoMinimizeWindowThreshold.rawValue) : 3  // Keep at least 3 windows
         
@@ -2786,9 +2765,6 @@ final class SettingsManager: ObservableObject {
         if autoMinimizeDelay != profile.autoMinimizeDelay {
             autoMinimizeDelay = profile.autoMinimizeDelay
         }
-        if autoMinimizeIdleResetTime != profile.autoMinimizeIdleResetTime {
-            autoMinimizeIdleResetTime = profile.autoMinimizeIdleResetTime
-        }
         if autoMinimizeWindowThreshold != profile.autoMinimizeWindowThreshold {
             autoMinimizeWindowThreshold = profile.autoMinimizeWindowThreshold
         }
@@ -2841,7 +2817,6 @@ final class SettingsManager: ObservableObject {
             autoHideDelay: autoHideDelay,
             autoMinimizeEnabled: autoMinimizeEnabled,
             autoMinimizeDelay: autoMinimizeDelay,
-            autoMinimizeIdleResetTime: autoMinimizeIdleResetTime,
             autoMinimizeWindowThreshold: autoMinimizeWindowThreshold
         )
         
@@ -3275,7 +3250,6 @@ final class SettingsManager: ObservableObject {
         // Auto-Minimize Windows (OFF by default)
         autoMinimizeEnabled = false
         autoMinimizeDelay = 15.0
-        autoMinimizeIdleResetTime = 5.0
         autoMinimizeWindowThreshold = 3
         autoMinimizeExcludedApps = []  // Legacy, will be migrated
         
