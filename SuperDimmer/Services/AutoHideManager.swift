@@ -86,6 +86,33 @@ final class AutoHideManager: ObservableObject {
     /// Lock for thread safety
     private let lock = NSLock()
     
+    /**
+     Tracks bundle IDs for which hide() has recently failed, along with the
+     timestamp of the last failure.
+     
+     FIX (Feb 6, 2026): Prevents the "failed hide + overlay removal" loop.
+     
+     THE BUG:
+     Without this, every 60-second check cycle would attempt to hide the same
+     app, call removeOverlaysForApp() before checking the result, get a failure
+     from app.hide(), and leave the user with flickering overlays as they get
+     removed and recreated each cycle.
+     
+     THE FIX:
+     After a failed hide attempt, we record the bundle ID and timestamp here.
+     We won't retry that app for `hideRetryCooldown` seconds (5 minutes).
+     This prevents the overlay flicker loop while still retrying eventually
+     in case conditions change (e.g., user switches away from that app).
+     */
+    private var failedHideAttempts: [String: Date] = [:]
+    
+    /**
+     Cooldown period after a failed hide attempt before retrying.
+     5 minutes is long enough to prevent flickering but short enough to
+     retry in case the app is no longer frontmost.
+     */
+    private let hideRetryCooldown: TimeInterval = 300.0  // 5 minutes
+    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
@@ -117,6 +144,25 @@ final class AutoHideManager: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        
+        // FIX (Feb 6, 2026): Clear failed hide cooldowns when apps become active.
+        // When the user activates an app, that app's conditions have changed —
+        // it was frontmost, and now has a fresh inactivity timer. We should clear
+        // any previous failed hide cooldown so the app can be properly re-evaluated
+        // after the full autoHideDelay passes again.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bundleID = app.bundleIdentifier else { return }
+            
+            self.lock.lock()
+            self.failedHideAttempts.removeValue(forKey: bundleID)
+            self.lock.unlock()
+        }
     }
     
     // ================================================================
@@ -181,21 +227,40 @@ final class AutoHideManager: ObservableObject {
             excludedBundleIDs: excludedApps
         )
         
-        // Hide each inactive app
+        // Hide each inactive app and count successes
+        // FIX (Jan 28, 2026): Track actual successful hides, not just attempted hides
+        // This fixes misleading logging that said "Hid X apps" even when some failed
+        var hiddenCount = 0
         for bundleID in inactiveApps {
-            hideApp(bundleID: bundleID)
+            if hideApp(bundleID: bundleID) {
+                hiddenCount += 1
+            }
         }
         
-        if !inactiveApps.isEmpty {
-            print("🙈 AutoHideManager: Hid \(inactiveApps.count) inactive app(s)")
+        if hiddenCount > 0 {
+            print("🙈 AutoHideManager: Hid \(hiddenCount) inactive app(s)")
         }
     }
     
     /**
      Hides a specific app by bundle ID.
      
-     IMPORTANT (2.2.1.10): We remove all overlays for this app BEFORE hiding it
-     to prevent orphaned overlays that remain visible after the app is hidden.
+     FIX (Feb 6, 2026): Major rewrite to fix overlay flickering bug.
+     
+     PREVIOUS BUG:
+     We used to call removeOverlaysForApp() BEFORE app.hide(). When the hide
+     failed (e.g., app is frontmost, or macOS rejected it), overlays were removed
+     for a still-visible app. The next analysis cycle would recreate them, causing
+     a visible flicker every 60 seconds. Logs showed repeated messages like:
+       ⚠️ AutoHideManager: Failed to hide 'Cursor'
+       🙈 Removed 3 overlays for hidden app (PID 67448)
+     
+     FIXES APPLIED:
+     1. Added frontmost app check — never attempt to hide the active app
+     2. Moved removeOverlaysForApp() to AFTER successful hide
+     3. Added cooldown for failed hide attempts to prevent retry loops
+     4. DimmingCoordinator already observes didHideApplicationNotification for
+        overlay cleanup, so our explicit call is just for immediate response
      
      - Parameter bundleID: The bundle identifier of the app to hide
      - Returns: true if successfully hidden
@@ -204,7 +269,6 @@ final class AutoHideManager: ObservableObject {
     func hideApp(bundleID: String) -> Bool {
         // Find the running app
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleID }) else {
-            print("⚠️ AutoHideManager: Could not find running app: \(bundleID)")
             return false
         }
         
@@ -218,23 +282,60 @@ final class AutoHideManager: ObservableObject {
             return false
         }
         
-        // CRITICAL FIX (2.2.1.10): Remove all overlays for this app BEFORE hiding it
-        // This prevents orphaned overlays that remain visible after the app is hidden.
-        // The overlays will be recreated when the app is unhidden and becomes visible again.
-        let pid = app.processIdentifier
-        OverlayManager.shared.removeOverlaysForApp(pid: pid)
+        // FIX (Feb 6, 2026): Don't hide the frontmost (active) app.
+        // The user is currently interacting with it. macOS would reject
+        // the hide anyway, but checking here avoids the side effects
+        // (overlay removal attempt, log noise, cooldown tracking).
+        if app == NSWorkspace.shared.frontmostApplication {
+            return false
+        }
         
-        // Hide the app
+        // FIX (Feb 6, 2026): Check cooldown for previously failed hide attempts.
+        // This prevents the overlay flickering loop where we remove overlays
+        // every 60s for an app that refuses to be hidden.
+        lock.lock()
+        if let lastFailed = failedHideAttempts[bundleID] {
+            let timeSinceFailure = Date().timeIntervalSince(lastFailed)
+            if timeSinceFailure < hideRetryCooldown {
+                lock.unlock()
+                return false  // Still in cooldown, skip this attempt
+            }
+        }
+        lock.unlock()
+        
+        // Attempt to hide the app
         let result = app.hide()
         
         if result {
+            // FIX (Feb 6, 2026): MOVED overlay removal to AFTER successful hide.
+            // Previously this was before hide(), causing overlays to be removed
+            // even when hide failed — creating the flickering bug.
+            //
+            // NOTE: DimmingCoordinator also handles overlay removal via
+            // didHideApplicationNotification, but we call explicitly here for
+            // immediate response (the notification may be slightly delayed).
+            let pid = app.processIdentifier
+            OverlayManager.shared.removeOverlaysForApp(pid: pid)
+            
             // Track in recently hidden
             let appName = app.localizedName ?? bundleID
             addToRecentlyHidden(bundleID: bundleID, name: appName)
             
+            // Clear any previous failure cooldown since hide succeeded
+            lock.lock()
+            failedHideAttempts.removeValue(forKey: bundleID)
+            lock.unlock()
+            
             print("🙈 AutoHideManager: Hid '\(appName)' (inactive for >\(Int(settings.autoHideDelay))min)")
         } else {
-            print("⚠️ AutoHideManager: Failed to hide '\(app.localizedName ?? bundleID)'")
+            // Hide failed — record the failure timestamp for cooldown.
+            // Don't log every failure because it creates noise every 60s.
+            // Common failure reason: app is somehow protected or in a state
+            // where macOS won't allow hiding (not frontmost — we checked that
+            // above — but some apps resist programmatic hiding).
+            lock.lock()
+            failedHideAttempts[bundleID] = Date()
+            lock.unlock()
         }
         
         return result

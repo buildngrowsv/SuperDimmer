@@ -85,8 +85,21 @@ final class AccessibilityFocusObserver {
     /// Whether observation is active
     private var isObserving = false
     
-    /// Lock for thread safety
-    private let observerLock = NSLock()
+    /**
+     Lock for thread-safe access to observers dictionary and tracked PIDs.
+     
+     DEADLOCK FIX (Jan 26, 2026):
+     Changed from NSLock to NSRecursiveLock to allow same thread to acquire lock multiple times.
+     This fixes deadlock when setupAppTrackingNotifications() calls addObserverForApp()
+     while holding the lock.
+     
+     Root cause: Main thread acquired observerLock at line 266, then called addObserverForApp()
+     at line 268 which tried to acquire the same lock at line 309, causing deadlock.
+     
+     NSRecursiveLock allows recursive locking by the same thread, preventing this issue.
+     Found via spindump analysis showing main thread blocked in _pthread_mutex_firstfit_lock_wait.
+     */
+    private let observerLock = NSRecursiveLock()
     
     // ================================================================
     // MARK: - Initialization

@@ -36,6 +36,7 @@
 
 import AppKit
 import QuartzCore
+import os.log
 
 // ====================================================================
 // MARK: - Dim Overlay Window
@@ -56,6 +57,10 @@ import QuartzCore
  - Work with fullscreen apps
  - Animate opacity changes smoothly
  */
+/// FIX (Feb 5, 2026): Private logger for DimOverlayWindow operations.
+/// Replaced print() with os.log to stop logging quarantine.
+private let dimWindowLogger = Logger(subsystem: "com.superdimmer.app", category: "overlay")
+
 final class DimOverlayWindow: NSWindow {
     
     // ================================================================
@@ -121,7 +126,9 @@ final class DimOverlayWindow: NSWindow {
         // Setup the dim view with initial level
         window.setupDimView(initialDimLevel: dimLevel)
         
-        print("📦 DimOverlayWindow created: \(id) at \(frame)")
+        // FIX (Feb 5, 2026): Switched from print to os_log - overlay creation happens frequently
+        // during decay dimming and was contributing to the logging quarantine
+        dimWindowLogger.debug("DimOverlayWindow created: \(id, privacy: .public) at \(frame.debugDescription, privacy: .public)")
         return window
     }
     
@@ -237,7 +244,8 @@ final class DimOverlayWindow: NSWindow {
         self.contentView?.addSubview(view)
         self.dimLevel = clampedLevel
         
-        print("📦 DimView setup with level: \(clampedLevel)")
+        // FIX (Feb 5, 2026): Switched from print to os_log
+        dimWindowLogger.debug("DimView setup with level: \(clampedLevel)")
     }
     
     // ================================================================
@@ -476,10 +484,14 @@ final class DimOverlayWindow: NSWindow {
      The new strategy is to let ARC deallocate overlays naturally without
      calling close(), which avoids all the AppKit autorelease issues.
      
+     CRASH FIX (Jan 25, 2026): Removed layer access in close() to prevent
+     use-after-free crashes. By the time close() is called, the view hierarchy
+     may already be in the process of being deallocated.
+     
      If close() is called (e.g., from removeAllOverlays on app quit):
      1. Checks if already closing (prevents double-close)
      2. Flushes Core Animation transactions before closing
-     3. Clears layer references to help avoid use-after-free
+     3. Calls super.close() - AppKit handles all cleanup
      */
     override func close() {
         // Prevent double-close
@@ -493,25 +505,32 @@ final class DimOverlayWindow: NSWindow {
         // This helps ensure animations are committed before we tear down
         CATransaction.flush()
         
-        // Clear the dim view's layer to help avoid CA use-after-free
-        if let layer = dimView?.layer {
-            layer.removeAllAnimations()
-        }
-        dimView = nil
+        // DO NOT access dimView or its layer here - can cause use-after-free crashes
+        // AppKit will handle all view hierarchy cleanup automatically
         
         // Now actually close
         super.close()
     }
     
     deinit {
-        // Clean up without calling close()
-        // Just remove animations and clear references
-        // Let AppKit handle the window cleanup naturally
-        if let layer = dimView?.layer {
-            layer.removeAllAnimations()
-        }
-        dimView = nil
+        // CRASH FIX (Jan 25, 2026): DO NOT access dimView or its layer in deinit!
+        // 
+        // ROOT CAUSE: By the time deinit runs, AppKit may have already deallocated
+        // the contentView and all subviews (including dimView). Accessing dimView?.layer
+        // or calling removeAllAnimations() can cause EXC_BAD_ACCESS crashes because
+        // we're accessing freed memory.
+        //
+        // SOLUTION: Don't touch the view hierarchy at all in deinit. AppKit handles
+        // all cleanup automatically. We just need to clear our reference (which happens
+        // automatically when the object is deallocated anyway).
+        //
+        // The animations are already stopped by safeHideOverlay() BEFORE the overlay
+        // is removed from dictionaries, so there's no need to remove them again here.
         
+        // Just log the deallocation - don't touch any views or layers
         print("📦 DimOverlayWindow deallocated by ARC: \(overlayID)")
+        
+        // dimView will be automatically set to nil when this object is deallocated
+        // No need to manually clear it or access its properties
     }
 }

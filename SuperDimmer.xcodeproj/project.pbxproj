@@ -16,12 +16,15 @@
 		29BD586ACDE68974C13A7BF1 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31EE0BF2647E666C8DE787FC /* LaunchAtLoginManager.swift */; };
 		2D56097619E851E2CC830DF9 /* ColorTemperatureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0BFACA94CF0754453B87312 /* ColorTemperatureManager.swift */; };
 		2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */; };
+		MS1234567890ABCDEF123456 /* ModernScreenCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MS9876543210FEDCBA987654 /* ModernScreenCaptureService.swift */; };
 		305FA57277603D003500DA9C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608B44F65F59A9F4646E6B74 /* AppDelegate.swift */; };
 		34184663D93157DBBB3F3EC7 /* ActiveUsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F32866BC77083FB16EB659 /* ActiveUsageTracker.swift */; };
 		353628B161F9D1F7C1B9A16F /* AppInactivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */; };
 		4DD0AECDF80AE9516DB78ABB /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73D0D7E7FF2F4335B2B8EABD /* CoreLocation.framework */; };
 		508419C6B18C614C338729C0 /* AppearanceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075047FB28A493C3CFAF7035 /* AppearanceManager.swift */; };
 		52FD8C0A6C3C46BA4BB37103 /* CrashReportingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */; };
+		HD1000000001HANGDETECTOR0 /* MainThreadHangDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = HD2000000001HANGDETECTOR0 /* MainThreadHangDetector.swift */; };
+		AL1000000001APPLOGGER000 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AL2000000001APPLOGGER000 /* AppLogger.swift */; };
 		7DDE4D2F6E4941D27A802F97 /* SuperDimmerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A846E425944D8F0661CB8819 /* SuperDimmerApp.swift */; };
 		7DF9E65F077D8883C984AD7F /* TemporaryDisableManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8713DCA6D1B43914E997B7 /* TemporaryDisableManager.swift */; };
 		9C327178B91606D6643F60EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D0CA522F75EAE80D96E8E88F /* Assets.xcassets */; };
@@ -65,6 +68,7 @@
 
 /* Begin PBXFileReference section */
 		005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureService.swift; sourceTree = "<group>"; };
+		MS9876543210FEDCBA987654 /* ModernScreenCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernScreenCaptureService.swift; sourceTree = "<group>"; };
 		007F0A55A64BEF81B7363D45 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		037D115986E52FD0778CDF1C /* OverlayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayManager.swift; sourceTree = "<group>"; };
 		03E06F14D1A62C96A81A599C /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
@@ -75,6 +79,8 @@
 		1BB93951703F6D09744CAB95 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		27586C5BE0F771581C033B4C /* ScheduleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleManager.swift; sourceTree = "<group>"; };
 		2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportingManager.swift; sourceTree = "<group>"; };
+		HD2000000001HANGDETECTOR0 /* MainThreadHangDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainThreadHangDetector.swift; sourceTree = "<group>"; };
+		AL2000000001APPLOGGER000 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
 		31EE0BF2647E666C8DE787FC /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
 		3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInactivityTracker.swift; sourceTree = "<group>"; };
 		3B4E7AF858AB9888AA55A487 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
@@ -309,9 +315,12 @@
 				4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */,
 				AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */,
 				2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */,
+				HD2000000001HANGDETECTOR0 /* MainThreadHangDetector.swift */,
+				AL2000000001APPLOGGER000 /* AppLogger.swift */,
 				99D465058B8A750951B2B515 /* LocationService.swift */,
 				27586C5BE0F771581C033B4C /* ScheduleManager.swift */,
 				005E8F71F854CA69BA5671D6 /* ScreenCaptureService.swift */,
+				MS9876543210FEDCBA987654 /* ModernScreenCaptureService.swift */,
 				BE8713DCA6D1B43914E997B7 /* TemporaryDisableManager.swift */,
 				UC9876543210FEDCBA987654 /* UpdateChecker.swift */,
 				568149C5780AA2A7D47A0E74 /* WindowInactivityTracker.swift */,
@@ -452,6 +461,8 @@
 				B15709EDC740B83EB0DE16E3 /* BrightnessAnalysisEngine.swift in Sources */,
 				2D56097619E851E2CC830DF9 /* ColorTemperatureManager.swift in Sources */,
 				52FD8C0A6C3C46BA4BB37103 /* CrashReportingManager.swift in Sources */,
+				HD1000000001HANGDETECTOR0 /* MainThreadHangDetector.swift in Sources */,
+				AL1000000001APPLOGGER000 /* AppLogger.swift in Sources */,
 				18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */,
 				A8116E433AA8D37103819457 /* DimmingCoordinator.swift in Sources */,
 				29BD586ACDE68974C13A7BF1 /* LaunchAtLoginManager.swift in Sources */,
@@ -463,6 +474,7 @@
 				2432D011DB19FE64F29AE6C1 /* PreferencesView.swift in Sources */,
 				C951F27A7FB2798886F56E12 /* ScheduleManager.swift in Sources */,
 				2D723EE67AC1ABF103687B99 /* ScreenCaptureService.swift in Sources */,
+				MS1234567890ABCDEF123456 /* ModernScreenCaptureService.swift in Sources */,
 				9DF14CF8F541D544FC005E3B /* SettingsManager.swift in Sources */,
 				SS1000000001SPACEDETECTOR /* SpaceDetector.swift in Sources */,
 				SS1000000002SPACEMONITOR0 /* SpaceChangeMonitor.swift in Sources */,

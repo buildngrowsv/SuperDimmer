@@ -39,6 +39,22 @@ import Foundation
 import CoreGraphics
 import AppKit
 
+/**
+MIGRATION NOTE (Jan 26, 2026):
+This service now uses ModernScreenCaptureService (ScreenCaptureKit) internally
+when available (macOS 13.0+). Falls back to CGWindowListCreateImage on older systems.
+
+WHY:
+- CGWindowListCreateImage is deprecated in macOS 15.0
+- Causes WindowServer timeouts under load
+- ScreenCaptureKit is GPU-accelerated and non-blocking
+
+STRATEGY:
+- Use ScreenCaptureKit when available (macOS 13.0+)
+- Keep old API as fallback for compatibility
+- Gradual migration path for existing code
+*/
+
 // ====================================================================
 // MARK: - Screen Capture Service
 // ====================================================================
@@ -103,6 +119,28 @@ final class ScreenCaptureService {
      Default 0.25 provides good balance of speed and accuracy.
      */
     var downsampleFactor: CGFloat = 0.25
+    
+    /**
+     Feature flag: Use modern ScreenCaptureKit when available.
+     
+     MIGRATION (Jan 26, 2026):
+     Set to true to use ScreenCaptureKit (GPU-accelerated, no timeouts).
+     Set to false to use legacy CGWindowListCreateImage (for debugging).
+     
+     Default: true (use modern API when available)
+     */
+    var useModernAPI: Bool = true
+    
+    /**
+     Modern screen capture service (ScreenCaptureKit).
+     Only available on macOS 13.0+.
+     */
+    private var modernService: ModernScreenCaptureService? = {
+        if #available(macOS 13.0, *) {
+            return ModernScreenCaptureService.shared
+        }
+        return nil
+    }()
     
     // ================================================================
     // MARK: - Initialization
@@ -218,6 +256,9 @@ final class ScreenCaptureService {
      
      This captures everything visible on the main display including
      all windows, desktop, dock, etc.
+     
+     MIGRATION (Jan 26, 2026):
+     Now uses ScreenCaptureKit when available for better performance.
      */
     func captureMainDisplay() -> CGImage? {
         guard hasPermission else {
@@ -230,6 +271,18 @@ final class ScreenCaptureService {
             return nil
         }
         
+        // MIGRATION: Use modern API if available and enabled
+        if useModernAPI, let modernService = modernService {
+            // Use ScreenCaptureKit (async, non-blocking, GPU-accelerated)
+            let image = modernService.captureMainDisplaySync()
+            updateCaptureTime()
+            if let img = image {
+                print("📸 Captured main display (ScreenCaptureKit): \(img.width)x\(img.height)")
+            }
+            return image
+        }
+        
+        // FALLBACK: Use legacy API
         // Capture full screen
         // Using CGWindowListCreateImage with null rect to get entire main display
         let image = CGWindowListCreateImage(
@@ -242,7 +295,7 @@ final class ScreenCaptureService {
         updateCaptureTime()
         
         if let img = image {
-            print("📸 Captured main display: \(img.width)x\(img.height)")
+            print("📸 Captured main display (Legacy): \(img.width)x\(img.height)")
         }
         
         return image
@@ -318,12 +371,22 @@ final class ScreenCaptureService {
      
      This captures just the window content, not what's behind it.
      Useful for analyzing a specific application's brightness.
+     
+     MIGRATION (Jan 26, 2026):
+     Now uses ScreenCaptureKit when available for better performance.
      */
     func captureWindow(_ windowID: CGWindowID, includingFrame: Bool = false) -> CGImage? {
         guard hasPermission else {
             return nil
         }
         
+        // MIGRATION: Use modern API if available and enabled
+        if useModernAPI, let modernService = modernService {
+            // Use ScreenCaptureKit (async, non-blocking, GPU-accelerated)
+            return modernService.captureWindowSync(windowID)
+        }
+        
+        // FALLBACK: Use legacy API
         // NOTE: We intentionally skip throttle check for window captures
         // because intelligent mode needs to capture many windows in quick succession.
         // The throttle is mainly for full-screen captures which are more expensive.

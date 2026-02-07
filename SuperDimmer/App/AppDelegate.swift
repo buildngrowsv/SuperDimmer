@@ -182,6 +182,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         
         // ============================================================
+        // Initialize Hang Detection (Feb 5, 2026)
+        // ============================================================
+        // MUST be early - we want to catch hangs during the rest of startup.
+        // This starts a background watchdog timer that pings the main thread
+        // every 2 seconds. If the main thread doesn't respond within 1 second,
+        // it logs the hang to ~/Library/Logs/SuperDimmer/hangs.log AND os_log.
+        // Also integrates with MetricKit for production hang diagnostics
+        // (Apple delivers MXHangDiagnostic payloads with call stacks).
+        //
+        // WHY: Previously we had ZERO hang visibility - no MetricKit, no watchdog,
+        // and the app was getting QUARANTINED for high logging volume which killed
+        // even system-level diagnostics. This was discovered Feb 5, 2026 when
+        // space switching was hanging the app for 1-2 seconds.
+        MainThreadHangDetector.shared.startMonitoring()
+        
+        // ============================================================
         // Log startup for debugging
         // ============================================================
         print("🌟 SuperDimmer launching...")
@@ -302,6 +318,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
      */
     func applicationWillTerminate(_ notification: Notification) {
         print("👋 SuperDimmer terminating - cleaning up...")
+        
+        // ============================================================
+        // Stop hang detection (Feb 5, 2026)
+        // ============================================================
+        // Log final hang count and stop the watchdog timer
+        MainThreadHangDetector.shared.stopMonitoring()
         
         // ============================================================
         // Full cleanup of dimming coordinator

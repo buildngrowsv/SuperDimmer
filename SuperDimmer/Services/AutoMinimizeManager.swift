@@ -155,13 +155,6 @@ final class AutoMinimizeManager: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-        
-        // Observe extended idle returns to reset all timers
-        NotificationCenter.default.publisher(for: .userReturnedFromExtendedIdle)
-            .sink { [weak self] _ in
-                self?.resetAllTimers()
-            }
-            .store(in: &cancellables)
     }
     
     // ================================================================
@@ -228,24 +221,6 @@ final class AutoMinimizeManager: ObservableObject {
         
         trackedWindowCount = windowActiveTimes.count
         print("📊 AutoMinimizeManager: Initialized tracking for \(trackedWindowCount) windows")
-    }
-    
-    /**
-     Resets all window timers.
-     Called when user returns from extended idle or wake from sleep.
-     */
-    func resetAllTimers() {
-        lock.lock()
-        defer { lock.unlock() }
-        
-        let now = Date()
-        for (windowID, var info) in windowActiveTimes {
-            info.activeUsageSeconds = 0
-            info.lastUpdated = now
-            windowActiveTimes[windowID] = info
-        }
-        
-        print("🔄 AutoMinimizeManager: Reset all \(windowActiveTimes.count) window timers (user returned from idle)")
     }
     
     /**
@@ -412,8 +387,31 @@ final class AutoMinimizeManager: ObservableObject {
                 
                 // Only minimize if exceeded the delay
                 if window.info.activeUsageSeconds >= delaySeconds {
-                    minimizeWindow(windowID: window.id, appName: window.info.ownerName)
-                    minimizedCount += 1
+                    // ADDITIONAL SAFETY CHECK (Jan 26, 2026): Check before calling minimizeWindow
+                    // Even though minimizeWindow has its own check, we check here too to avoid
+                    // even attempting to minimize a window that's already in progress.
+                    // This prevents the AppleScript from being queued multiple times.
+                    //
+                    // MAIN THREAD BLOCKING FIX (Jan 26, 2026):
+                    // Execute AppleScript on background thread to avoid blocking main thread.
+                    // AppleScript can take 1-5 seconds to complete, which would freeze UI.
+                    //
+                    // Root cause: Timer runs on main thread, calls minimizeWindow() which executes
+                    // AppleScript synchronously, blocking main thread while waiting for IPC response.
+                    //
+                    // Found via sample analysis showing main thread blocked in mach_msg2_trap
+                    // while executing NSAppleScript.executeAndReturnError.
+                    lock.lock()
+                    let alreadyMinimizing = currentlyMinimizing.contains(window.id)
+                    lock.unlock()
+                    
+                    if !alreadyMinimizing {
+                        // Execute on background thread to keep UI responsive
+                        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                            self?.minimizeWindow(windowID: window.id, appName: window.info.ownerName)
+                        }
+                        minimizedCount += 1
+                    }
                 }
             }
             

@@ -449,7 +449,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     
     /// Space change monitor for auto-updates
     /// Detects when user switches Spaces and updates UI
-    private var spaceMonitor: SpaceChangeMonitor?
+    /// SINGLETON FIX (Jan 26, 2026): Now using SpaceChangeMonitor.shared instead of instance property
     
     /// Whether HUD is currently visible
     /// Used to prevent duplicate show/hide calls
@@ -717,8 +717,8 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         refreshSpaces()
         
         // Start monitoring for changes
-        spaceMonitor = SpaceChangeMonitor()
-        spaceMonitor?.startMonitoring { [weak self] spaceNumber in
+        // SINGLETON FIX (Jan 26, 2026): Use shared instance to prevent notification storms
+        SpaceChangeMonitor.shared.addObserver { [weak self] spaceNumber in
             self?.handleSpaceChange(spaceNumber)
         }
         
@@ -845,10 +845,23 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     /// - dlsym() fails to find them in CoreGraphics framework
     /// - Even Hammerspoon doesn't use direct CGS switching - it uses Accessibility API
     ///   to programmatically open Mission Control and click on Spaces
+    ///
+    /// FIX (Feb 5, 2026): MOVED OFF MAIN THREAD
+    /// Previously this entire method ran synchronously on the main thread, including:
+    /// - NSAppleScript.executeAndReturnError() (synchronous IPC to System Events)
+    /// - Thread.sleep(0.1) in a busy-wait loop for up to 1 second
+    /// - SpaceDetector.getCurrentSpace() reading plist from disk 10x in the loop
+    /// - Fallback AppleScript with delay 0.15 × steps (0.6s for Space 1→5)
+    /// This blocked the main thread for 1-2+ seconds, causing the entire UI to hang.
+    /// The hang was compounded by applyDecayDimming async blocks queuing up on the
+    /// blocked main thread, then all firing at once when it unblocked.
+    ///
+    /// NOW: AppleScript execution and polling run on a background queue.
+    /// Only the quick initial checks (already on target space, AX permission) run on main.
     private func switchToSpace(_ spaceNumber: Int) {
         print("→ SuperSpacesHUD: Switching to Space \(spaceNumber)...")
         
-        // Check if already on target Space
+        // Check if already on target Space (fast, on main thread - just reads a var)
         let currentSpace = viewModel.currentSpaceNumber
         if spaceNumber == currentSpace {
             print("✓ SuperSpacesHUD: Already on Space \(spaceNumber)")
@@ -856,35 +869,48 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         }
         
         // Check for Accessibility permission (required for sending keystrokes)
+        // This is fast and must be on main thread (UI alert if needed)
         if !AXIsProcessTrusted() {
             print("⚠️ SuperSpacesHUD: Accessibility permission not granted - cannot send keystrokes")
             showAccessibilityPermissionAlert()
             return
         }
         
-        // Try direct Control+Number shortcut first (instant if enabled)
-        let directSuccess = tryDirectSpaceShortcut(spaceNumber)
-        
-        if directSuccess {
-            print("✓ SuperSpacesHUD: Space switch via Control+\(spaceNumber) shortcut (instant)")
-            return
+        // CRITICAL FIX (Feb 5, 2026): Run the expensive AppleScript execution
+        // and busy-wait polling on a background queue to avoid blocking the main thread.
+        // The main thread must stay free for:
+        // - Processing decay dimming overlay updates
+        // - Handling user input (clicks, keyboard)
+        // - Animation rendering
+        // - Space change notification handling
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Try direct Control+Number shortcut first (instant if enabled)
+            // This runs the AppleScript + polling off main thread
+            let directSuccess = self.tryDirectSpaceShortcut(spaceNumber)
+            
+            if directSuccess {
+                print("✓ SuperSpacesHUD: Space switch via Control+\(spaceNumber) shortcut (instant)")
+                return
+            }
+            
+            // Double-check we're not already on target Space
+            // (shortcut might have worked but we didn't detect it in time)
+            if let currentSpaceInfo = SpaceDetector.getCurrentSpace(),
+               currentSpaceInfo.spaceNumber == spaceNumber {
+                print("✓ SuperSpacesHUD: Already on Space \(spaceNumber) (shortcut worked)")
+                return
+            }
+            
+            // Get CURRENT space number (may have changed during shortcut attempt)
+            let actualCurrentSpace = SpaceDetector.getCurrentSpace()?.spaceNumber ?? currentSpace
+            
+            // Fallback to cycling method (also runs off main thread)
+            print("⚠️ SuperSpacesHUD: Direct shortcut not enabled, falling back to cycling")
+            print("   Current: \(actualCurrentSpace), Target: \(spaceNumber)")
+            self.switchToSpaceViaAppleScript(spaceNumber, from: actualCurrentSpace)
         }
-        
-        // Double-check we're not already on target Space
-        // (shortcut might have worked but we didn't detect it in time)
-        if let currentSpaceInfo = SpaceDetector.getCurrentSpace(),
-           currentSpaceInfo.spaceNumber == spaceNumber {
-            print("✓ SuperSpacesHUD: Already on Space \(spaceNumber) (shortcut worked)")
-            return
-        }
-        
-        // Get CURRENT space number (may have changed during shortcut attempt)
-        let actualCurrentSpace = SpaceDetector.getCurrentSpace()?.spaceNumber ?? currentSpace
-        
-        // Fallback to cycling method
-        print("⚠️ SuperSpacesHUD: Direct shortcut not enabled, falling back to cycling")
-        print("   Current: \(actualCurrentSpace), Target: \(spaceNumber)")
-        switchToSpaceViaAppleScript(spaceNumber, from: actualCurrentSpace)
     }
     
     /// Tries to switch to Space using Control+Number shortcut
@@ -899,9 +925,15 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
     ///
     /// APPROACH:
     /// 1. Simulate Control+Number key press
-    /// 2. Wait 1 second for Space change to occur
+    /// 2. Wait up to 1 second for Space change to occur (polling every 100ms)
     /// 3. Check if we're now on the target Space
     /// 4. Return true if successful, false if shortcut not enabled
+    ///
+    /// FIX (Feb 5, 2026): This method is now called from a background queue
+    /// (dispatched by switchToSpace). It was previously blocking the main thread
+    /// with Thread.sleep(0.1) in a while loop for up to 1 second, PLUS the
+    /// synchronous NSAppleScript execution. The Thread.sleep is acceptable on a
+    /// background queue since it only blocks the background thread, not the UI.
     ///
     /// - Parameter spaceNumber: The Space number to switch to (1-9)
     /// - Returns: true if shortcut worked, false if not enabled or failed
@@ -938,6 +970,9 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         """
         
         // Execute AppleScript
+        // NOTE: NSAppleScript.executeAndReturnError() is synchronous and can take
+        // 50-200ms for IPC with System Events. This is why we run on a background
+        // queue - previously this alone was blocking the main thread noticeably.
         var error: NSDictionary?
         if let scriptObject = NSAppleScript(source: script) {
             scriptObject.executeAndReturnError(&error)
@@ -950,8 +985,10 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             return false
         }
         
-        // Wait 1 second to see if Space changed
-        // This gives macOS time to switch Spaces if the shortcut is enabled
+        // Poll for up to 1 second to see if Space changed
+        // FIX (Feb 5, 2026): This Thread.sleep loop now runs on a background queue
+        // instead of blocking the main thread. The background thread sleep is fine -
+        // it only blocks this specific background task, not the UI.
         let startTime = Date()
         let timeout: TimeInterval = 1.0
         
@@ -963,7 +1000,7 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
                 return true
             }
             
-            // Small delay before checking again
+            // Small delay before checking again (on background queue - OK to sleep here)
             Thread.sleep(forTimeInterval: 0.1)
         }
         

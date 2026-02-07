@@ -31,6 +31,7 @@
 
 import AppKit
 import Combine
+import os.log
 
 // ====================================================================
 // MARK: - Overlay Manager
@@ -48,6 +49,12 @@ import Combine
  All UI operations are dispatched to main thread internally.
  Safe to call from any thread.
  */
+/// FIX (Feb 5, 2026): Private logger for overlay operations.
+/// Using os.log instead of print() to avoid the logging quarantine that was causing
+/// macOS to completely stop recording SuperDimmer's diagnostic logs.
+/// AppLogger.swift isn't in the Xcode project file, so we create a local Logger here.
+private let overlayLogger = Logger(subsystem: "com.superdimmer.app", category: "overlay")
+
 final class OverlayManager {
     
     // ================================================================
@@ -119,6 +126,21 @@ final class OverlayManager {
      Using NSRecursiveLock because some methods call others that also need the lock.
      */
     private let overlayLock = NSRecursiveLock()
+    
+    /**
+     THROTTLE FIX (Jan 26, 2026): Prevent too-frequent applyDecayDimming calls
+     
+     With rapid idle/active cycling, applyDecayDimming was being called dozens
+     of times per second, creating and destroying overlays constantly. This:
+     - Blocked the main thread
+     - Caused window server strain
+     - Led to "Fetch Current User Activity" deadline misses
+     
+     SOLUTION: Throttle to max once per 500ms. Decay dimming is gradual anyway,
+     so this doesn't affect user experience but prevents the feedback loop.
+     */
+    private var lastDecayApplyTime: CFAbsoluteTime = 0
+    private let minDecayApplyInterval: CFAbsoluteTime = 0.5  // 500ms minimum
     
     
     // ================================================================
@@ -850,14 +872,33 @@ final class OverlayManager {
      - Parameter decisions: Array of decay dimming decisions for all windows
      */
     func applyDecayDimming(_ decisions: [DecayDimmingDecision]) {
-        // DEBUG: Log entry with thread info
-        let threadName = Thread.isMainThread ? "MAIN" : "BG-\(Thread.current.description.suffix(8))"
-        print("🔄 applyDecayDimming START [\(threadName)] decisions=\(decisions.count)")
+        // THROTTLE FIX (Jan 26, 2026): Prevent too-frequent calls
+        // Check throttle BEFORE any other work to minimize overhead
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - lastDecayApplyTime < minDecayApplyInterval {
+            // Too soon since last call - skip this one
+            // This is normal during rapid idle/active cycling
+            return
+        }
+        lastDecayApplyTime = now
+        
+        // FIX (Feb 5, 2026): REMOVED high-frequency print() statements from this method.
+        // The previous print("🔄 applyDecayDimming START/END...") calls were firing
+        // every 500ms (from the throttle interval), producing so much output that macOS
+        // QUARANTINED SuperDimmer's logging ("QUARANTINED DUE TO HIGH LOGGING VOLUME").
+        // This meant we LOST diagnostic visibility right when we needed it most.
+        // Now we only log at debug level via os_log, which is efficient and filterable.
+        #if DEBUG
+        // Only log in debug builds, and only to os_log (not print/stdout)
+        // Use: log stream --predicate 'subsystem == "com.superdimmer.app" AND category == "overlay"'
+        let threadName = Thread.isMainThread ? "MAIN" : "BG"
+        overlayLogger.debug("applyDecayDimming START [\(threadName, privacy: .public)] decisions=\(decisions.count)")
+        #endif
         
         // MUST run on main thread for UI operations
         let applyBlock: () -> Void = { [weak self] in
             guard let self = self else {
-                print("⚠️ applyDecayDimming: self was deallocated!")
+                overlayLogger.warning("applyDecayDimming: self was deallocated")
                 return
             }
             
@@ -869,8 +910,12 @@ final class OverlayManager {
                 // CRITICAL: Lock before ANY dictionary access
                 self.overlayLock.lock()
                 defer { 
-                    self.overlayLock.unlock() 
-                    print("🔄 applyDecayDimming END - decayOverlays.count=\(self.decayOverlays.count)")
+                    self.overlayLock.unlock()
+                    // FIX (Feb 5, 2026): Removed print() here - was causing logging quarantine.
+                    // This was printing every 500ms, producing thousands of log lines per hour.
+                    #if DEBUG
+                    overlayLogger.debug("applyDecayDimming END - decayOverlays.count=\(self.decayOverlays.count)")
+                    #endif
                 }
                 
                 // Update window bounds tracking (2.2.1.14)
@@ -892,7 +937,8 @@ final class OverlayManager {
                         
                         // DEBUG: Verify overlay is still valid before accessing
                         guard existing.contentView != nil else {
-                            print("💀 ZOMBIE DETECTED! Overlay \(existing.overlayID) has nil contentView!")
+                            // FIX (Feb 5, 2026): Switched from print to os_log to reduce logging volume
+                            overlayLogger.warning("ZOMBIE DETECTED: Overlay \(existing.overlayID, privacy: .public) has nil contentView")
                             // Remove the zombie reference
                             self.decayOverlays.removeValue(forKey: windowID)
                             continue
@@ -908,7 +954,9 @@ final class OverlayManager {
                     } else if !isActive && dimLevel > 0.01 {
                         // Create new overlay only if window needs dimming AND doesn't have one
                         let overlayID = "decay-\(windowID)"
-                        print("📦 Creating decay overlay: \(overlayID)")
+                        // FIX (Feb 5, 2026): Switched from print to os_log - this fires frequently
+                        // during normal operation and was contributing to logging quarantine
+                        overlayLogger.debug("Creating decay overlay: \(overlayID, privacy: .public)")
                         
                         let overlay = DimOverlayWindow.create(
                             frame: decision.windowBounds,
@@ -926,10 +974,30 @@ final class OverlayManager {
                     // Active windows with no overlay: do nothing, wait for inactivity
                 }
                 
-                // CRITICAL: DO NOT destroy stale overlays!
-                // Let them live with dimLevel=0. The memory cost is minimal
-                // (a few KB per overlay), but the stability gain is worth it.
-                // They will be cleaned up when app quits.
+                // CLEANUP: Remove overlays for windows that no longer exist
+                // FIX (Jan 26, 2026): The previous approach of keeping all overlays forever
+                // was causing accumulation. With rapid idle/active cycling, hundreds of
+                // overlays would accumulate, causing memory issues and window server strain.
+                //
+                // NEW APPROACH: Clean up overlays for windows that are no longer in decisions.
+                // This happens when:
+                // - Window is closed
+                // - Window is minimized
+                // - Window is no longer tracked by WindowInactivityTracker
+                //
+                // We use safeHideOverlay() which properly cleans up without causing crashes.
+                let currentWindowIDs = Set(decisions.map { $0.windowID })
+                let staleOverlayIDs = Set(self.decayOverlays.keys).subtracting(currentWindowIDs)
+                
+                if !staleOverlayIDs.isEmpty {
+                    // FIX (Feb 5, 2026): Switched from print to os_log
+                    overlayLogger.debug("Cleaning up \(staleOverlayIDs.count) stale decay overlays")
+                    for staleID in staleOverlayIDs {
+                        if let staleOverlay = self.decayOverlays.removeValue(forKey: staleID) {
+                            self.safeHideOverlay(staleOverlay)
+                        }
+                    }
+                }
             } // End autoreleasepool
         }
         
@@ -1403,9 +1471,11 @@ final class OverlayManager {
         // Only log every 10th update when in high-frequency mode
         if updatedCount > 0 {
             // Throttle logging - only print occasionally
-            let shouldLog = updatedCount > 5 || arc4random_uniform(10) == 0
-            if shouldLog {
-                print("📍 Updated \(updatedCount) overlay positions (window movement tracking)")
+            // FIX (Feb 5, 2026): Switched from print to os_log - this fires every 0.5s
+            // from the window tracking timer and was a major contributor to logging quarantine.
+            // Only log when something significant happened (>5 overlays updated)
+            if updatedCount > 5 {
+                overlayLogger.debug("Updated \(updatedCount) overlay positions (window movement tracking)")
             }
         }
     }

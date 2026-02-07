@@ -979,18 +979,6 @@ struct SuperFocusPreferencesTab: View {
                     }
                     .padding(.leading, 20)
                     
-                    // Idle reset time
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Reset timers after idle:")
-                            Spacer()
-                            Text("\(Int(settings.autoMinimizeIdleResetTime)) min")
-                                .foregroundColor(.secondary)
-                        }
-                        Slider(value: $settings.autoMinimizeIdleResetTime, in: 2...30, step: 1)
-                    }
-                    .padding(.leading, 20)
-                    
                     // Status
                     HStack {
                         Text("Tracking:")

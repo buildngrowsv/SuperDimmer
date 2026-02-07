@@ -127,11 +127,108 @@ final class WindowTrackerService {
     private let minimumWindowSize: CGFloat = 50
     
     // ================================================================
+    // MARK: - PID → BundleID Cache
+    // ================================================================
+    
+    /**
+     PERFORMANCE FIX (Jan 28, 2026):
+     Cache of Process ID → Bundle Identifier mappings.
+     
+     WHY THIS MATTERS:
+     Previously, getBundleID(for:) was called for EVERY window on EVERY tracking cycle.
+     It iterated through ALL NSRunningApplications and accessed .processIdentifier,
+     which triggered _fetchDynamicProperties → LaunchServices XPC calls for each app.
+     
+     With 20 windows and 50 running apps at 30fps high-frequency tracking:
+     30 × 20 × 50 = 30,000 LaunchServices queries per second!
+     
+     This caused:
+     1. Main thread blocking (all queries on main thread)
+     2. Competition with other apps (like BetterTouchTool) for LaunchServices daemon
+     3. System-wide hangs when both apps queried heavily
+     
+     FIX: Cache mappings and only refresh when apps launch/quit.
+     */
+    private var pidToBundleIDCache: [pid_t: String] = [:]
+    
+    /**
+     Lock for thread-safe access to the PID cache.
+     */
+    private let cacheLock = NSLock()
+    
+    // ================================================================
     // MARK: - Initialization
     // ================================================================
     
     private init() {
-        print("✓ WindowTrackerService initialized")
+        // Build initial PID → BundleID cache
+        rebuildPIDCache()
+        
+        // Listen for app launch/quit to update cache
+        setupAppNotifications()
+        
+        print("✓ WindowTrackerService initialized (with PID cache)")
+    }
+    
+    /**
+     Sets up notifications to update PID cache when apps launch or quit.
+     
+     PERFORMANCE FIX (Jan 28, 2026):
+     Instead of querying all running apps for every window on every frame,
+     we maintain a cache and only update it when the app list actually changes.
+     */
+    private func setupAppNotifications() {
+        let workspace = NSWorkspace.shared
+        
+        // App launched - add to cache
+        workspace.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bundleID = app.bundleIdentifier else { return }
+            
+            self.cacheLock.lock()
+            self.pidToBundleIDCache[app.processIdentifier] = bundleID
+            self.cacheLock.unlock()
+        }
+        
+        // App terminated - remove from cache
+        workspace.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            
+            self.cacheLock.lock()
+            self.pidToBundleIDCache.removeValue(forKey: app.processIdentifier)
+            self.cacheLock.unlock()
+        }
+    }
+    
+    /**
+     Rebuilds the entire PID → BundleID cache from scratch.
+     
+     Called on initialization and can be called if cache gets out of sync.
+     This is the ONLY place we iterate through all running applications.
+     */
+    private func rebuildPIDCache() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        
+        pidToBundleIDCache.removeAll()
+        
+        for app in NSWorkspace.shared.runningApplications {
+            if let bundleID = app.bundleIdentifier {
+                pidToBundleIDCache[app.processIdentifier] = bundleID
+            }
+        }
+        
+        print("📦 PID cache rebuilt with \(pidToBundleIDCache.count) apps")
     }
     
     // ================================================================
@@ -416,12 +513,26 @@ final class WindowTrackerService {
     /**
      Gets the bundle ID for a process.
      
+     PERFORMANCE FIX (Jan 28, 2026):
+     Now uses cached PID → BundleID mapping instead of iterating through
+     all running applications on every call.
+     
+     BEFORE: O(n) per call where n = number of running apps
+             Called for every window on every tracking frame
+             Triggered LaunchServices XPC for each NSRunningApplication
+     
+     AFTER:  O(1) dictionary lookup
+             Cache updated only when apps launch/quit
+             No LaunchServices queries during normal operation
+     
      - Parameter pid: Process ID
-     - Returns: Bundle identifier, or nil if not found
+     - Returns: Bundle identifier from cache, or nil if not found
      */
     private func getBundleID(for pid: pid_t) -> String? {
-        let runningApps = NSWorkspace.shared.runningApplications
-        return runningApps.first { $0.processIdentifier == pid }?.bundleIdentifier
+        cacheLock.lock()
+        let bundleID = pidToBundleIDCache[pid]
+        cacheLock.unlock()
+        return bundleID
     }
     
     /**

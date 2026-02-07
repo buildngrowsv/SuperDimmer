@@ -112,7 +112,13 @@ class AppearanceManager {
     /// Call this when the app is about to terminate or when you no longer need appearance tracking.
     func stop() {
         if let observer = appearanceObserver {
-            NotificationCenter.default.removeObserver(observer)
+            // BUG FIX (Feb 5, 2026): Must use DistributedNotificationCenter to remove observer,
+            // NOT NotificationCenter.default. The observer was registered on
+            // DistributedNotificationCenter.default() in start(), so removing from
+            // the standard NotificationCenter.default would silently do nothing —
+            // the observer would never actually be removed, causing a memory leak
+            // and zombie notification callbacks.
+            DistributedNotificationCenter.default().removeObserver(observer)
             appearanceObserver = nil
         }
     }

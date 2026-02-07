@@ -183,13 +183,18 @@ final class AppInactivityTracker: ObservableObject {
             object: nil
         )
         
-        // CRITICAL FIX (Jan 24, 2026): Observe extended idle returns to reset timers
-        // Without this, accumulated time from before idle period persists after return,
-        // causing apps to be immediately hidden when user comes back from extended idle.
-        NotificationCenter.default.addObserver(
+        // FIX (Jan 28, 2026): Observe app unhide to reset inactivity timer
+        // CRITICAL BUG: When user unhides an app via macOS (Dock, Cmd+Tab, etc.),
+        // if the app doesn't become frontmost, didActivateApplicationNotification
+        // doesn't fire. This means accumulatedInactivityTime wasn't being reset,
+        // causing the app to be immediately re-hidden by AutoHideManager.
+        // 
+        // This observer catches ALL unhide events (regardless of how the app was
+        // unhidden) and resets the inactivity timer so the app stays visible.
+        NSWorkspace.shared.notificationCenter.addObserver(
             self,
-            selector: #selector(handleExtendedIdleReturn(_:)),
-            name: .userReturnedFromExtendedIdle,
+            selector: #selector(appDidUnhide(_:)),
+            name: NSWorkspace.didUnhideApplicationNotification,
             object: nil
         )
     }
@@ -286,19 +291,51 @@ final class AppInactivityTracker: ObservableObject {
         appActivity.removeValue(forKey: bundleID)
     }
     
-    @objc private func handleExtendedIdleReturn(_ notification: Notification) {
-        // CRITICAL FIX (Jan 24, 2026): Reset all accumulated times when user returns from extended idle
-        // This prevents apps from being immediately hidden after returning from lunch/breaks
+    /**
+     FIX (Jan 28, 2026): Handle app unhide events to reset inactivity timer.
+     
+     CRITICAL BUG FIXED: When user unhides an app through macOS directly
+     (Dock click, Cmd+Tab, "Show All Windows", etc.), the app may not become
+     frontmost. Without this handler, the app's accumulatedInactivityTime
+     wasn't being reset, causing AutoHideManager to immediately re-hide it.
+     
+     WHY THIS HAPPENS:
+     - didActivateApplicationNotification only fires when app becomes FRONTMOST
+     - Unhiding doesn't always make app frontmost (e.g., "Show All Windows")
+     - Result: User unhides app → timer not reset → app hidden again immediately
+     
+     THE FIX:
+     - Listen to didUnhideApplicationNotification which fires for ANY unhide
+     - Reset accumulatedInactivityTime to 0 when app is unhidden
+     - This gives the user a fresh 30-minute window before auto-hide kicks in
+     */
+    @objc private func appDidUnhide(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              let bundleID = app.bundleIdentifier else { return }
+        
         lock.lock()
         defer { lock.unlock() }
         
-        for (bundleID, var info) in appActivity {
+        // Reset inactivity timer for this app
+        // This prevents immediate re-hiding after user manually unhides an app
+        if var info = appActivity[bundleID] {
+            let oldTime = info.accumulatedInactivityTime
             info.accumulatedInactivityTime = 0
+            info.lastActiveTime = Date()
             appActivity[bundleID] = info
+            
+            print("👁️ AppInactivityTracker: '\(info.localizedName)' unhidden - reset timer (was \(Int(oldTime))s)")
+        } else {
+            // App wasn't being tracked, add it now
+            appActivity[bundleID] = AppActivityInfo(
+                lastActiveTime: Date(),
+                bundleID: bundleID,
+                localizedName: app.localizedName ?? bundleID,
+                processID: app.processIdentifier,
+                accumulatedInactivityTime: 0
+            )
+            print("👁️ AppInactivityTracker: '\(app.localizedName ?? bundleID)' unhidden - started tracking")
         }
-        
-        let idleDuration = notification.userInfo?["idleDuration"] as? TimeInterval ?? 0
-        print("🔄 AppInactivityTracker: Reset all \(appActivity.count) app timers (user returned from \(Int(idleDuration))s idle)")
     }
     
     // ================================================================
@@ -589,8 +626,8 @@ final class AppInactivityTracker: ObservableObject {
         }
         
         // Monitor for space changes
-        let spaceMonitor = SpaceChangeMonitor()
-        spaceMonitor.startMonitoring { [weak self] newSpaceNumber in
+        // SINGLETON FIX (Jan 26, 2026): Use shared instance to prevent notification storms
+        SpaceChangeMonitor.shared.addObserver { [weak self] newSpaceNumber in
             guard let self = self else { return }
             
             self.lock.lock()

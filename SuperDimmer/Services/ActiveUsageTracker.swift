@@ -89,11 +89,23 @@ final class ActiveUsageTracker: ObservableObject {
     /// Combine subscriptions
     private var cancellables = Set<AnyCancellable>()
     
-    /// Was the user idle on last check? (for detecting return)
-    private var wasIdle: Bool = false
-    
     /// Settings manager reference
     private let settings = SettingsManager.shared
+    
+    /// DEBOUNCE FIX (Jan 26, 2026): Prevent rapid idle/active state toggling
+    /// The event monitors fire on EVERY mouse movement, causing isUserActive
+    /// to toggle dozens of times per second. This creates a feedback loop where:
+    /// - WindowInactivityTracker publishes state changes
+    /// - AppInactivityTracker publishes state changes
+    /// - SwiftUI updates views
+    /// - This blocks the main thread and causes "Fetch Current User Activity" deadline misses
+    ///
+    /// SOLUTION: Only publish state changes if:
+    /// 1. At least 2 seconds have passed since last change
+    /// 2. The state actually changed (not just flickering)
+    private let minStateChangeInterval: TimeInterval = 2.0
+    private var lastStateChangeTime: Date = Date()
+    private var lastPublishedState: Bool = true
     
     // ================================================================
     // MARK: - Initialization
@@ -158,14 +170,8 @@ final class ActiveUsageTracker: ObservableObject {
      */
     private func recordActivity() {
         lock.lock()
-        let previouslyIdle = wasIdle
         lastActivityTime = Date()
         lock.unlock()
-        
-        // Check if user just returned from extended idle
-        if previouslyIdle {
-            checkForIdleReturn()
-        }
     }
     
     /**
@@ -197,17 +203,7 @@ final class ActiveUsageTracker: ObservableObject {
         // Reset the last activity time to now
         lock.lock()
         lastActivityTime = Date()
-        wasIdle = true  // Consider as returning from idle
         lock.unlock()
-        
-        // Post notification that user returned from extended idle
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(
-                name: .userReturnedFromExtendedIdle,
-                object: nil,
-                userInfo: ["reason": "wakeFromSleep"]
-            )
-        }
     }
     
     // ================================================================
@@ -227,57 +223,32 @@ final class ActiveUsageTracker: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
+            // Always update idle time (this doesn't trigger SwiftUI updates)
             self.idleTime = timeSinceActivity
-            self.isUserActive = timeSinceActivity < self.activeThreshold
             
-            // Track idle state for detecting returns
-            self.lock.lock()
-            self.wasIdle = !self.isUserActive
-            self.lock.unlock()
-        }
-        
-        // Check if idle long enough to trigger reset
-        checkForExtendedIdle(idleTime: timeSinceActivity)
-    }
-    
-    /**
-     Checks if user has been idle long enough to warrant a timer reset.
-     Uses the autoMinimizeIdleResetTime setting.
-     */
-    private func checkForExtendedIdle(idleTime: TimeInterval) {
-        let resetThreshold = settings.autoMinimizeIdleResetTime * 60  // Convert minutes to seconds
-        
-        // We mark that we should post a notification when they return
-        // The actual notification is posted in checkForIdleReturn()
-        if idleTime >= resetThreshold {
-            lock.lock()
-            wasIdle = true
-            lock.unlock()
-        }
-    }
-    
-    /**
-     Called when activity is detected after a period of idle.
-     Posts notification if they were idle long enough.
-     */
-    private func checkForIdleReturn() {
-        lock.lock()
-        let currentIdleTime = Date().timeIntervalSince(lastActivityTime)
-        wasIdle = false
-        lock.unlock()
-        
-        let resetThreshold = settings.autoMinimizeIdleResetTime * 60
-        
-        // If they were idle longer than threshold, post notification
-        if currentIdleTime >= resetThreshold || currentIdleTime < 0 {
-            print("👋 ActiveUsageTracker: User returned from extended idle (\(Int(currentIdleTime))s)")
+            // Calculate new active state
+            let newActiveState = timeSinceActivity < self.activeThreshold
             
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: .userReturnedFromExtendedIdle,
-                    object: nil,
-                    userInfo: ["idleDuration": currentIdleTime]
-                )
+            // DEBOUNCE FIX (Jan 26, 2026): Only publish state change if:
+            // 1. The state actually changed (not just flickering)
+            // 2. Enough time has passed since last change (prevent rapid toggling)
+            //
+            // This prevents the rapid idle/active cycling that was causing:
+            // - Main thread blocking
+            // - "Fetch Current User Activity" deadline misses
+            // - Hundreds of overlays being created/destroyed per minute
+            let now = Date()
+            let stateChanged = newActiveState != self.lastPublishedState
+            let enoughTimePassed = now.timeIntervalSince(self.lastStateChangeTime) >= self.minStateChangeInterval
+            
+            if stateChanged && enoughTimePassed {
+                // State changed and enough time passed - publish the change
+                self.isUserActive = newActiveState
+                self.lastPublishedState = newActiveState
+                self.lastStateChangeTime = now
+                
+                // Log state changes for debugging
+                print("🔄 ActiveUsageTracker: State changed to \(newActiveState ? "ACTIVE" : "IDLE")")
             }
         }
     }
@@ -330,21 +301,3 @@ final class ActiveUsageTracker: ObservableObject {
     }
 }
 
-// ====================================================================
-// MARK: - Notification Names
-// ====================================================================
-
-extension Notification.Name {
-    /**
-     Posted when user returns from extended idle period.
-     
-     Use this to reset window minimize timers so that:
-     - Walking away for lunch doesn't minimize everything
-     - Coming back to work starts fresh
-     
-     UserInfo:
-     - "idleDuration": TimeInterval of how long they were idle
-     - "reason": String ("wakeFromSleep" or omitted)
-     */
-    static let userReturnedFromExtendedIdle = Notification.Name("superdimmer.userReturnedFromExtendedIdle")
-}

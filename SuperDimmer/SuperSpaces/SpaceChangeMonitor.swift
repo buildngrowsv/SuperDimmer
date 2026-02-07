@@ -42,16 +42,34 @@
 
 import Foundation
 import AppKit
+import os.log
 
 /// Monitors for changes in the active macOS desktop Space
 /// and notifies observers when the user switches between Spaces.
+///
+/// SINGLETON FIX (Jan 26, 2026):
+/// Changed to singleton pattern to prevent multiple instances from creating notification storms.
+/// Previously, DimmingCoordinator, AppInactivityTracker, and SuperSpacesHUD each created
+/// their own monitor, resulting in 3x the notifications and 55% CPU usage during space changes.
+///
+/// Now only ONE monitor exists, but multiple observers can register callbacks.
 final class SpaceChangeMonitor {
+    
+    // MARK: - Singleton
+    
+    /// Shared instance
+    /// Only one monitor should exist to prevent notification storms
+    static let shared = SpaceChangeMonitor()
+    
+    /// Private initializer to enforce singleton pattern
+    private init() {}
     
     // MARK: - Properties
     
-    /// Callback invoked when Space changes
-    /// Parameter is the new Space number (1-based)
-    private var onSpaceChange: ((Int) -> Void)?
+    /// Callbacks invoked when Space changes
+    /// Changed from single callback to array to support multiple observers
+    /// Each callback receives the new Space number (1-based)
+    private var spaceChangeCallbacks: [(Int) -> Void] = []
     
     /// Timer for polling Space changes (fallback mechanism)
     /// Used in addition to NSWorkspace notifications for reliability
@@ -80,7 +98,11 @@ final class SpaceChangeMonitor {
     
     // MARK: - Public Methods
     
-    /// Starts monitoring for Space changes
+    /// Adds an observer for Space changes
+    ///
+    /// SINGLETON PATTERN (Jan 26, 2026):
+    /// Multiple observers can register, but only one monitor runs.
+    /// This prevents notification storms from multiple instances.
     ///
     /// MONITORING STRATEGY:
     /// 1. Register for NSWorkspace.activeSpaceDidChangeNotification
@@ -97,14 +119,24 @@ final class SpaceChangeMonitor {
     /// - Polling: 0.5s interval, ~0.1% CPU
     /// - Debouncing: Prevents wasted work during transitions
     ///
-    /// - Parameter onSpaceChange: Callback invoked with new Space number when change detected
-    func startMonitoring(onSpaceChange: @escaping (Int) -> Void) {
+    /// - Parameter callback: Callback invoked with new Space number when change detected
+    func addObserver(_ callback: @escaping (Int) -> Void) {
+        // Add callback to list
+        spaceChangeCallbacks.append(callback)
+        
+        // Start monitoring if not already started
+        if !isMonitoring {
+            startMonitoringInternal()
+        }
+    }
+    
+    /// Internal method to start monitoring (called once)
+    private func startMonitoringInternal() {
         guard !isMonitoring else {
             print("⚠️ SpaceChangeMonitor: Already monitoring")
             return
         }
         
-        self.onSpaceChange = onSpaceChange
         self.isMonitoring = true
         
         // Get initial Space
@@ -220,7 +252,13 @@ final class SpaceChangeMonitor {
     /// - Logs warning for debugging
     private func checkForSpaceChange() {
         guard let currentSpace = SpaceDetector.getCurrentSpace() else {
-            print("⚠️ SpaceChangeMonitor: Failed to get current Space")
+            // FIX (Feb 5, 2026): Removed print() here - this fires every 0.5s
+            // when polling is active and was contributing to logging quarantine.
+            // Only log at debug level which is stripped in release builds.
+            #if DEBUG
+            // Use os_log directly instead of AppLogger to avoid project dependency issues
+            os_log(.debug, "SpaceChangeMonitor: Failed to get current Space")
+            #endif
             return
         }
         
@@ -233,8 +271,22 @@ final class SpaceChangeMonitor {
             // Update cache
             lastKnownSpace = currentSpaceNumber
             
-            // Notify observer
-            onSpaceChange?(currentSpaceNumber)
+            // Notify all observers
+            notifyObservers(newSpace: currentSpaceNumber)
+        }
+    }
+    
+    /// Notifies all registered observers of a space change
+    ///
+    /// SINGLETON PATTERN (Jan 26, 2026):
+    /// Calls all registered callbacks with the new space number.
+    /// This allows multiple components to react to space changes
+    /// without creating multiple monitor instances.
+    ///
+    /// - Parameter newSpace: The new space number
+    private func notifyObservers(newSpace: Int) {
+        for callback in spaceChangeCallbacks {
+            callback(newSpace)
         }
     }
 }

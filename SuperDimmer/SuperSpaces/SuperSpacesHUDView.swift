@@ -1503,11 +1503,17 @@ struct OverviewSpaceCardView: View {
     }
     
     /// Gets the accent color for this Space (FEATURE 5.5.9)
+    ///
+    /// FIX (Feb 5, 2026): Previously fell back to Color.accentColor when no custom
+    /// color was set. But Color.accentColor resolves to the app's AccentColor asset
+    /// (orange), not blue as the old comment stated. This caused visual inconsistency
+    /// with the main HUD view which uses getSpaceColorOrDefault() (palette-based
+    /// defaults starting with Ocean Blue for Space 1).
+    ///
+    /// Now uses the same getSpaceColorOrDefault() logic for consistency across all views.
     private func getSpaceAccentColor() -> Color {
-        if let colorHex = getSpaceColor() {
-            return settings.hexToColor(colorHex)
-        }
-        return Color.accentColor  // Default blue
+        let colorHex = settings.getSpaceColorOrDefault(for: space.index)
+        return settings.hexToColor(colorHex)
     }
     
     var body: some View {
@@ -1724,9 +1730,11 @@ struct OverviewSpaceCardView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
-                    // Highlight current Space with accent color
+                    // Highlight current Space with its palette color
+                    // FIX (Feb 5, 2026): Use palette-based color instead of Color.accentColor
+                    // for consistency with the main HUD view's color scheme.
                     space.index == viewModel.currentSpaceNumber ?
-                        Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.05)
+                        settings.hexToColor(settings.getSpaceColorOrDefault(for: space.index)).opacity(0.15) : Color.secondary.opacity(0.05)
                 )
                 .cornerRadius(6)
             }
