@@ -55,8 +55,9 @@ struct SuperSpacesHUDView: View {
         }
     }
     
-    /// Currently hovered Space (for hover effects)
-    @State private var hoveredSpace: Int?
+    /// Currently hovered Space UUID (for hover effects)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to String (UUID) for reorder resilience
+    @State private var hoveredSpace: String?
     
     /// Settings manager for accessing Space customizations
     @EnvironmentObject var settings: SettingsManager
@@ -68,8 +69,11 @@ struct SuperSpacesHUDView: View {
         case overview   // Overview: Grid showing all Spaces with notes, all editable (PHASE 4)
     }
     
-    /// Space whose note is currently being viewed/edited in note mode
-    @State private var selectedNoteSpace: Int?
+    /// Space UUID whose note is currently being viewed/edited in note mode
+    /// MIGRATION (Feb 11, 2026): Changed from Int to String (UUID) for reorder resilience
+    /// When the user selects a space in note mode, we store its UUID so the note stays
+    /// associated with the correct space even if the user reorders spaces later.
+    @State private var selectedNoteSpace: String?
     
     /// Note text being edited in note mode
     @State private var noteText: String = ""
@@ -97,7 +101,8 @@ struct SuperSpacesHUDView: View {
     
     /// Show emoji picker popover (for context menu)
     @State private var showEmojiPicker = false
-    @State private var emojiPickerForSpace: Int?
+    /// MIGRATION (Feb 11, 2026): Changed from Int to String (UUID) for reorder resilience
+    @State private var emojiPickerForSpace: String?
     
     /// Show inline emoji picker (for note mode editing) - PHASE 3.1
     @State private var showInlineEmojiPicker = false
@@ -179,29 +184,52 @@ struct SuperSpacesHUDView: View {
             // Recalculate button width when Spaces change (PHASE 2.1)
             updateButtonWidth()
         }
+        // NOTE FOLLOWS CURRENT SPACE (Feb 11, 2026)
+        // When the user switches macOS Spaces and the "follow" toggle is on,
+        // automatically update the note mode to show the new Space's note.
+        // This only triggers when:
+        //   1. We're in note mode (.note display mode)
+        //   2. The user has the "follows current space" setting enabled
+        // Without this, the note stays pinned to whichever Space was manually selected.
+        .onChange(of: viewModel.currentSpaceNumber) { newSpaceNumber in
+            if displayMode == .note && settings.noteFollowsCurrentSpace {
+                // Save current note before switching (prevents data loss)
+                if let currentSpace = selectedNoteSpace {
+                    saveNoteForSpace(currentSpace, text: noteText)
+                }
+                // MIGRATION (Feb 11, 2026): Look up UUID for the new space number
+                // selectedNoteSpace is now UUID-based for reorder resilience
+                if let spaceUUID = viewModel.allSpaces.first(where: { $0.index == newSpaceNumber })?.uuid {
+                    selectedNoteSpace = spaceUUID
+                    loadNoteForSpace(spaceUUID)
+                }
+            }
+        }
         // Emoji picker popover (context menu)
+        // MIGRATION (Feb 11, 2026): emojiPickerForSpace is now UUID
         .popover(
             isPresented: $showEmojiPicker,
             arrowEdge: .bottom
         ) {
-            if let spaceNumber = emojiPickerForSpace {
+            if let spaceUUID = emojiPickerForSpace {
+                let spaceIndex = viewModel.allSpaces.first(where: { $0.uuid == spaceUUID })?.index ?? 1
                 SuperSpacesEmojiPicker(
-                    spaceNumber: spaceNumber,
+                    spaceNumber: spaceIndex,
                     selectedEmoji: Binding(
-                        get: { getSpaceEmoji(spaceNumber) },
+                        get: { getSpaceEmoji(spaceUUID, spaceIndex: spaceIndex) },
                         set: { newEmoji in
                             if let emoji = newEmoji {
-                                settings.spaceEmojis[spaceNumber] = emoji
+                                settings.spaceEmojis[spaceUUID] = emoji
                             } else {
-                                settings.spaceEmojis.removeValue(forKey: spaceNumber)
+                                settings.spaceEmojis.removeValue(forKey: spaceUUID)
                             }
                         }
                     ),
                     onEmojiSelected: { emoji in
                         if let emoji = emoji {
-                            settings.spaceEmojis[spaceNumber] = emoji
+                            settings.spaceEmojis[spaceUUID] = emoji
                         } else {
-                            settings.spaceEmojis.removeValue(forKey: spaceNumber)
+                            settings.spaceEmojis.removeValue(forKey: spaceUUID)
                         }
                         showEmojiPicker = false
                     }
@@ -213,9 +241,10 @@ struct SuperSpacesHUDView: View {
             isPresented: $showInlineEmojiPicker,
             arrowEdge: .bottom
         ) {
-            if let spaceNumber = selectedNoteSpace {
+            if let spaceUUID = selectedNoteSpace {
+                let spaceIndex = viewModel.allSpaces.first(where: { $0.uuid == spaceUUID })?.index ?? 1
                 SuperSpacesEmojiPicker(
-                    spaceNumber: spaceNumber,
+                    spaceNumber: spaceIndex,
                     selectedEmoji: Binding(
                         get: { editingSpaceEmoji.isEmpty ? nil : editingSpaceEmoji },
                         set: { newEmoji in
@@ -234,13 +263,15 @@ struct SuperSpacesHUDView: View {
             }
         }
         // Inline color picker popover (FEATURE 5.5.9: Color customization)
+        // MIGRATION (Feb 11, 2026): selectedNoteSpace is now UUID
         .popover(
             isPresented: $showColorPicker,
             arrowEdge: .bottom
         ) {
-            if let spaceNumber = selectedNoteSpace {
+            if let spaceUUID = selectedNoteSpace {
+                let spaceIndex = viewModel.allSpaces.first(where: { $0.uuid == spaceUUID })?.index ?? 1
                 SuperSpacesColorPicker(
-                    spaceNumber: spaceNumber,
+                    spaceNumber: spaceIndex,
                     selectedColorHex: Binding(
                         get: { editingSpaceColor.isEmpty ? nil : editingSpaceColor },
                         set: { newColor in
@@ -266,11 +297,19 @@ struct SuperSpacesHUDView: View {
     private var headerView: some View {
         HStack {
             // Current Space indicator with emoji (or selected note space in note mode)
+            // MIGRATION (Feb 11, 2026): selectedNoteSpace is now UUID, need to resolve to index for display
             HStack(spacing: 8) {
-                let displaySpace = displayMode == .note ? (selectedNoteSpace ?? viewModel.currentSpaceNumber) : viewModel.currentSpaceNumber
+                // Resolve the display space number and UUID
+                let displaySpaceUUID: String? = displayMode == .note ? selectedNoteSpace : viewModel.allSpaces.first(where: { $0.index == viewModel.currentSpaceNumber })?.uuid
+                let displaySpaceIndex: Int = {
+                    if displayMode == .note, let uuid = selectedNoteSpace {
+                        return viewModel.allSpaces.first(where: { $0.uuid == uuid })?.index ?? viewModel.currentSpaceNumber
+                    }
+                    return viewModel.currentSpaceNumber
+                }()
                 
-                // Emoji if set
-                if let emoji = getSpaceEmoji(displaySpace) {
+                // Emoji if set (looked up by UUID)
+                if let uuid = displaySpaceUUID, let emoji = getSpaceEmoji(uuid, spaceIndex: displaySpaceIndex) {
                     Text(emoji)
                         .font(.system(size: scaledFontSize(16)))
                 } else {
@@ -280,10 +319,10 @@ struct SuperSpacesHUDView: View {
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Space \(displaySpace)")
+                    Text("Space \(displaySpaceIndex)")
                         .font(.system(size: scaledFontSize(14), weight: .semibold))
                     
-                    if let spaceName = getSpaceName(displaySpace) {
+                    if let uuid = displaySpaceUUID, let spaceName = getSpaceName(uuid, spaceIndex: displaySpaceIndex) {
                         Text(spaceName)
                             .font(.system(size: scaledFontSize(11)))
                             .foregroundColor(.secondary)
@@ -401,7 +440,8 @@ struct SuperSpacesHUDView: View {
     private var compactSpacesView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(viewModel.allSpaces, id: \.index) { space in
+                // MIGRATION (Feb 11, 2026): Use UUID for identity (stable across reorders)
+                ForEach(viewModel.allSpaces, id: \.uuid) { space in
                     compactSpaceButton(for: space)
                 }
             }
@@ -410,32 +450,33 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Creates a compact Space button with number, emoji, and name
+    /// MIGRATION (Feb 11, 2026): Uses space.uuid for all data lookups, space.index only for display
     /// PHASE 2.1: Uses fixed width for all buttons (equal-width sizing)
     private func compactSpaceButton(for space: SpaceDetector.SpaceInfo) -> some View {
         Button(action: {
-            handleSpaceClick(space.index)
+            handleSpaceClick(space.index)  // switchToSpace uses index for keyboard shortcuts
         }) {
             HStack(spacing: 6) {
-                // Number
+                // Number (display position - may change on reorder)
                 Text("\(space.index)")
                     .font(.system(size: scaledFontSize(12), weight: .semibold))
                     .frame(width: 20)
                 
-                // Emoji if set
-                if let emoji = getSpaceEmoji(space.index) {
+                // Emoji if set (looked up by UUID - survives reorder)
+                if let emoji = getSpaceEmoji(space.uuid, spaceIndex: space.index) {
                     Text(emoji)
                         .font(.system(size: scaledFontSize(14)))
                 }
                 
-                // Name if set
-                if let name = getSpaceName(space.index), !name.isEmpty {
+                // Name if set (looked up by UUID - survives reorder)
+                if let name = getSpaceName(space.uuid, spaceIndex: space.index), !name.isEmpty {
                     Text(name)
                         .font(.system(size: scaledFontSize(12)))
                         .lineLimit(1)
                 }
                 
-                // Note indicator
-                if hasNote(space.index) {
+                // Note indicator (looked up by UUID - survives reorder)
+                if hasNote(space.uuid) {
                     Circle()
                         .fill(Color.orange)
                         .frame(width: 4, height: 4)
@@ -447,7 +488,7 @@ struct SuperSpacesHUDView: View {
                 // FEATURE 5.5.9: Show each Space's color (custom or default)
                 // Active space: Full color intensity
                 // Inactive spaces: Faded color (20% opacity) to show their identity
-                getSpaceBackgroundColor(space.index, isActive: space.index == viewModel.currentSpaceNumber)
+                getSpaceBackgroundColor(space.uuid, spaceIndex: space.index, isActive: space.index == viewModel.currentSpaceNumber)
             )
             .foregroundColor(
                 space.index == viewModel.currentSpaceNumber ? .white : .primary
@@ -459,7 +500,7 @@ struct SuperSpacesHUDView: View {
             // CRITICAL: allowsHitTesting(false) ensures overlay doesn't block button clicks
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+                    .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.uuid)))
                     .allowsHitTesting(false)
             )
         }
@@ -478,7 +519,8 @@ struct SuperSpacesHUDView: View {
                 GeometryReader { selectorGeometry in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(viewModel.allSpaces, id: \.index) { space in
+                            // MIGRATION (Feb 11, 2026): Use UUID for identity (stable across reorders)
+                            ForEach(viewModel.allSpaces, id: \.uuid) { space in
                                 noteSpaceButton(for: space, availableWidth: selectorGeometry.size.width)
                             }
                         }
@@ -496,7 +538,9 @@ struct SuperSpacesHUDView: View {
                 Divider()
                 
                 // Space name and emoji editor (inline, above note)
-                if let spaceNumber = selectedNoteSpace {
+                // MIGRATION (Feb 11, 2026): selectedNoteSpace is now UUID
+                if let spaceUUID = selectedNoteSpace {
+                    let spaceNumber = viewModel.allSpaces.first(where: { $0.uuid == spaceUUID })?.index ?? 1
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Space \(spaceNumber)")
                             .font(.system(size: scaledFontSize(10), weight: .medium))
@@ -628,9 +672,10 @@ struct SuperSpacesHUDView: View {
                             }
                         } else {
                             // Display mode (double-click to edit)
+                            // MIGRATION (Feb 11, 2026): Use UUID for data lookups
                             HStack(spacing: 8) {
-                                // Emoji display
-                                if let emoji = getSpaceEmoji(spaceNumber), !emoji.isEmpty {
+                                // Emoji display (UUID lookup)
+                                if let emoji = getSpaceEmoji(spaceUUID, spaceIndex: spaceNumber), !emoji.isEmpty {
                                     Text(emoji)
                                         .font(.system(size: scaledFontSize(20)))
                                 } else {
@@ -639,10 +684,10 @@ struct SuperSpacesHUDView: View {
                                         .foregroundColor(.secondary)
                                 }
                                 
-                                // Name display
-                                Text(getSpaceName(spaceNumber) ?? "Unnamed Space")
+                                // Name display (UUID lookup)
+                                Text(getSpaceName(spaceUUID, spaceIndex: spaceNumber) ?? "Unnamed Space")
                                     .font(.system(size: scaledFontSize(14), weight: .medium))
-                                    .foregroundColor(getSpaceName(spaceNumber) == nil ? .secondary : .primary)
+                                    .foregroundColor(getSpaceName(spaceUUID, spaceIndex: spaceNumber) == nil ? .secondary : .primary)
                                 
                                 Spacer()
                                 
@@ -666,11 +711,72 @@ struct SuperSpacesHUDView: View {
                 
                 // Note editor - RESPONSIVE: Expands to fill available vertical space
                 VStack(alignment: .leading, spacing: 8) {
-                    // Note header
-                    HStack {
+                    // Note header with follow-space toggle
+                    HStack(spacing: 6) {
                         Text("Note")
                             .font(.system(size: scaledFontSize(11), weight: .medium))
                             .foregroundColor(.secondary)
+                        
+                        // FOLLOW CURRENT SPACE TOGGLE (Feb 11, 2026)
+                        // Placed in the note header so it's always visible regardless of window height.
+                        // The bottom action buttons can get pushed offscreen when the window is short,
+                        // so this toggle lives up here where users can always see and reach it.
+                        //
+                        // BEHAVIOR:
+                        // When enabled, the note automatically switches to show the current Space's note
+                        // whenever the user changes macOS Spaces (via Mission Control, trackpad, keyboard).
+                        // When disabled, the note stays pinned to whichever Space was manually selected
+                        // via the Space selector buttons above - useful for referencing one Space's notes
+                        // while working in a different Space.
+                        //
+                        // ICON RATIONALE:
+                        // - "pin.fill" when following is OFF (note is "pinned" to a specific Space)
+                        // - "arrow.triangle.2.circlepath" when following is ON (note follows/cycles with Spaces)
+                        // The filled pin is a strong visual cue that the note won't move.
+                        //
+                        // CLICK TARGET:
+                        // Using contentShape(Rectangle()) to ensure the entire pill area is clickable,
+                        // not just the small icon. Critical for usability since SF Symbols have tiny hit areas.
+                        Button(action: {
+                            settings.noteFollowsCurrentSpace.toggle()
+                            
+                            // When turning follow ON, immediately snap to the current Space's note
+                            // so the user sees the effect right away instead of waiting for the next
+                            // Space switch to trigger
+                            if settings.noteFollowsCurrentSpace {
+                                if let currentSpace = selectedNoteSpace {
+                                    saveNoteForSpace(currentSpace, text: noteText)
+                                }
+                                // MIGRATION (Feb 11, 2026): Look up UUID for current space
+                                if let spaceUUID = viewModel.allSpaces.first(where: { $0.index == viewModel.currentSpaceNumber })?.uuid {
+                                    selectedNoteSpace = spaceUUID
+                                    loadNoteForSpace(spaceUUID)
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: settings.noteFollowsCurrentSpace
+                                      ? "arrow.triangle.2.circlepath"
+                                      : "pin.fill")
+                                    .font(.system(size: scaledFontSize(9)))
+                                Text(settings.noteFollowsCurrentSpace ? "Follows Space" : "Pinned")
+                                    .font(.system(size: scaledFontSize(9)))
+                            }
+                            .foregroundColor(settings.noteFollowsCurrentSpace ? .accentColor : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            settings.noteFollowsCurrentSpace
+                                ? Color.accentColor.opacity(0.1)
+                                : Color.secondary.opacity(0.08)
+                        )
+                        .cornerRadius(4)
+                        .help(settings.noteFollowsCurrentSpace
+                              ? "Note follows current Space. Click to pin to this Space."
+                              : "Note is pinned. Click to follow current Space.")
                         
                         Spacer()
                         
@@ -717,8 +823,10 @@ struct SuperSpacesHUDView: View {
                     // Action buttons
                     HStack {
                         Button(action: {
-                            if let space = selectedNoteSpace {
-                                viewModel.switchToSpace(space)
+                            // MIGRATION (Feb 11, 2026): selectedNoteSpace is UUID, need index for switching
+                            if let spaceUUID = selectedNoteSpace,
+                               let spaceIndex = viewModel.allSpaces.first(where: { $0.uuid == spaceUUID })?.index {
+                                viewModel.switchToSpace(spaceIndex)
                             }
                         }) {
                             HStack(spacing: 4) {
@@ -754,9 +862,12 @@ struct SuperSpacesHUDView: View {
         }
         .onAppear {
             // Initialize with current Space when entering note mode
+            // MIGRATION (Feb 11, 2026): Use UUID for selectedNoteSpace
             if selectedNoteSpace == nil {
-                selectedNoteSpace = viewModel.currentSpaceNumber
-                loadNoteForSpace(viewModel.currentSpaceNumber)
+                if let spaceUUID = viewModel.allSpaces.first(where: { $0.index == viewModel.currentSpaceNumber })?.uuid {
+                    selectedNoteSpace = spaceUUID
+                    loadNoteForSpace(spaceUUID)
+                }
             }
         }
     }
@@ -768,36 +879,36 @@ struct SuperSpacesHUDView: View {
     /// - Compact (narrow): Number only (44pt)
     /// - Medium (moderate): Number + emoji (60pt)
     /// - Expanded (wide): Number + emoji + name (80pt+, names can clip)
+    /// MIGRATION (Feb 11, 2026): Uses space.uuid for all data lookups, space.index for display
     private func noteSpaceButton(for space: SpaceDetector.SpaceInfo, availableWidth: CGFloat) -> some View {
         // Determine what to show based on available width (calculate once outside button)
         let buttonMode = getNoteButtonMode(availableWidth: availableWidth)
         
         return Button(action: {
-            // Single click: Load note for this Space
-            selectNoteSpace(space.index)
+            // Single click: Load note for this Space (by UUID for reorder resilience)
+            selectNoteSpace(space.uuid)
         }) {
             HStack(spacing: 4) {
-                // NUMBER: Always shown (user requirement - "keep the number there all the time")
+                // NUMBER: Always shown (display position - may change on reorder)
                 Text("\(space.index)")
                     .font(.system(size: scaledFontSize(11), weight: .semibold))
                     .frame(width: 16)
                 
-                // EMOJI: Show when we have medium or more space
-                if buttonMode != .compact, let emoji = getSpaceEmoji(space.index) {
+                // EMOJI: Show when we have medium or more space (UUID lookup)
+                if buttonMode != .compact, let emoji = getSpaceEmoji(space.uuid, spaceIndex: space.index) {
                     Text(emoji)
                         .font(.system(size: scaledFontSize(14)))
                 }
                 
-                // NAME: Show when we have expanded space (even if it clips)
-                // User preference: "I rather have to scroll than not" - show names aggressively
-                if buttonMode == .expanded, let name = getSpaceName(space.index) {
+                // NAME: Show when we have expanded space (UUID lookup)
+                if buttonMode == .expanded, let name = getSpaceName(space.uuid, spaceIndex: space.index) {
                     Text(name)
                         .font(.system(size: scaledFontSize(11)))
                         .lineLimit(1)
                 }
                 
-                // Note indicator (always shown)
-                if hasNote(space.index) {
+                // Note indicator (UUID lookup)
+                if hasNote(space.uuid) {
                     Circle()
                         .fill(Color.orange)
                         .frame(width: 4, height: 4)
@@ -807,30 +918,28 @@ struct SuperSpacesHUDView: View {
             .frame(minWidth: getNoteButtonWidth(mode: buttonMode))
             .frame(height: 32)
             .background(
-                // FEATURE 5.5.9: Show each Space's color (custom or default)
+                // FEATURE 5.5.9: Show each Space's color (UUID lookup)
                 // Selected space: Full color intensity
                 // Unselected spaces: Faded color (20% opacity) to show their identity
-                getSpaceBackgroundColor(space.index, isActive: selectedNoteSpace == space.index)
+                getSpaceBackgroundColor(space.uuid, spaceIndex: space.index, isActive: selectedNoteSpace == space.uuid)
             )
             .foregroundColor(
-                selectedNoteSpace == space.index ? .white : .primary
+                selectedNoteSpace == space.uuid ? .white : .primary
             )
             .cornerRadius(8)
-            // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
-            // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
-            // CRITICAL: allowsHitTesting(false) ensures overlay doesn't block button clicks
+            // FEATURE: 5.5.8 - Dim to Indicate Order (UUID lookup)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+                    .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.uuid)))
                     .allowsHitTesting(false)
             )
         }
         .buttonStyle(.plain)
-        .focusEffectDisabled()  // Disable focus ring/outline on click
-        .help(getSpaceName(space.index) ?? "Space \(space.index)")
+        .focusEffectDisabled()
+        .help(getSpaceName(space.uuid, spaceIndex: space.index) ?? "Space \(space.index)")
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                // Double-click: Switch to this Space
+                // Double-click: Switch to this Space (index for keyboard shortcuts)
                 viewModel.switchToSpace(space.index)
             }
         )
@@ -893,7 +1002,8 @@ struct SuperSpacesHUDView: View {
         GeometryReader { geometry in
             ScrollView {
                 LazyVGrid(columns: getOverviewColumns(for: geometry.size.width), spacing: 12) {
-                    ForEach(viewModel.allSpaces, id: \.index) { space in
+                    // MIGRATION (Feb 11, 2026): Use UUID for identity (stable across reorders)
+                    ForEach(viewModel.allSpaces, id: \.uuid) { space in
                         overviewSpaceCard(for: space, availableHeight: geometry.size.height)
                     }
                 }
@@ -1034,36 +1144,42 @@ struct SuperSpacesHUDView: View {
         }
     }
     
-    /// Gets custom name for a Space
-    /// Gets Space name (custom or default)
+    /// Gets custom name for a Space by UUID
+    /// MIGRATION (Feb 11, 2026): Changed from Int spaceNumber to String spaceUUID
+    /// Now looks up name by UUID (stable identifier) instead of array position.
+    /// The spaceIndex is only used for generating the default "Desktop X" name.
+    ///
     /// PHASE 2.2: Returns default "Desktop X" if no custom name set
-    private func getSpaceName(_ spaceNumber: Int) -> String? {
-        // Check for custom name first
-        if let customName = settings.spaceNames[spaceNumber] {
+    private func getSpaceName(_ spaceUUID: String, spaceIndex: Int) -> String? {
+        // Check for custom name first (keyed by UUID for reorder resilience)
+        if let customName = settings.spaceNames[spaceUUID] {
             return customName
         }
-        // Return default name
-        return settings.generateDefaultSpaceName(for: spaceNumber)
+        // Return default name based on current display position
+        return settings.generateDefaultSpaceName(for: spaceIndex)
     }
     
-    /// Gets Space emoji (custom or default)
+    /// Gets Space emoji by UUID (custom or default)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to UUID lookup
     /// PHASE 2.3: Returns preset emoji if no custom emoji set
-    private func getSpaceEmoji(_ spaceNumber: Int) -> String? {
-        // Check for custom emoji first
-        if let customEmoji = settings.spaceEmojis[spaceNumber] {
+    private func getSpaceEmoji(_ spaceUUID: String, spaceIndex: Int) -> String? {
+        // Check for custom emoji first (keyed by UUID)
+        if let customEmoji = settings.spaceEmojis[spaceUUID] {
             return customEmoji
         }
-        // Return default emoji (for Spaces 1-16)
-        return settings.getDefaultEmoji(for: spaceNumber)
+        // Return default emoji based on current display position (for Spaces 1-16)
+        return settings.getDefaultEmoji(for: spaceIndex)
     }
     
-    /// Gets Space color (custom or nil for default)
+    /// Gets Space color by UUID (custom or nil for default)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to UUID lookup
     /// FEATURE 5.5.9: Returns custom color hex if set
-    private func getSpaceColor(_ spaceNumber: Int) -> String? {
-        return settings.spaceColors[spaceNumber]
+    private func getSpaceColor(_ spaceUUID: String) -> String? {
+        return settings.spaceColors[spaceUUID]
     }
     
-    /// Gets the background color for a Space button
+    /// Gets the background color for a Space button by UUID
+    /// MIGRATION (Feb 11, 2026): Changed from Int spaceNumber to UUID + index
     /// FEATURE 5.5.9: Returns appropriate color based on active state
     ///
     /// BEHAVIOR:
@@ -1071,8 +1187,8 @@ struct SuperSpacesHUDView: View {
     /// - Inactive space: Faded color (20% opacity) to show identity without overwhelming
     ///
     /// COLOR SOURCE:
-    /// - Uses custom color if user has set one
-    /// - Falls back to default color based on space number (cycling through palette)
+    /// - Uses custom color if user has set one (looked up by UUID)
+    /// - Falls back to default color based on space index (cycling through palette)
     /// - This ensures every space has a distinct color, even before customization
     ///
     /// WHY SHOW COLORS FOR INACTIVE SPACES:
@@ -1082,12 +1198,13 @@ struct SuperSpacesHUDView: View {
     /// - Reduces cognitive load by using color as a memory aid
     ///
     /// - Parameters:
-    ///   - spaceNumber: The Space number (1-based)
+    ///   - spaceUUID: The Space UUID (for custom color lookup)
+    ///   - spaceIndex: The Space's current display index (for default color cycling)
     ///   - isActive: Whether this is the currently active/selected Space
     /// - Returns: SwiftUI Color with appropriate opacity
-    private func getSpaceBackgroundColor(_ spaceNumber: Int, isActive: Bool) -> Color {
+    private func getSpaceBackgroundColor(_ spaceUUID: String, spaceIndex: Int, isActive: Bool) -> Color {
         // Get the color hex (custom or default)
-        let colorHex = settings.getSpaceColorOrDefault(for: spaceNumber)
+        let colorHex = settings.getSpaceColorOrDefault(forUUID: spaceUUID, spaceIndex: spaceIndex)
         let color = settings.hexToColor(colorHex)
         
         // Apply full opacity for active, faded for inactive
@@ -1095,24 +1212,35 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Gets the accent color for the current Space
+    /// MIGRATION (Feb 11, 2026): Now looks up by UUID first, falls back to index
     /// FEATURE 5.5.9: Returns custom color or default color
     ///
     /// Used for HUD background tint and other accent elements
     private func getCurrentSpaceAccentColor() -> Color {
-        let currentSpace = displayMode == .note ? (selectedNoteSpace ?? viewModel.currentSpaceNumber) : viewModel.currentSpaceNumber
-        let colorHex = settings.getSpaceColorOrDefault(for: currentSpace)
-        return settings.hexToColor(colorHex)
+        // In note mode, use the selected note space; otherwise use the current space
+        if displayMode == .note, let selectedUUID = selectedNoteSpace {
+            // Look up the space index for the selected UUID
+            let spaceIndex = viewModel.allSpaces.first(where: { $0.uuid == selectedUUID })?.index ?? viewModel.currentSpaceNumber
+            let colorHex = settings.getSpaceColorOrDefault(forUUID: selectedUUID, spaceIndex: spaceIndex)
+            return settings.hexToColor(colorHex)
+        } else {
+            // Use current space's color
+            let currentSpaceNumber = viewModel.currentSpaceNumber
+            let colorHex = settings.getSpaceColorOrDefault(for: currentSpaceNumber)
+            return settings.hexToColor(colorHex)
+        }
     }
     
-    /// Checks if a Space has a note
-    private func hasNote(_ spaceNumber: Int) -> Bool {
-        guard let note = settings.spaceNotes[spaceNumber] else { return false }
+    /// Checks if a Space has a note (by UUID)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to UUID lookup
+    private func hasNote(_ spaceUUID: String) -> Bool {
+        guard let note = settings.spaceNotes[spaceUUID] else { return false }
         return !note.isEmpty
     }
     
     /// Gets tooltip text for a Space button
-    private func getSpaceTooltip(_ spaceNumber: Int) -> String {
-        return "Switch to Space \(spaceNumber)"
+    private func getSpaceTooltip(_ spaceIndex: Int) -> String {
+        return "Switch to Space \(spaceIndex)"
     }
     
     /// Gets dimming overlay opacity for a Space button based on visit recency
@@ -1143,19 +1271,21 @@ struct SuperSpacesHUDView: View {
     /// WHEN DISABLED:
     /// - All buttons have 0% overlay (no dimming)
     ///
-    /// - Parameter spaceNumber: The Space number to get overlay opacity for
+    /// - Parameter spaceUUID: The Space UUID to get overlay opacity for
+    ///   MIGRATION (Feb 11, 2026): Changed from Int spaceNumber to String UUID
     /// - Returns: Overlay opacity value (0.0-1.0) where 0.0 is no dimming, 1.0 is maximum dimming
-    private func getSpaceDimmingOverlayOpacity(_ spaceNumber: Int) -> Double {
+    private func getSpaceDimmingOverlayOpacity(_ spaceUUID: String) -> Double {
         // If dimming is disabled, return no overlay
         guard settings.spaceOrderDimmingEnabled else {
             return 0.0
         }
         
         // Get opacity from visit tracker (this represents visibility)
+        // MIGRATION (Feb 11, 2026): Now uses UUID for visit tracking
         // We need to invert it to get dimming level
         let totalSpaces = viewModel.allSpaces.count
         let visibilityOpacity = SpaceVisitTracker.shared.getOpacity(
-            for: spaceNumber,
+            for: spaceUUID,
             maxDimLevel: settings.spaceOrderMaxDimLevel,
             totalSpaces: totalSpaces
         )
@@ -1168,41 +1298,46 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Handles Space button click (always switches Space in mini/compact/expanded modes)
+    /// NOTE: switchToSpace still takes index because it needs the position for keyboard shortcuts
     private func handleSpaceClick(_ spaceNumber: Int) {
         viewModel.switchToSpace(spaceNumber)
     }
     
-    /// Shows emoji picker for a Space
-    private func showEmojiPickerForSpace(_ spaceNumber: Int) {
-        emojiPickerForSpace = spaceNumber
+    /// Shows emoji picker for a Space (by UUID)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to UUID
+    private func showEmojiPickerForSpace(_ spaceUUID: String) {
+        emojiPickerForSpace = spaceUUID
         showEmojiPicker = true
     }
     
     // MARK: - Note Mode Helpers
     
-    /// Selects a Space to view/edit its note
-    private func selectNoteSpace(_ spaceNumber: Int) {
+    /// Selects a Space to view/edit its note (by UUID)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to UUID
+    private func selectNoteSpace(_ spaceUUID: String) {
         // Save current note before switching
         if let currentSpace = selectedNoteSpace {
             saveNoteForSpace(currentSpace, text: noteText)
         }
         
         // Load new Space's note
-        selectedNoteSpace = spaceNumber
-        loadNoteForSpace(spaceNumber)
+        selectedNoteSpace = spaceUUID
+        loadNoteForSpace(spaceUUID)
     }
     
-    /// Loads note for a specific Space
-    private func loadNoteForSpace(_ spaceNumber: Int) {
-        noteText = settings.spaceNotes[spaceNumber] ?? ""
+    /// Loads note for a specific Space (by UUID)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to UUID lookup
+    private func loadNoteForSpace(_ spaceUUID: String) {
+        noteText = settings.spaceNotes[spaceUUID] ?? ""
     }
     
-    /// Saves note for a specific Space
-    private func saveNoteForSpace(_ spaceNumber: Int, text: String) {
+    /// Saves note for a specific Space (by UUID)
+    /// MIGRATION (Feb 11, 2026): Changed from Int to UUID key
+    private func saveNoteForSpace(_ spaceUUID: String, text: String) {
         if text.isEmpty {
-            settings.spaceNotes.removeValue(forKey: spaceNumber)
+            settings.spaceNotes.removeValue(forKey: spaceUUID)
         } else {
-            settings.spaceNotes[spaceNumber] = text
+            settings.spaceNotes[spaceUUID] = text
         }
     }
     
@@ -1230,14 +1365,18 @@ struct SuperSpacesHUDView: View {
     // MARK: - Inline Space Name/Emoji Editing
     
     /// Starts editing the Space name, emoji, and color
+    /// MIGRATION (Feb 11, 2026): Now uses UUID for data lookup
     /// FEATURE 5.5.9: Added color editing support
     private func startEditingSpaceName() {
-        guard let spaceNumber = selectedNoteSpace else { return }
+        guard let spaceUUID = selectedNoteSpace else { return }
+        
+        // Look up the space index for default name/emoji fallback
+        let spaceIndex = viewModel.allSpaces.first(where: { $0.uuid == spaceUUID })?.index ?? 1
         
         isEditingSpaceName = true
-        editingSpaceNameText = getSpaceName(spaceNumber) ?? ""
-        editingSpaceEmoji = getSpaceEmoji(spaceNumber) ?? ""
-        editingSpaceColor = getSpaceColor(spaceNumber) ?? ""  // Load current color
+        editingSpaceNameText = getSpaceName(spaceUUID, spaceIndex: spaceIndex) ?? ""
+        editingSpaceEmoji = getSpaceEmoji(spaceUUID, spaceIndex: spaceIndex) ?? ""
+        editingSpaceColor = getSpaceColor(spaceUUID) ?? ""  // Load current color
         
         // Focus the name field after a short delay to ensure the view is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -1246,38 +1385,39 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Saves the edited Space name, emoji, and color
+    /// MIGRATION (Feb 11, 2026): Now saves with UUID key
     /// PHASE 2.2: Validates and enforces character limit
     /// FEATURE 5.5.9: Added color saving
     private func saveSpaceNameAndEmoji() {
-        guard let spaceNumber = selectedNoteSpace else { return }
+        guard let spaceUUID = selectedNoteSpace else { return }
         
-        // Validate and save name with character limit
+        // Validate and save name with character limit (keyed by UUID)
         let trimmedName = editingSpaceNameText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty {
             // Empty name: remove custom name, will show default
-            settings.spaceNames.removeValue(forKey: spaceNumber)
+            settings.spaceNames.removeValue(forKey: spaceUUID)
         } else {
             // Validate and truncate to character limit
             let validatedName = settings.validateSpaceName(trimmedName)
-            settings.spaceNames[spaceNumber] = validatedName
+            settings.spaceNames[spaceUUID] = validatedName
         }
         
         // Save emoji (limit to first 2 characters to handle multi-byte emojis)
         let trimmedEmoji = String(editingSpaceEmoji.prefix(2)).trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedEmoji.isEmpty {
             // Empty emoji: remove custom emoji, will show default
-            settings.spaceEmojis.removeValue(forKey: spaceNumber)
+            settings.spaceEmojis.removeValue(forKey: spaceUUID)
         } else {
-            settings.spaceEmojis[spaceNumber] = trimmedEmoji
+            settings.spaceEmojis[spaceUUID] = trimmedEmoji
         }
         
         // Save color (FEATURE 5.5.9)
         let trimmedColor = editingSpaceColor.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedColor.isEmpty {
             // Empty color: remove custom color, will use default blue
-            settings.spaceColors.removeValue(forKey: spaceNumber)
+            settings.spaceColors.removeValue(forKey: spaceUUID)
         } else {
-            settings.spaceColors[spaceNumber] = trimmedColor
+            settings.spaceColors[spaceUUID] = trimmedColor
         }
         
         isEditingSpaceName = false
@@ -1360,27 +1500,18 @@ struct SuperSpacesHUDView: View {
     
     /// Calculates maximum button width based on longest Space name
     /// Ensures all buttons have equal width for clean, aligned appearance
+    /// MIGRATION (Feb 11, 2026): Uses UUID for data lookups
     private func calculateMaxButtonWidth() -> CGFloat {
         var maxWidth: CGFloat = 100  // Minimum width
         
         // Iterate through all Spaces and measure their content
         for space in viewModel.allSpaces {
-            let spaceNumber = space.index
-            
-            // Get name (custom or default)
-            guard let name = getSpaceName(spaceNumber) else { continue }
-            
-            // Calculate width components:
-            // - Number: ~20pt
-            // - Emoji: ~20pt (if present)
-            // - Name text: measured
-            // - Note indicator: ~10pt (if present)
-            // - Spacing: 6pt between each element
-            // - Horizontal padding: removed (using frame width directly)
+            // Get name (custom or default) - UUID lookup
+            guard let name = getSpaceName(space.uuid, spaceIndex: space.index) else { continue }
             
             let numberWidth: CGFloat = 20
-            let emojiWidth: CGFloat = getSpaceEmoji(spaceNumber) != nil ? 20 : 0
-            let noteWidth: CGFloat = hasNote(spaceNumber) ? 10 : 0
+            let emojiWidth: CGFloat = getSpaceEmoji(space.uuid, spaceIndex: space.index) != nil ? 20 : 0
+            let noteWidth: CGFloat = hasNote(space.uuid) ? 10 : 0
             let spacing: CGFloat = 6
             
             // Measure text width using NSString
@@ -1467,9 +1598,11 @@ struct OverviewSpaceCardView: View {
     let space: SpaceDetector.SpaceInfo
     @ObservedObject var viewModel: SuperSpacesViewModel
     @ObservedObject var settings: SettingsManager
-    let getSpaceEmoji: (Int) -> String?
-    let getSpaceName: (Int) -> String?
-    let getSpaceDimmingOverlayOpacity: (Int) -> Double  // FEATURE: 5.5.8 - Dimming overlay calculator
+    /// MIGRATION (Feb 11, 2026): Changed from (Int) -> String? to (String, Int) -> String?
+    /// First param is UUID (for data lookup), second is index (for default fallback)
+    let getSpaceEmoji: (String, Int) -> String?
+    let getSpaceName: (String, Int) -> String?
+    let getSpaceDimmingOverlayOpacity: (String) -> Double  // FEATURE: 5.5.8 - UUID-based
     let availableHeight: CGFloat
     
     // Local state for this card's note - this is the source of truth for the TextEditor
@@ -1497,22 +1630,19 @@ struct OverviewSpaceCardView: View {
         return baseSize * viewModel.fontSizeMultiplier
     }
     
-    /// Gets the Space color (FEATURE 5.5.9)
+    /// Gets the Space color by UUID (FEATURE 5.5.9)
+    /// MIGRATION (Feb 11, 2026): Changed to UUID lookup
     private func getSpaceColor() -> String? {
-        return settings.spaceColors[space.index]
+        return settings.spaceColors[space.uuid]
     }
     
     /// Gets the accent color for this Space (FEATURE 5.5.9)
+    /// MIGRATION (Feb 11, 2026): Uses UUID for custom color lookup
     ///
     /// FIX (Feb 5, 2026): Previously fell back to Color.accentColor when no custom
-    /// color was set. But Color.accentColor resolves to the app's AccentColor asset
-    /// (orange), not blue as the old comment stated. This caused visual inconsistency
-    /// with the main HUD view which uses getSpaceColorOrDefault() (palette-based
-    /// defaults starting with Ocean Blue for Space 1).
-    ///
-    /// Now uses the same getSpaceColorOrDefault() logic for consistency across all views.
+    /// color was set. Now uses getSpaceColorOrDefault() for consistency.
     private func getSpaceAccentColor() -> Color {
-        let colorHex = settings.getSpaceColorOrDefault(for: space.index)
+        let colorHex = settings.getSpaceColorOrDefault(forUUID: space.uuid, spaceIndex: space.index)
         return settings.hexToColor(colorHex)
     }
     
@@ -1554,9 +1684,7 @@ struct OverviewSpaceCardView: View {
                 let calculatedHeight = min(maxNoteHeight, max(minNoteHeight, (availableHeight / 2) - fixedCardHeight))
                 
                 ZStack(alignment: .topLeading) {
-                    // BACKGROUND WATERMARK: Large desktop number
-                    // Positioned behind the text editor as a subtle visual indicator
-                    // This replaces the number badge in the header for a cleaner look
+                    // BACKGROUND WATERMARK: Large desktop number (display position)
                     Text("\(space.index)")
                         .font(.system(size: scaledFontSize(80), weight: .black))
                         .foregroundColor(.secondary.opacity(0.08))
@@ -1565,26 +1693,27 @@ struct OverviewSpaceCardView: View {
                     
                     // TextEditor with local state
                     // CRITICAL: Using id() to force SwiftUI to create a unique TextEditor instance
+                    // MIGRATION (Feb 11, 2026): Use UUID for unique ID (stable across reorders)
                     TextEditor(text: $noteText)
                         .font(.system(size: scaledFontSize(11)))
                         .frame(height: calculatedHeight)
-                        .padding(6)  // Internal padding for text content
+                        .padding(6)
                         .scrollContentBackground(.hidden)
-                        .background(Color.clear)  // Transparent to show watermark
+                        .background(Color.clear)
                         .cornerRadius(6)
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
                         )
-                        .id("note-editor-\(space.index)")  // Unique ID per Space
+                        .id("note-editor-\(space.uuid)")  // UUID for stable identity
                         .onChange(of: noteText) { newValue in
-                            // Debounced save to settings
+                            // Debounced save to settings (keyed by UUID)
                             saveTimer?.invalidate()
                             saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
                                 if newValue.isEmpty {
-                                    settings.spaceNotes.removeValue(forKey: space.index)
+                                    settings.spaceNotes.removeValue(forKey: space.uuid)
                                 } else {
-                                    settings.spaceNotes[space.index] = newValue
+                                    settings.spaceNotes[space.uuid] = newValue
                                 }
                             }
                         }
@@ -1628,17 +1757,18 @@ struct OverviewSpaceCardView: View {
         // CRITICAL: allowsHitTesting(false) ensures overlay doesn't block clicks on text fields and buttons
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.index)))
+                .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.uuid)))
                 .allowsHitTesting(false)
         )
         .onAppear {
             // Load note from settings when card appears (only once)
+            // MIGRATION (Feb 11, 2026): Use UUID for data lookup
             if !hasInitialized {
-                noteText = settings.spaceNotes[space.index] ?? ""
+                noteText = settings.spaceNotes[space.uuid] ?? ""
                 hasInitialized = true
             }
         }
-        .onChange(of: settings.spaceNotes[space.index]) { newValue in
+        .onChange(of: settings.spaceNotes[space.uuid]) { newValue in
             // Sync from settings if changed externally (but not during our own saves)
             if hasInitialized && noteText != (newValue ?? "") {
                 noteText = newValue ?? ""
@@ -1650,7 +1780,7 @@ struct OverviewSpaceCardView: View {
             arrowEdge: .bottom
         ) {
             SuperSpacesEmojiPicker(
-                spaceNumber: space.index,
+                spaceNumber: space.index,  // Display index for the picker title
                 selectedEmoji: Binding(
                     get: { editingSpaceEmoji.isEmpty ? nil : editingSpaceEmoji },
                     set: { newEmoji in
@@ -1673,7 +1803,7 @@ struct OverviewSpaceCardView: View {
             arrowEdge: .bottom
         ) {
             SuperSpacesColorPicker(
-                spaceNumber: space.index,
+                spaceNumber: space.index,  // Display index for the picker title
                 selectedColorHex: Binding(
                     get: { editingSpaceColor.isEmpty ? nil : editingSpaceColor },
                     set: { newColor in
@@ -1699,17 +1829,16 @@ struct OverviewSpaceCardView: View {
     /// DESIGN: Desktop number removed from header, now shown as watermark in note background
     /// UX IMPROVEMENT: Single click on name/emoji bar switches to that Space (larger clickable area)
     /// Arrow button becomes an edit button to enter editing mode
+    /// MIGRATION (Feb 11, 2026): Uses UUID for data lookups, index for display/switching
     private var displayHeaderView: some View {
         HStack(spacing: 8) {
             // Emoji and Name - CLICKABLE BAR to switch to this Space
-            // DESIGN: Expanded to fill more space since number badge is removed
-            // UX: Entire bar is clickable for easy Space switching
             Button(action: {
-                viewModel.switchToSpace(space.index)
+                viewModel.switchToSpace(space.index)  // Index for keyboard shortcuts
             }) {
                 HStack(spacing: 6) {
-                    // Emoji
-                    if let emoji = getSpaceEmoji(space.index), !emoji.isEmpty {
+                    // Emoji (UUID lookup)
+                    if let emoji = getSpaceEmoji(space.uuid, space.index), !emoji.isEmpty {
                         Text(emoji)
                             .font(.system(size: scaledFontSize(18)))
                     } else {
@@ -1718,28 +1847,26 @@ struct OverviewSpaceCardView: View {
                             .foregroundColor(.secondary)
                     }
                     
-                    // Name
-                    Text(getSpaceName(space.index) ?? "Unnamed")
+                    // Name (UUID lookup)
+                    Text(getSpaceName(space.uuid, space.index) ?? "Unnamed")
                         .font(.system(size: scaledFontSize(13), weight: .medium))
-                        .foregroundColor(getSpaceName(space.index) == nil ? .secondary : .primary)
+                        .foregroundColor(getSpaceName(space.uuid, space.index) == nil ? .secondary : .primary)
                         .lineLimit(1)
                     
                     Spacer()
                 }
-                .contentShape(Rectangle())  // Make entire area clickable
+                .contentShape(Rectangle())
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
-                    // Highlight current Space with its palette color
-                    // FIX (Feb 5, 2026): Use palette-based color instead of Color.accentColor
-                    // for consistency with the main HUD view's color scheme.
+                    // MIGRATION (Feb 11, 2026): Use UUID-based color lookup
                     space.index == viewModel.currentSpaceNumber ?
-                        settings.hexToColor(settings.getSpaceColorOrDefault(for: space.index)).opacity(0.15) : Color.secondary.opacity(0.05)
+                        settings.hexToColor(settings.getSpaceColorOrDefault(forUUID: space.uuid, spaceIndex: space.index)).opacity(0.15) : Color.secondary.opacity(0.05)
                 )
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
-            .focusEffectDisabled()  // Disable focus ring/outline on click
+            .focusEffectDisabled()
             .help("Click to switch to Space \(space.index)")
             
             // Edit button (replaces arrow button)
@@ -1896,12 +2023,13 @@ struct OverviewSpaceCardView: View {
     // MARK: - Editing Actions
     
     /// Starts editing the Space name, emoji, and color
+    /// MIGRATION (Feb 11, 2026): Uses UUID for data lookups
     /// FEATURE 5.5.9: Added color editing support
     private func startEditingSpaceName() {
         isEditingSpaceName = true
-        editingSpaceNameText = getSpaceName(space.index) ?? ""
-        editingSpaceEmoji = getSpaceEmoji(space.index) ?? ""
-        editingSpaceColor = getSpaceColor() ?? ""  // Load current color
+        editingSpaceNameText = getSpaceName(space.uuid, space.index) ?? ""
+        editingSpaceEmoji = getSpaceEmoji(space.uuid, space.index) ?? ""
+        editingSpaceColor = getSpaceColor() ?? ""  // Load current color (already UUID-based)
         
         // Focus the name field after a short delay to ensure the view is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -1910,35 +2038,32 @@ struct OverviewSpaceCardView: View {
     }
     
     /// Saves the edited Space name, emoji, and color
+    /// MIGRATION (Feb 11, 2026): Saves with UUID key for reorder resilience
     /// FEATURE 5.5.9: Added color saving
     private func saveSpaceNameAndEmoji() {
-        // Validate and save name with character limit
+        // Validate and save name with character limit (keyed by UUID)
         let trimmedName = editingSpaceNameText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty {
-            // Empty name: remove custom name, will show default
-            settings.spaceNames.removeValue(forKey: space.index)
+            settings.spaceNames.removeValue(forKey: space.uuid)
         } else {
-            // Validate and truncate to character limit
             let validatedName = settings.validateSpaceName(trimmedName)
-            settings.spaceNames[space.index] = validatedName
+            settings.spaceNames[space.uuid] = validatedName
         }
         
-        // Save emoji (limit to first 2 characters to handle multi-byte emojis)
+        // Save emoji (keyed by UUID)
         let trimmedEmoji = String(editingSpaceEmoji.prefix(2)).trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedEmoji.isEmpty {
-            // Empty emoji: remove custom emoji, will show default
-            settings.spaceEmojis.removeValue(forKey: space.index)
+            settings.spaceEmojis.removeValue(forKey: space.uuid)
         } else {
-            settings.spaceEmojis[space.index] = trimmedEmoji
+            settings.spaceEmojis[space.uuid] = trimmedEmoji
         }
         
-        // Save color (FEATURE 5.5.9)
+        // Save color (keyed by UUID)
         let trimmedColor = editingSpaceColor.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedColor.isEmpty {
-            // Empty color: remove custom color, will use default blue
-            settings.spaceColors.removeValue(forKey: space.index)
+            settings.spaceColors.removeValue(forKey: space.uuid)
         } else {
-            settings.spaceColors[space.index] = trimmedColor
+            settings.spaceColors[space.uuid] = trimmedColor
         }
         
         isEditingSpaceName = false

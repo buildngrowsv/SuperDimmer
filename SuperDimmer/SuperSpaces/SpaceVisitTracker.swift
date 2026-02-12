@@ -67,10 +67,17 @@ final class SpaceVisitTracker: ObservableObject {
     
     // MARK: - Properties
     
-    /// Ordered array of Space numbers, most recent first
+    /// Ordered array of Space UUIDs, most recent first
     /// Index 0 = current Space, Index 1 = last visited, etc.
-    /// Example: [3, 2, 6, 1, 4] means currently on Space 3, was on 2 before that, etc.
-    @Published private(set) var visitOrder: [Int] = []
+    ///
+    /// MIGRATION (Feb 11, 2026): Changed from [Int] (space numbers) to [String] (UUIDs)
+    /// Space numbers change when user reorders spaces in Mission Control.
+    /// UUIDs are stable identifiers that survive reordering.
+    /// This ensures visit recency tracking follows the actual spaces, not just positions.
+    ///
+    /// Example: ["5DA5956D-...", "E0C6D896-...", "85B76F0F-..."]
+    /// means currently on Space with UUID 5DA5956D, was on E0C6D896 before that, etc.
+    @Published private(set) var visitOrder: [String] = []
     
     /// UserDefaults key for persisting visit order
     private let visitOrderKey = "superdimmer.spaceVisitOrder"
@@ -95,11 +102,14 @@ final class SpaceVisitTracker: ObservableObject {
     
     // MARK: - Public Methods
     
-    /// Records a visit to a Space
+    /// Records a visit to a Space by UUID
+    ///
+    /// MIGRATION (Feb 11, 2026): Changed from spaceNumber (Int) to spaceUUID (String)
+    /// UUIDs are stable identifiers that survive reordering in Mission Control.
     ///
     /// ALGORITHM:
-    /// 1. If Space is already in array, remove it from current position
-    /// 2. Insert Space at position 0 (most recent)
+    /// 1. If Space UUID is already in array, remove it from current position
+    /// 2. Insert UUID at position 0 (most recent)
     /// 3. Trim array if it exceeds reasonable size (20 Spaces max)
     /// 4. Schedule debounced save to UserDefaults
     ///
@@ -108,19 +118,19 @@ final class SpaceVisitTracker: ObservableObject {
     /// SpaceChangeMonitor already calls callbacks on main thread, so this is safe.
     ///
     /// EXAMPLE:
-    /// Before: [3, 2, 6, 1]  (currently on Space 3)
-    /// Visit Space 6: [6, 3, 2, 1]  (Space 6 moves to front, was at position 2)
+    /// Before: ["UUID-A", "UUID-B", "UUID-C"]  (currently on A)
+    /// Visit UUID-C: ["UUID-C", "UUID-A", "UUID-B"]  (C moves to front)
     ///
-    /// - Parameter spaceNumber: The Space number that was just visited (1-based)
-    func recordVisit(to spaceNumber: Int) {
+    /// - Parameter spaceUUID: The UUID of the Space that was just visited
+    func recordVisit(to spaceUUID: String) {
         // Remove Space from current position if it exists
         // This ensures each Space appears only once in the array
-        if let existingIndex = visitOrder.firstIndex(of: spaceNumber) {
+        if let existingIndex = visitOrder.firstIndex(of: spaceUUID) {
             visitOrder.remove(at: existingIndex)
         }
         
         // Insert at position 0 (most recent)
-        visitOrder.insert(spaceNumber, at: 0)
+        visitOrder.insert(spaceUUID, at: 0)
         
         // Trim to reasonable size (20 Spaces max)
         // Most users have < 10 Spaces, but we support up to 20
@@ -129,7 +139,7 @@ final class SpaceVisitTracker: ObservableObject {
             visitOrder = Array(visitOrder.prefix(20))
         }
         
-        print("✓ SpaceVisitTracker: Recorded visit to Space \(spaceNumber). Order: \(visitOrder.prefix(5).map(String.init).joined(separator: ", "))")
+        print("✓ SpaceVisitTracker: Recorded visit to Space \(String(spaceUUID.prefix(8))). Order: \(visitOrder.prefix(5).map { String($0.prefix(8)) }.joined(separator: ", "))")
         
         // Schedule debounced save
         scheduleSave()
@@ -187,13 +197,13 @@ final class SpaceVisitTracker: ObservableObject {
     /// - This makes them clearly distinct from visited Spaces (which are 75%+ opacity / 25%- overlay)
     ///
     /// - Parameters:
-    ///   - spaceNumber: The Space number to get opacity for
+    ///   - spaceUUID: The Space UUID to get opacity for (MIGRATION Feb 11, 2026: changed from Int spaceNumber)
     ///   - maxDimLevel: Maximum dim level (0.0-1.0, default 0.25 = 25%)
     ///   - totalSpaces: Total number of Spaces (used to calculate step size)
     /// - Returns: Opacity value (0.0-1.0) where 1.0 is fully visible (converted to overlay in UI)
-    func getOpacity(for spaceNumber: Int, maxDimLevel: Double = 0.25, totalSpaces: Int) -> Double {
+    func getOpacity(for spaceUUID: String, maxDimLevel: Double = 0.25, totalSpaces: Int) -> Double {
         // Find position in visit order
-        guard let position = visitOrder.firstIndex(of: spaceNumber) else {
+        guard let position = visitOrder.firstIndex(of: spaceUUID) else {
             // Space not in visit order yet (unvisited)
             // Default to 50% opacity (neutral state)
             // This makes unvisited Spaces clearly distinct from visited ones
@@ -257,33 +267,35 @@ final class SpaceVisitTracker: ObservableObject {
     /// - User explicitly requests to "mark all Spaces as visited"
     /// - Migration from old behavior (if needed)
     ///
+    /// MIGRATION (Feb 11, 2026): Changed from Int space numbers to String UUIDs
+    ///
     /// BEHAVIOR:
-    /// - Adds all Spaces to visitOrder in numerical order
-    /// - Current Space (if known) is placed at position 0
-    /// - Other Spaces are added in order: [current, 1, 2, 3, ...]
-    /// - This will cause all Spaces to show progressive dimming from 1-N
+    /// - Adds all Space UUIDs to visitOrder
+    /// - Current Space UUID (if known) is placed at position 0
+    /// - Other Spaces are added in the order provided
+    /// - This will cause all Spaces to show progressive dimming
     ///
     /// - Parameters:
-    ///   - spaceNumbers: Array of all available Space numbers
-    ///   - currentSpace: The currently active Space (optional)
-    func initializeWithSpaces(_ spaceNumbers: [Int], currentSpace: Int?) {
+    ///   - spaceUUIDs: Array of all available Space UUIDs
+    ///   - currentSpaceUUID: The currently active Space's UUID (optional)
+    func initializeWithSpaces(_ spaceUUIDs: [String], currentSpaceUUID: String?) {
         // Start with current Space if known
-        var newOrder: [Int] = []
-        if let current = currentSpace {
+        var newOrder: [String] = []
+        if let current = currentSpaceUUID {
             newOrder.append(current)
         }
         
-        // Add all other Spaces in numerical order
-        for spaceNumber in spaceNumbers.sorted() {
-            if spaceNumber != currentSpace {
-                newOrder.append(spaceNumber)
+        // Add all other Spaces in provided order
+        for uuid in spaceUUIDs {
+            if uuid != currentSpaceUUID {
+                newOrder.append(uuid)
             }
         }
         
         visitOrder = newOrder
         scheduleSave()
         
-        print("✓ SpaceVisitTracker: Initialized with \(spaceNumbers.count) Spaces. Current: \(currentSpace ?? 0)")
+        print("✓ SpaceVisitTracker: Initialized with \(spaceUUIDs.count) Spaces. Current: \(currentSpaceUUID?.prefix(8) ?? "none")")
     }
     
     // MARK: - Private Methods
@@ -291,8 +303,13 @@ final class SpaceVisitTracker: ObservableObject {
     /// Loads visit order from UserDefaults
     ///
     /// PERSISTENCE FORMAT:
-    /// Stored as JSON array of integers: [3, 2, 6, 1, 4]
-    /// If no data exists (first launch), array is empty
+    /// New format (Feb 11, 2026): JSON array of UUID strings: ["5DA5956D-...", "E0C6D896-..."]
+    /// Old format (pre-migration): JSON array of integers: [3, 2, 6, 1, 4]
+    ///
+    /// MIGRATION (Feb 11, 2026):
+    /// If we find old-format data (array of Ints), we migrate it to UUID format by looking up
+    /// UUIDs for each space number from the current plist data. If migration fails (e.g. space
+    /// numbers no longer match), we start fresh.
     ///
     /// ERROR HANDLING:
     /// - If JSON decoding fails, logs error and starts with empty array
@@ -303,10 +320,40 @@ final class SpaceVisitTracker: ObservableObject {
             return
         }
         
+        // Try loading new UUID-based format first
         do {
-            let decoded = try JSONDecoder().decode([Int].self, from: data)
-            visitOrder = decoded
-            print("✓ SpaceVisitTracker: Loaded visit order: \(decoded.prefix(5).map(String.init).joined(separator: ", "))")
+            let decoded = try JSONDecoder().decode([String].self, from: data)
+            // Check if it looks like UUIDs (contain dashes) or old Int strings
+            let looksLikeUUIDs = decoded.first?.contains("-") ?? true
+            if looksLikeUUIDs || decoded.isEmpty {
+                visitOrder = decoded
+                print("✓ SpaceVisitTracker: Loaded UUID visit order: \(decoded.prefix(5).map { String($0.prefix(8)) }.joined(separator: ", "))")
+                return
+            }
+        } catch {
+            // Not a [String] array, might be old [Int] format
+        }
+        
+        // Try migrating from old [Int] format
+        do {
+            let oldDecoded = try JSONDecoder().decode([Int].self, from: data)
+            print("ℹ️ SpaceVisitTracker: Found old Int-based visit order, migrating to UUID format...")
+            
+            // Get current spaces to map Int positions to UUIDs
+            let allSpaces = SpaceDetector.getAllSpaces()
+            var migratedOrder: [String] = []
+            
+            for spaceNumber in oldDecoded {
+                if let space = allSpaces.first(where: { $0.index == spaceNumber }) {
+                    migratedOrder.append(space.uuid)
+                }
+                // Skip space numbers that no longer exist
+            }
+            
+            visitOrder = migratedOrder
+            // Save immediately in new format
+            saveVisitOrder()
+            print("✓ SpaceVisitTracker: Migrated \(oldDecoded.count) entries to UUID format → \(migratedOrder.count) entries")
         } catch {
             print("⚠️ SpaceVisitTracker: Failed to decode visit order: \(error)")
         }

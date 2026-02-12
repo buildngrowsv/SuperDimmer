@@ -711,18 +711,36 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         restoreSizeForMode(modeString)
     }
     
-    /// Sets up Space change monitoring
+    /// Sets up Space change monitoring (active space switch + reorder detection)
+    ///
+    /// REORDER DETECTION (Feb 11, 2026):
+    /// In addition to monitoring active space changes, we also monitor for Space reorders.
+    /// When the user drags Spaces in Mission Control to rearrange them, the plist array
+    /// order changes but UUIDs remain stable. We detect this and refresh the HUD so it
+    /// displays Spaces in the correct new order, with data (names, notes, etc.) still
+    /// correctly associated with each Space via UUID.
     private func setupSpaceMonitoring() {
         // Detect initial state
         refreshSpaces()
         
-        // Start monitoring for changes
+        // Start monitoring for active space changes
         // SINGLETON FIX (Jan 26, 2026): Use shared instance to prevent notification storms
         SpaceChangeMonitor.shared.addObserver { [weak self] spaceNumber in
             self?.handleSpaceChange(spaceNumber)
         }
         
-        print("✓ SuperSpacesHUD: Monitoring started")
+        // FEATURE (Feb 11, 2026): Monitor for Space reorder events
+        // When user drags Spaces in Mission Control, refresh the Space list
+        // so the HUD displays the new order while keeping data (names, notes,
+        // colors, emojis) correctly associated via UUID
+        SpaceChangeMonitor.shared.addReorderObserver { [weak self] in
+            DispatchQueue.main.async {
+                print("✓ SuperSpacesHUD: Spaces reordered, refreshing...")
+                self?.refreshSpaces()
+            }
+        }
+        
+        print("✓ SuperSpacesHUD: Monitoring started (with reorder detection)")
     }
     
     /// Sets up keyboard shortcuts for text size adjustment
@@ -790,10 +808,12 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
             viewModel.currentSpaceNumber = currentSpace.spaceNumber
             
             // Record the current Space as visited (5.5.8)
+            // MIGRATION (Feb 11, 2026): Now uses UUID instead of space number
+            // This ensures visit tracking survives Space reordering in Mission Control
             // This ensures the current Space shows at full brightness (no overlay)
             // Other Spaces will have dark overlay until visited
             if SpaceVisitTracker.shared.visitOrder.isEmpty {
-                SpaceVisitTracker.shared.recordVisit(to: currentSpace.spaceNumber)
+                SpaceVisitTracker.shared.recordVisit(to: currentSpace.spaceUUID)
             }
         }
     }
@@ -811,9 +831,17 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.viewModel.currentSpaceNumber = spaceNumber
             
+            // Also refresh allSpaces since the space number changed and we need
+            // the full SpaceInfo (including UUID) for the new current space
+            self?.viewModel.allSpaces = SpaceDetector.getAllSpaces()
+            
             // Record visit for button dimming feature (5.5.8)
-            // This updates the visit order so button opacity reflects recency
-            SpaceVisitTracker.shared.recordVisit(to: spaceNumber)
+            // MIGRATION (Feb 11, 2026): Now uses UUID instead of space number
+            // We look up the UUID for the current space number so visit tracking
+            // is resilient to Space reordering in Mission Control
+            if let currentSpace = SpaceDetector.getCurrentSpace() {
+                SpaceVisitTracker.shared.recordVisit(to: currentSpace.spaceUUID)
+            }
         }
     }
     

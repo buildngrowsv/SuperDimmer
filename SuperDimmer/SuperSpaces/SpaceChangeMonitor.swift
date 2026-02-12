@@ -19,24 +19,40 @@
 //  - Debouncing to prevent duplicate notifications during Space transitions
 //  - Caches last known Space to detect actual changes
 //
+//  REORDER DETECTION (Feb 11, 2026):
+//  - Also monitors the ORDER of Space UUIDs in the plist array
+//  - When user drags a Space in Mission Control to reorder, the plist array order changes
+//  - ManagedSpaceID and UUID are STABLE - they do NOT change on reorder
+//  - Only the array position changes (confirmed empirically with test-space-reorder-ids.swift)
+//  - We detect this by comparing the UUID order snapshot on each poll
+//  - When reorder is detected, we fire a separate reorderCallbacks notification
+//  - This allows the HUD and settings to refresh their display while keeping data
+//    correctly associated with the right Space via UUID
+//
 //  PERFORMANCE:
 //  - Notification-based: Instant, no CPU overhead
 //  - Polling: 0.5s interval, ~0.1% CPU (only when polling is active)
 //  - SpaceDetector.getCurrentSpace(): ~2-4ms per call
+//  - Reorder check adds ~1ms (array comparison)
 //  - Total impact: Negligible
 //
 //  USAGE:
 //  ```swift
 //  let monitor = SpaceChangeMonitor()
-//  monitor.startMonitoring { spaceNumber in
+//  monitor.addObserver { spaceNumber in
 //      print("Switched to Space \(spaceNumber)")
 //      updateUI(for: spaceNumber)
+//  }
+//  monitor.addReorderObserver {
+//      print("Spaces were reordered in Mission Control!")
+//      refreshSpaceList()
 //  }
 //  ```
 //
 //  PRODUCT CONTEXT:
 //  This powers the Super Spaces HUD auto-update feature.
 //  When users switch Spaces, the HUD immediately highlights the new current Space.
+//  When users reorder Spaces in Mission Control, the HUD refreshes to match.
 //  No manual refresh needed - it "just works".
 //
 
@@ -52,6 +68,13 @@ import os.log
 /// Previously, DimmingCoordinator, AppInactivityTracker, and SuperSpacesHUD each created
 /// their own monitor, resulting in 3x the notifications and 55% CPU usage during space changes.
 ///
+/// REORDER DETECTION (Feb 11, 2026):
+/// Added ability to detect when user reorders Spaces in Mission Control.
+/// ManagedSpaceID and UUID are stable identifiers that don't change on reorder -
+/// only the plist array order changes. We track the UUID order and fire separate
+/// reorder callbacks when it changes. This was confirmed empirically by capturing
+/// all Space identifiers before and after a drag-reorder in Mission Control.
+///
 /// Now only ONE monitor exists, but multiple observers can register callbacks.
 final class SpaceChangeMonitor {
     
@@ -66,10 +89,19 @@ final class SpaceChangeMonitor {
     
     // MARK: - Properties
     
-    /// Callbacks invoked when Space changes
+    /// Callbacks invoked when Space changes (user switches to a different Space)
     /// Changed from single callback to array to support multiple observers
     /// Each callback receives the new Space number (1-based)
     private var spaceChangeCallbacks: [(Int) -> Void] = []
+    
+    /// Callbacks invoked when Spaces are reordered in Mission Control
+    /// FEATURE (Feb 11, 2026): Reorder detection
+    /// When the user drags Spaces to rearrange them in Mission Control, we detect
+    /// the change in the plist array order and fire these callbacks so the HUD
+    /// and settings can update their display to match the new order.
+    /// The callbacks receive no parameters because the consumers should re-read
+    /// the full Space list from SpaceDetector to get the updated order.
+    private var reorderCallbacks: [() -> Void] = []
     
     /// Timer for polling Space changes (fallback mechanism)
     /// Used in addition to NSWorkspace notifications for reliability
@@ -78,6 +110,14 @@ final class SpaceChangeMonitor {
     /// Last known Space number
     /// Used to detect actual changes and prevent duplicate notifications
     private var lastKnownSpace: Int?
+    
+    /// Last known order of Space UUIDs (from plist array order)
+    /// FEATURE (Feb 11, 2026): Reorder detection
+    /// We track the UUID sequence from SpaceDetector.getAllSpaces() and compare
+    /// on each poll. If the UUID sequence changes but the set of UUIDs is the same,
+    /// it means the user reordered Spaces in Mission Control.
+    /// UUIDs are stable identifiers - they survive reordering (confirmed empirically).
+    private var lastKnownSpaceUUIDOrder: [String] = []
     
     /// Debounce timer to prevent rapid-fire notifications during transitions
     /// macOS Space transitions can trigger multiple events
@@ -98,7 +138,7 @@ final class SpaceChangeMonitor {
     
     // MARK: - Public Methods
     
-    /// Adds an observer for Space changes
+    /// Adds an observer for Space changes (active space switched)
     ///
     /// SINGLETON PATTERN (Jan 26, 2026):
     /// Multiple observers can register, but only one monitor runs.
@@ -130,6 +170,43 @@ final class SpaceChangeMonitor {
         }
     }
     
+    /// Adds an observer for Space reorder events (user dragged Spaces in Mission Control)
+    ///
+    /// FEATURE (Feb 11, 2026): Reorder detection
+    /// When the user drags a Space to reorder it in Mission Control, the plist file
+    /// updates the array order. ManagedSpaceID and UUID are STABLE and don't change -
+    /// only their position in the array changes.
+    ///
+    /// This was confirmed empirically: we ran test-space-reorder-ids.swift which captures
+    /// all identifiers (ManagedSpaceID, UUID, id64, array index) before and after a
+    /// drag-reorder. Result: UUIDs and ManagedSpaceIDs stayed the same, only array
+    /// positions changed.
+    ///
+    /// WHY SEPARATE CALLBACK:
+    /// - Space switch and reorder are different events that need different handling
+    /// - On space switch: update current highlight, record visit
+    /// - On reorder: refresh the entire space list, remap display positions
+    /// - Reorder doesn't change which space is active, just the ordering
+    ///
+    /// USAGE:
+    /// ```swift
+    /// SpaceChangeMonitor.shared.addReorderObserver {
+    ///     // Spaces were reordered in Mission Control
+    ///     refreshSpaceList()
+    /// }
+    /// ```
+    ///
+    /// - Parameter callback: Callback invoked (no params) when reorder detected
+    func addReorderObserver(_ callback: @escaping () -> Void) {
+        // Add callback to list
+        reorderCallbacks.append(callback)
+        
+        // Start monitoring if not already started
+        if !isMonitoring {
+            startMonitoringInternal()
+        }
+    }
+    
     /// Internal method to start monitoring (called once)
     private func startMonitoringInternal() {
         guard !isMonitoring else {
@@ -139,11 +216,18 @@ final class SpaceChangeMonitor {
         
         self.isMonitoring = true
         
-        // Get initial Space
+        // Get initial Space and UUID order
         if let currentSpace = SpaceDetector.getCurrentSpace() {
             lastKnownSpace = currentSpace.spaceNumber
             print("✓ SpaceChangeMonitor: Initial Space: \(currentSpace.spaceNumber)")
         }
+        
+        // Capture initial UUID order for reorder detection
+        // FEATURE (Feb 11, 2026): Store the initial sequence of Space UUIDs
+        // so we can detect when Mission Control reorders them
+        let allSpaces = SpaceDetector.getAllSpaces()
+        lastKnownSpaceUUIDOrder = allSpaces.map { $0.uuid }
+        print("✓ SpaceChangeMonitor: Initial UUID order: \(lastKnownSpaceUUIDOrder.map { String($0.prefix(8)) })")
         
         // Register for NSWorkspace Space change notifications
         // This provides immediate notification but no Space details
@@ -156,6 +240,7 @@ final class SpaceChangeMonitor {
         
         // Start polling timer as fallback
         // Catches changes if notification is missed or delayed
+        // Also used for reorder detection since there is no notification for reorders
         // CRITICAL: Timer must be on main thread's RunLoop to fire
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -174,7 +259,7 @@ final class SpaceChangeMonitor {
             }
         }
         
-        print("✓ SpaceChangeMonitor: Started monitoring")
+        print("✓ SpaceChangeMonitor: Started monitoring (with reorder detection)")
     }
     
     /// Stops monitoring for Space changes
@@ -230,13 +315,26 @@ final class SpaceChangeMonitor {
         }
     }
     
-    /// Checks if Space has changed and notifies if so
+    /// Checks if Space has changed and/or if Spaces were reordered, and notifies accordingly
     ///
     /// CHANGE DETECTION:
     /// 1. Query SpaceDetector for current Space
-    /// 2. Compare with lastKnownSpace
-    /// 3. If different, update cache and notify
-    /// 4. If same, do nothing (prevents duplicate notifications)
+    /// 2. Compare with lastKnownSpace for active space change
+    /// 3. Compare UUID order with lastKnownSpaceUUIDOrder for reorder detection
+    /// 4. Notify appropriate callbacks
+    ///
+    /// REORDER DETECTION (Feb 11, 2026):
+    /// In addition to detecting active space changes, we also detect when the user
+    /// rearranges Spaces in Mission Control. This is done by comparing the current
+    /// UUID order (from getAllSpaces()) with the cached lastKnownSpaceUUIDOrder.
+    /// If the order changed but the set of UUIDs is the same, it's a reorder event.
+    /// If UUIDs were added or removed, it means spaces were created/deleted.
+    ///
+    /// WHY WE CHECK REORDER ON EVERY POLL:
+    /// - There is NO macOS notification for Space reorder events
+    /// - The plist updates asynchronously after a Mission Control drag
+    /// - Polling every 0.5s catches reorders within ~1s of them happening
+    /// - The UUID comparison is O(n) where n = number of spaces (typically < 10)
     ///
     /// CALLED BY:
     /// - handleWorkspaceSpaceChange (after debounce)
@@ -244,7 +342,8 @@ final class SpaceChangeMonitor {
     ///
     /// PERFORMANCE:
     /// - SpaceDetector.getCurrentSpace(): ~2-4ms
-    /// - Comparison: Negligible
+    /// - SpaceDetector.getAllSpaces(): ~3-5ms (only called when checking reorder)
+    /// - UUID array comparison: negligible
     /// - Callback: Depends on observer implementation
     ///
     /// ERROR HANDLING:
@@ -264,19 +363,88 @@ final class SpaceChangeMonitor {
         
         let currentSpaceNumber = currentSpace.spaceNumber
         
-        // Check if Space actually changed
+        // Check if Space actually changed (active space switch)
         if currentSpaceNumber != lastKnownSpace {
             print("✓ SpaceChangeMonitor: Space changed: \(lastKnownSpace ?? 0) -> \(currentSpaceNumber)")
             
             // Update cache
             lastKnownSpace = currentSpaceNumber
             
-            // Notify all observers
+            // Notify all space-change observers
             notifyObservers(newSpace: currentSpaceNumber)
+        }
+        
+        // FEATURE (Feb 11, 2026): Check for Space reorder
+        // Read the current UUID order and compare with cached order
+        // This detects when the user drags Spaces to reorder in Mission Control
+        checkForSpaceReorder()
+    }
+    
+    /// Checks if Spaces were reordered in Mission Control and notifies observers if so
+    ///
+    /// FEATURE (Feb 11, 2026): Reorder detection
+    ///
+    /// HOW IT WORKS:
+    /// 1. Read current Space list from SpaceDetector.getAllSpaces()
+    /// 2. Extract UUID order
+    /// 3. Compare with lastKnownSpaceUUIDOrder
+    /// 4. If different:
+    ///    a. If same set of UUIDs → reorder event (drag in Mission Control)
+    ///    b. If different set → space added/removed event
+    ///    c. Either way, fire reorder callbacks so HUD refreshes
+    /// 5. Update cached order
+    ///
+    /// EMPIRICAL EVIDENCE (Feb 11, 2026):
+    /// We verified with test-space-reorder-ids.swift that:
+    /// - ManagedSpaceID is STABLE across reorders (doesn't change)
+    /// - UUID is STABLE across reorders (doesn't change)
+    /// - id64 is STABLE across reorders (always equals ManagedSpaceID)
+    /// - Only the plist array position changes
+    /// This means UUID is a reliable key for associating data with Spaces.
+    private func checkForSpaceReorder() {
+        let currentSpaces = SpaceDetector.getAllSpaces()
+        let currentUUIDOrder = currentSpaces.map { $0.uuid }
+        
+        // Only check if we have a previous snapshot to compare against
+        guard !lastKnownSpaceUUIDOrder.isEmpty else {
+            lastKnownSpaceUUIDOrder = currentUUIDOrder
+            return
+        }
+        
+        // Compare UUID orders
+        if currentUUIDOrder != lastKnownSpaceUUIDOrder {
+            // Something changed! Determine what kind of change
+            let oldSet = Set(lastKnownSpaceUUIDOrder)
+            let newSet = Set(currentUUIDOrder)
+            
+            if oldSet == newSet {
+                // Same UUIDs, different order → user reordered Spaces in Mission Control
+                print("✓ SpaceChangeMonitor: Spaces REORDERED in Mission Control!")
+                print("  Before: \(lastKnownSpaceUUIDOrder.map { String($0.prefix(8)) })")
+                print("  After:  \(currentUUIDOrder.map { String($0.prefix(8)) })")
+            } else {
+                // Different UUIDs → Spaces were added or removed
+                let added = newSet.subtracting(oldSet)
+                let removed = oldSet.subtracting(newSet)
+                if !added.isEmpty {
+                    print("✓ SpaceChangeMonitor: Spaces ADDED: \(added.map { String($0.prefix(8)) })")
+                }
+                if !removed.isEmpty {
+                    print("✓ SpaceChangeMonitor: Spaces REMOVED: \(removed.map { String($0.prefix(8)) })")
+                }
+            }
+            
+            // Update cached order
+            lastKnownSpaceUUIDOrder = currentUUIDOrder
+            
+            // Notify all reorder observers
+            // Both reorder and add/remove events trigger this since the HUD
+            // needs to refresh its Space list in either case
+            notifyReorderObservers()
         }
     }
     
-    /// Notifies all registered observers of a space change
+    /// Notifies all registered observers of a space change (active space switch)
     ///
     /// SINGLETON PATTERN (Jan 26, 2026):
     /// Calls all registered callbacks with the new space number.
@@ -287,6 +455,23 @@ final class SpaceChangeMonitor {
     private func notifyObservers(newSpace: Int) {
         for callback in spaceChangeCallbacks {
             callback(newSpace)
+        }
+    }
+    
+    /// Notifies all registered reorder observers that Spaces were reordered
+    ///
+    /// FEATURE (Feb 11, 2026): Reorder detection
+    /// Called when we detect that the UUID order in the plist has changed.
+    /// This can happen when the user:
+    /// 1. Drags a Space to reorder in Mission Control
+    /// 2. Creates a new Space
+    /// 3. Deletes a Space
+    ///
+    /// Observers should re-read the Space list from SpaceDetector to get
+    /// the updated order and refresh their UI accordingly.
+    private func notifyReorderObservers() {
+        for callback in reorderCallbacks {
+            callback()
         }
     }
 }

@@ -550,6 +550,13 @@ final class SettingsManager: ObservableObject {
         case spaceEmojis = "superdimmer.spaceEmojis"
         case spaceNotes = "superdimmer.spaceNotes"
         case spaceColors = "superdimmer.spaceColors"
+        
+        // Note Follows Current Space (Feb 11, 2026)
+        // When enabled, the note mode HUD automatically switches to show the note
+        // for whichever macOS Space the user is currently on. When disabled, the note
+        // stays pinned to whichever Space was manually selected.
+        // This is a per-user global preference (not per-HUD).
+        case noteFollowsCurrentSpace = "superdimmer.noteFollowsCurrentSpace"
         case superSpacesDisplayMode = "superdimmer.superSpacesDisplayMode"
         case superSpacesAutoHide = "superdimmer.superSpacesAutoHide"
         case superSpacesPosition = "superdimmer.superSpacesPosition"
@@ -1642,16 +1649,25 @@ final class SettingsManager: ObservableObject {
     /**
      Custom names for Spaces.
      
-     Dictionary mapping Space number (1-based) to custom name.
-     Example: [1: "Email", 2: "Browse", 3: "Development"]
+     MIGRATION (Feb 11, 2026): Changed from [Int: String] to [String: String]
+     Keys are now Space UUIDs (stable identifiers) instead of space numbers (array positions).
+     This ensures space names follow the space when reordered in Mission Control.
+     
+     WHY UUID KEYS:
+     - Space numbers change when user drags spaces to reorder in Mission Control
+     - UUIDs are STABLE - they don't change on reorder (confirmed empirically)
+     - Without UUID keys, reordering would mix up which name belongs to which space
+     - Example: If "Email" was on Space 3 and user moves it to position 5,
+       the UUID stays the same so "Email" follows the space to its new position
+     
+     Example: ["5DA5956D-...": "Email", "E0C6D896-...": "Browse"]
      
      DEFAULT: Empty (uses default names)
      */
-    @Published var spaceNames: [Int: String] {
+    @Published var spaceNames: [String: String] {
         didSet {
-            // Convert Int keys to String keys for UserDefaults
-            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceNames.map { (String($0.key), $0.value) })
-            defaults.set(stringKeyDict, forKey: Keys.spaceNames.rawValue)
+            // UUID keys are already Strings, save directly to UserDefaults
+            defaults.set(spaceNames, forKey: Keys.spaceNames.rawValue)
         }
     }
     
@@ -1660,8 +1676,11 @@ final class SettingsManager: ObservableObject {
      
      FEATURE: 5.5.5 - Space Name & Emoji Customization
      
-     Dictionary mapping Space number (1-based) to emoji string.
-     Example: [1: "📧", 2: "🌐", 3: "💻"]
+     MIGRATION (Feb 11, 2026): Changed from [Int: String] to [String: String]
+     Keys are now Space UUIDs instead of space numbers for reorder resilience.
+     See spaceNames for detailed migration rationale.
+     
+     Example: ["5DA5956D-...": "📧", "E0C6D896-...": "🌐"]
      
      USAGE:
      - Displayed alongside Space names in HUD
@@ -1670,11 +1689,10 @@ final class SettingsManager: ObservableObject {
      
      DEFAULT: Empty (no emojis)
      */
-    @Published var spaceEmojis: [Int: String] {
+    @Published var spaceEmojis: [String: String] {
         didSet {
-            // Convert Int keys to String keys for UserDefaults
-            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceEmojis.map { (String($0.key), $0.value) })
-            defaults.set(stringKeyDict, forKey: Keys.spaceEmojis.rawValue)
+            // UUID keys are already Strings, save directly to UserDefaults
+            defaults.set(spaceEmojis, forKey: Keys.spaceEmojis.rawValue)
         }
     }
     
@@ -1683,8 +1701,11 @@ final class SettingsManager: ObservableObject {
      
      FEATURE: 5.5.6 - Note Mode
      
-     Dictionary mapping Space number (1-based) to note text.
-     Example: [1: "Check emails and calendar", 2: "Research tasks", 3: "Current project work"]
+     MIGRATION (Feb 11, 2026): Changed from [Int: String] to [String: String]
+     Keys are now Space UUIDs instead of space numbers for reorder resilience.
+     See spaceNames for detailed migration rationale.
+     
+     Example: ["5DA5956D-...": "Check emails", "85B76F0F-...": "Current project"]
      
      USAGE:
      - User can switch HUD to "Note Mode"
@@ -1699,11 +1720,39 @@ final class SettingsManager: ObservableObject {
      
      DEFAULT: Empty (no notes)
      */
-    @Published var spaceNotes: [Int: String] {
+    @Published var spaceNotes: [String: String] {
         didSet {
-            // Convert Int keys to String keys for UserDefaults
-            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceNotes.map { (String($0.key), $0.value) })
-            defaults.set(stringKeyDict, forKey: Keys.spaceNotes.rawValue)
+            // UUID keys are already Strings, save directly to UserDefaults
+            defaults.set(spaceNotes, forKey: Keys.spaceNotes.rawValue)
+        }
+    }
+    
+    /**
+     Whether the note mode HUD automatically follows the current Space.
+     
+     FEATURE: Note Follows Current Space Toggle (Feb 11, 2026)
+     
+     When enabled (true), the note mode view automatically switches to display the note
+     for whichever macOS Space the user is currently on. Whenever the user switches Spaces
+     (via Mission Control, keyboard shortcuts, trackpad gestures, etc.), the note editor
+     updates to show that Space's note.
+     
+     When disabled (false), the note stays pinned to whichever Space the user manually
+     selected via the Space selector buttons at the top of the note mode. This is useful
+     when a user wants to reference or edit a specific Space's note without it jumping
+     around as they switch Spaces.
+     
+     WHY THIS FEATURE:
+     - Users who use notes as contextual reminders want them to auto-update on Space switch
+     - Users who are editing a specific Space's note want it to stay put
+     - Providing a toggle gives full control over both workflows
+     - Persisted globally so the preference is maintained across app launches
+     
+     DEFAULT: true (follows current Space by default, since that's the most natural behavior)
+     */
+    @Published var noteFollowsCurrentSpace: Bool {
+        didSet {
+            defaults.set(noteFollowsCurrentSpace, forKey: Keys.noteFollowsCurrentSpace.rawValue)
         }
     }
     
@@ -1712,8 +1761,11 @@ final class SettingsManager: ObservableObject {
      
      FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
      
-     Dictionary mapping Space number (1-based) to color hex string.
-     Example: [1: "#FF5733", 2: "#33FF57", 3: "#3357FF"]
+     MIGRATION (Feb 11, 2026): Changed from [Int: String] to [String: String]
+     Keys are now Space UUIDs instead of space numbers for reorder resilience.
+     See spaceNames for detailed migration rationale.
+     
+     Example: ["5DA5956D-...": "#FF5733", "E0C6D896-...": "#33FF57"]
      
      USAGE:
      - User can assign a color to each Space when editing name/emoji
@@ -1735,11 +1787,10 @@ final class SettingsManager: ObservableObject {
      
      DEFAULT: Empty (no custom colors, uses default blue accent)
      */
-    @Published var spaceColors: [Int: String] {
+    @Published var spaceColors: [String: String] {
         didSet {
-            // Convert Int keys to String keys for UserDefaults
-            let stringKeyDict = Dictionary(uniqueKeysWithValues: spaceColors.map { (String($0.key), $0.value) })
-            defaults.set(stringKeyDict, forKey: Keys.spaceColors.rawValue)
+            // UUID keys are already Strings, save directly to UserDefaults
+            defaults.set(spaceColors, forKey: Keys.spaceColors.rawValue)
         }
     }
     
@@ -2386,46 +2437,95 @@ final class SettingsManager: ObservableObject {
         // ============================================================
         self.superSpacesEnabled = defaults.bool(forKey: Keys.superSpacesEnabled.rawValue)
         
-        // Load Space names dictionary
+        // MIGRATION (Feb 11, 2026): Space data now uses UUID keys instead of Int keys
+        // This ensures data follows spaces when they are reordered in Mission Control.
+        // Old format: ["1": "Email", "3": "Code"] (Int keys as strings)
+        // New format: ["5DA5956D-...": "Email", "85B76F0F-...": "Code"] (UUID keys)
+        //
+        // Migration strategy:
+        // 1. Load the raw dictionary from UserDefaults
+        // 2. Check if keys look like integers (old format) or UUIDs (new format)
+        // 3. If old format, map Int keys to UUIDs using current Space positions
+        // 4. Save in new format
+        //
+        // LIMITATION: Migration maps based on current Space positions at migration time.
+        // If the user already reordered before updating, data may map to wrong spaces.
+        // This is a one-time risk that's unavoidable without historical data.
+        
+        // Helper: Check if a dictionary has old-format Int keys
+        // Old keys are "1", "2", "3" etc. UUIDs are "5DA5956D-7C5E-..." (contain dashes, 36 chars)
+        let isOldFormatKey: (String) -> Bool = { key in
+            return Int(key) != nil
+        }
+        
+        // Helper: Get UUID for a space index (1-based) from current plist data
+        // Used during migration from Int keys to UUID keys
+        let allSpacesForMigration = SpaceDetector.getAllSpaces()
+        let uuidForIndex: (Int) -> String? = { index in
+            return allSpacesForMigration.first(where: { $0.index == index })?.uuid
+        }
+        
+        // Helper: Migrate a dictionary from Int keys to UUID keys
+        // Returns the migrated dictionary, or the original if already UUID-keyed
+        let migrateDict: ([String: String]) -> [String: String] = { dict in
+            // Check if ANY key is old format (Int-parseable)
+            let hasOldKeys = dict.keys.contains(where: isOldFormatKey)
+            
+            if !hasOldKeys {
+                // Already UUID-keyed (or empty), return as-is
+                return dict
+            }
+            
+            // Migrate: convert Int keys to UUID keys
+            var migrated: [String: String] = [:]
+            for (key, value) in dict {
+                if let intKey = Int(key), let uuid = uuidForIndex(intKey) {
+                    // Successfully mapped old Int key to UUID
+                    migrated[uuid] = value
+                } else if !isOldFormatKey(key) {
+                    // Already a UUID key (mixed format), keep it
+                    migrated[key] = value
+                }
+                // Skip old Int keys that can't be mapped (space no longer exists)
+            }
+            
+            print("✓ SettingsManager: Migrated \(dict.count) entries from Int keys to UUID keys → \(migrated.count) entries")
+            return migrated
+        }
+        
+        // Load Space names dictionary (with migration)
         if let namesDict = defaults.dictionary(forKey: Keys.spaceNames.rawValue) as? [String: String] {
-            // Convert String keys to Int keys
-            self.spaceNames = Dictionary(uniqueKeysWithValues: namesDict.compactMap { key, value in
-                guard let intKey = Int(key) else { return nil }
-                return (intKey, value)
-            })
+            self.spaceNames = migrateDict(namesDict)
         } else {
             self.spaceNames = [:]
         }
         
-        // Load Space emojis dictionary
+        // Load Space emojis dictionary (with migration)
         if let emojisDict = defaults.dictionary(forKey: Keys.spaceEmojis.rawValue) as? [String: String] {
-            // Convert String keys to Int keys
-            self.spaceEmojis = Dictionary(uniqueKeysWithValues: emojisDict.compactMap { key, value in
-                guard let intKey = Int(key) else { return nil }
-                return (intKey, value)
-            })
+            self.spaceEmojis = migrateDict(emojisDict)
         } else {
             self.spaceEmojis = [:]
         }
         
-        // Load Space notes dictionary
+        // Load Space notes dictionary (with migration)
         if let notesDict = defaults.dictionary(forKey: Keys.spaceNotes.rawValue) as? [String: String] {
-            // Convert String keys to Int keys
-            self.spaceNotes = Dictionary(uniqueKeysWithValues: notesDict.compactMap { key, value in
-                guard let intKey = Int(key) else { return nil }
-                return (intKey, value)
-            })
+            self.spaceNotes = migrateDict(notesDict)
         } else {
             self.spaceNotes = [:]
         }
         
-        // Load Space colors dictionary (5.5.9 - Jan 22, 2026)
+        // Load note follows current space setting (Feb 11, 2026)
+        // Defaults to true (follows current Space) if not previously set
+        // Using object(forKey:) check so we can distinguish "never set" from "set to false"
+        if defaults.object(forKey: Keys.noteFollowsCurrentSpace.rawValue) != nil {
+            self.noteFollowsCurrentSpace = defaults.bool(forKey: Keys.noteFollowsCurrentSpace.rawValue)
+        } else {
+            self.noteFollowsCurrentSpace = true  // Default: follow current Space
+        }
+        
+        // Load Space colors dictionary (with migration)
         if let colorsDict = defaults.dictionary(forKey: Keys.spaceColors.rawValue) as? [String: String] {
-            // Convert String keys to Int keys
-            self.spaceColors = Dictionary(uniqueKeysWithValues: colorsDict.compactMap { key, value in
-                guard let intKey = Int(key) else { return nil }
-                return (intKey, value)
-            })
+            self.spaceColors = migrateDict(colorsDict)
         } else {
             self.spaceColors = [:]
         }
@@ -2997,8 +3097,14 @@ final class SettingsManager: ObservableObject {
      Returns the hex color string stored for this Space.
      Returns nil if no custom color is assigned (will use default blue).
      */
+    /// MIGRATION (Feb 11, 2026): Updated to look up by UUID internally
+    /// Kept the Int interface for backward compatibility with components that only know the index
     func getSpaceColor(for spaceNumber: Int) -> String? {
-        return spaceColors[spaceNumber]
+        // Look up UUID for this space number from current space list
+        if let uuid = SpaceDetector.getAllSpaces().first(where: { $0.index == spaceNumber })?.uuid {
+            return spaceColors[uuid]
+        }
+        return nil
     }
     
     /**
@@ -3033,18 +3139,39 @@ final class SettingsManager: ObservableObject {
     }
     
     /**
-     Gets the color for a Space, using custom color if set, or default color otherwise.
+     Gets the color for a Space by UUID, using custom color if set, or default color otherwise.
      
      FEATURE: 5.5.9 - Space Color Customization (Jan 22, 2026)
+     MIGRATION (Feb 11, 2026): Now accepts spaceUUID (String) instead of spaceNumber (Int)
      
      This is the primary method to use when displaying Space colors in the UI.
      It ensures every Space has a color (either custom or default).
+     The spaceIndex parameter is used only for default color cycling when no custom color is set.
      
-     - Parameter spaceNumber: The Space number (1-based)
+     - Parameters:
+       - spaceUUID: The Space UUID (stable identifier)
+       - spaceIndex: The Space's current display index (1-based, for default color cycling)
      - Returns: Hex color string (custom or default)
      */
+    func getSpaceColorOrDefault(forUUID spaceUUID: String, spaceIndex: Int) -> String {
+        return spaceColors[spaceUUID] ?? getDefaultSpaceColor(for: spaceIndex)
+    }
+    
+    /**
+     BACKWARD COMPATIBILITY (Feb 11, 2026):
+     Gets the color for a Space by index number. Uses the space index for default color cycling.
+     This method is kept for components that only have the space number and no UUID.
+     Prefer getSpaceColorOrDefault(forUUID:spaceIndex:) when UUID is available.
+     
+     - Parameter spaceNumber: The Space number (1-based)
+     - Returns: Hex color string (custom or default, but only finds custom if UUID lookup works)
+     */
     func getSpaceColorOrDefault(for spaceNumber: Int) -> String {
-        return spaceColors[spaceNumber] ?? getDefaultSpaceColor(for: spaceNumber)
+        // Look up UUID for this space number from current space list
+        if let uuid = SpaceDetector.getAllSpaces().first(where: { $0.index == spaceNumber })?.uuid {
+            return spaceColors[uuid] ?? getDefaultSpaceColor(for: spaceNumber)
+        }
+        return getDefaultSpaceColor(for: spaceNumber)
     }
     
     /**
@@ -3288,6 +3415,7 @@ final class SettingsManager: ObservableObject {
         spaceNames = [:]
         spaceEmojis = [:]
         spaceNotes = [:]
+        noteFollowsCurrentSpace = true  // Feb 11, 2026 - default follows current Space
         spaceColors = [:]  // 5.5.9 - Jan 22, 2026
         superSpacesDisplayMode = "compact"
         superSpacesAutoHide = false
