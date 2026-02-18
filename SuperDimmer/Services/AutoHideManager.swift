@@ -113,6 +113,28 @@ final class AutoHideManager: ObservableObject {
      */
     private let hideRetryCooldown: TimeInterval = 300.0  // 5 minutes
     
+    /**
+     FIX (Feb 7, 2026): Minimum grace period after activation/unhide before auto-hide.
+     
+     THE BUG:
+     When user unhides Chrome (Cmd+Tab, Dock click, etc.) and then switches to
+     another app briefly, Chrome could be re-hidden within 60-120 seconds because:
+     1. `currentFrontmostBundleID` can go stale during space changes
+     2. The accumulated time from before the unhide wasn't always properly cleared
+     3. The 10-second accumulation timer could race with the activation notification
+     
+     THE FIX:
+     After any activation or unhide, the app gets a 5-minute immunity window
+     where it CANNOT be auto-hidden. This guarantees the user has time to work
+     with the app, even if they briefly switch to another app during that time.
+     
+     5 minutes was chosen because:
+     - It's long enough for the user to switch between apps while working
+     - It's short enough that truly abandoned apps still get hidden
+     - It matches the hideRetryCooldown for consistency
+     */
+    private let activationGracePeriod: TimeInterval = 300.0  // 5 minutes
+    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
@@ -288,6 +310,23 @@ final class AutoHideManager: ObservableObject {
         // (overlay removal attempt, log noise, cooldown tracking).
         if app == NSWorkspace.shared.frontmostApplication {
             return false
+        }
+        
+        // FIX (Feb 7, 2026): Grace period check — don't hide apps that were
+        // recently activated or unhidden by the user. This prevents the bug where
+        // Chrome gets re-hidden immediately after the user opens it, because:
+        // - The frontmost tracking (`currentFrontmostBundleID`) can go stale
+        //   during space changes when `didActivateApplicationNotification` doesn't fire
+        // - Old accumulated inactivity time from before idle wasn't fully cleared
+        // - The user briefly switched away from Chrome (to check something else)
+        //   and Chrome started re-accumulating time before the grace period elapsed
+        //
+        // With this check, any app the user recently interacted with gets a minimum
+        // 5-minute window where it stays visible, regardless of accumulated time.
+        if let timeSinceActivation = appTracker.getTimeSinceLastActivation(for: bundleID) {
+            if timeSinceActivation < activationGracePeriod {
+                return false  // App was recently activated/unhidden — don't hide yet
+            }
         }
         
         // FIX (Feb 6, 2026): Check cooldown for previously failed hide attempts.

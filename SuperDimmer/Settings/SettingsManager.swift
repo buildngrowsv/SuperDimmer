@@ -3057,36 +3057,36 @@ final class SettingsManager: ObservableObject {
      - Oranges/Yellows: Warmth, optimism, creativity
      - Neutrals: Sophisticated, minimal, classic
      */
+    /// REORDERED (Feb 18, 2026): Previously grouped by hue family (3 blues, 3 greens, etc.)
+    /// which meant adjacent Spaces got near-identical colors (Space 1/2/3 all blue).
+    /// Now uses a "round-robin across families" order so the first 6 Spaces —
+    /// the most common count — are maximally distinct: blue, red, green, purple, orange, magenta.
+    /// Second tier (7-12) picks the next shade from each family, third tier (13-18) the last.
+    /// Neutrals are pushed to the very end since they're weakest for identification.
     let spaceColorPalette: [(name: String, hex: String)] = [
-        // Blues (calm, professional)
-        ("Ocean Blue", "#0EA5E9"),      // Bright cyan-blue
-        ("Deep Blue", "#3B82F6"),       // Classic blue
-        ("Indigo", "#6366F1"),          // Rich indigo
+        // --- TIER 1: First pick from each hue family (Spaces 1-6, maximum contrast) ---
+        ("Ocean Blue", "#0EA5E9"),      // Bright cyan-blue   — blue family
+        ("Rose", "#F43F5E"),            // Vibrant rose       — red family
+        ("Emerald", "#10B981"),         // Vibrant green      — green family
+        ("Purple", "#A855F7"),          // Vibrant purple     — purple family
+        ("Orange", "#F97316"),          // Vibrant orange     — orange family
+        ("Magenta", "#D946EF"),         // Bright magenta     — pink family
         
-        // Greens (growth, balance)
-        ("Emerald", "#10B981"),         // Vibrant green
-        ("Mint", "#34D399"),            // Fresh mint
-        ("Forest", "#059669"),          // Deep forest green
+        // --- TIER 2: Second pick from each family (Spaces 7-12) ---
+        ("Forest", "#059669"),          // Deep forest green  — green family
+        ("Amber", "#F59E0B"),           // Rich amber         — orange family
+        ("Indigo", "#6366F1"),          // Rich indigo        — blue family
+        ("Coral", "#FB7185"),           // Soft coral         — red family
+        ("Mint", "#34D399"),            // Fresh mint         — green family
+        ("Violet", "#8B5CF6"),          // Rich violet        — purple family
         
-        // Purples (creativity, luxury)
-        ("Purple", "#A855F7"),          // Vibrant purple
-        ("Violet", "#8B5CF6"),          // Rich violet
-        ("Magenta", "#D946EF"),         // Bright magenta
-        
-        // Reds/Pinks (energy, passion)
-        ("Rose", "#F43F5E"),            // Vibrant rose
-        ("Pink", "#EC4899"),            // Bright pink
-        ("Coral", "#FB7185"),           // Soft coral
-        
-        // Oranges/Yellows (warmth, creativity)
-        ("Orange", "#F97316"),          // Vibrant orange
-        ("Amber", "#F59E0B"),           // Rich amber
-        ("Yellow", "#EAB308"),          // Bright yellow
-        
-        // Neutrals (sophisticated, minimal)
-        ("Slate", "#64748B"),           // Cool gray-blue
-        ("Gray", "#6B7280"),            // Neutral gray
-        ("Stone", "#78716C")            // Warm gray-brown
+        // --- TIER 3: Third pick + neutrals (Spaces 13-18) ---
+        ("Yellow", "#EAB308"),          // Bright yellow      — orange family
+        ("Deep Blue", "#3B82F6"),       // Classic blue       — blue family
+        ("Pink", "#EC4899"),            // Bright pink        — pink family
+        ("Slate", "#64748B"),           // Cool gray-blue     — neutral
+        ("Stone", "#78716C"),           // Warm gray-brown    — neutral
+        ("Gray", "#6B7280")            // Neutral gray       — neutral
     ]
     
     /**

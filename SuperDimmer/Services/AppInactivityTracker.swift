@@ -72,6 +72,23 @@ final class AppInactivityTracker: ObservableObject {
         /// Tracks how long the app has been inactive during active user sessions only.
         /// Idle time (lunch, meetings, etc.) is NOT counted toward auto-hide.
         var accumulatedInactivityTime: TimeInterval
+        
+        /// FIX (Feb 7, 2026): Grace period tracking for recently activated/unhidden apps.
+        ///
+        /// THE BUG:
+        /// When a user unhides or activates Chrome (or any app), the accumulated
+        /// inactivity time is reset to 0. However, if `currentFrontmostBundleID`
+        /// goes stale (e.g., during space changes where `appDidActivate` doesn't
+        /// fire), the accumulation timer keeps adding time even for the frontmost app.
+        /// Combined with old accumulated time that crossed the threshold, Chrome
+        /// gets re-hidden almost immediately after being opened.
+        ///
+        /// THE FIX:
+        /// Track when each app was last activated or unhidden. AutoHideManager
+        /// checks this timestamp and won't hide any app within a minimum grace
+        /// period (5 minutes). This guarantees the user has time to interact with
+        /// the app even if the frontmost tracking is momentarily stale.
+        var lastActivationOrUnhideTime: Date
     }
     
     // ================================================================
@@ -218,7 +235,8 @@ final class AppInactivityTracker: ObservableObject {
                 bundleID: bundleID,
                 localizedName: app.localizedName ?? bundleID,
                 processID: app.processIdentifier,
-                accumulatedInactivityTime: 0
+                accumulatedInactivityTime: 0,
+                lastActivationOrUnhideTime: now
             )
             lock.unlock()
         }
@@ -250,12 +268,14 @@ final class AppInactivityTracker: ObservableObject {
         // - User clicks app icon in Dock
         // - App is UNHIDDEN (via Dock, Cmd+Tab, etc.)
         // So unhiding an app automatically resets its auto-hide timer ✅
+        let now = Date()
         appActivity[bundleID] = AppActivityInfo(
-            lastActiveTime: Date(),
+            lastActiveTime: now,
             bundleID: bundleID,
             localizedName: app.localizedName ?? bundleID,
             processID: app.processIdentifier,
-            accumulatedInactivityTime: 0  // Reset accumulated time when app becomes active
+            accumulatedInactivityTime: 0,  // Reset accumulated time when app becomes active
+            lastActivationOrUnhideTime: now  // FIX (Feb 7, 2026): Grace period tracking
         )
         
         currentFrontmostBundleID = bundleID
@@ -272,12 +292,14 @@ final class AppInactivityTracker: ObservableObject {
         defer { lock.unlock() }
         
         // New apps start with current time
+        let now = Date()
         appActivity[bundleID] = AppActivityInfo(
-            lastActiveTime: Date(),
+            lastActiveTime: now,
             bundleID: bundleID,
             localizedName: app.localizedName ?? bundleID,
             processID: app.processIdentifier,
-            accumulatedInactivityTime: 0
+            accumulatedInactivityTime: 0,
+            lastActivationOrUnhideTime: now
         )
     }
     
@@ -318,21 +340,24 @@ final class AppInactivityTracker: ObservableObject {
         
         // Reset inactivity timer for this app
         // This prevents immediate re-hiding after user manually unhides an app
+        let now = Date()
         if var info = appActivity[bundleID] {
             let oldTime = info.accumulatedInactivityTime
             info.accumulatedInactivityTime = 0
-            info.lastActiveTime = Date()
+            info.lastActiveTime = now
+            info.lastActivationOrUnhideTime = now  // FIX (Feb 7, 2026): Grace period tracking
             appActivity[bundleID] = info
             
             print("👁️ AppInactivityTracker: '\(info.localizedName)' unhidden - reset timer (was \(Int(oldTime))s)")
         } else {
             // App wasn't being tracked, add it now
             appActivity[bundleID] = AppActivityInfo(
-                lastActiveTime: Date(),
+                lastActiveTime: now,
                 bundleID: bundleID,
                 localizedName: app.localizedName ?? bundleID,
                 processID: app.processIdentifier,
-                accumulatedInactivityTime: 0
+                accumulatedInactivityTime: 0,
+                lastActivationOrUnhideTime: now
             )
             print("👁️ AppInactivityTracker: '\(app.localizedName ?? bundleID)' unhidden - started tracking")
         }
@@ -455,6 +480,36 @@ final class AppInactivityTracker: ObservableObject {
         return systemAppBundleIDs.contains(bundleID)
     }
     
+    /**
+     FIX (Feb 7, 2026): Checks if an app was recently activated or unhidden.
+     
+     THE BUG THIS FIXES:
+     When a user unhides Chrome (or any app), the accumulated inactivity time
+     is reset to 0. But due to stale frontmost tracking during space changes,
+     the accumulation timer can immediately start adding time back. Combined
+     with the AutoHideManager's 60-second check cycle, Chrome could be hidden
+     again within 1-2 minutes of being unhidden — before the user even has
+     a chance to interact with it.
+     
+     THE FIX:
+     This method returns the time since the app was last activated or unhidden.
+     AutoHideManager uses this to enforce a minimum grace period (5 minutes)
+     during which the app CANNOT be auto-hidden, regardless of accumulated time.
+     
+     - Parameter bundleID: The bundle identifier to check
+     - Returns: Time in seconds since last activation/unhide, or nil if unknown
+     */
+    func getTimeSinceLastActivation(for bundleID: String) -> TimeInterval? {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard let info = appActivity[bundleID] else {
+            return nil  // Unknown app
+        }
+        
+        return Date().timeIntervalSince(info.lastActivationOrUnhideTime)
+    }
+    
     // ================================================================
     // MARK: - Idle Tracking & Accumulation
     // ================================================================
@@ -548,11 +603,54 @@ final class AppInactivityTracker: ObservableObject {
      FEATURE (Jan 24, 2026): Space-aware auto-hide
      Apps without windows on the current space don't accumulate time.
      This prevents hiding apps that are on other spaces and not visible.
+     
+     FIX (Feb 7, 2026): Cross-checks `currentFrontmostBundleID` against the ACTUAL
+     frontmost app via NSWorkspace. This prevents the stale-frontmost bug where:
+     1. User switches spaces (6 → 5 → 6)
+     2. macOS may not fire `didActivateApplicationNotification` for the returning app
+     3. `currentFrontmostBundleID` stays pointing to an app from space 5
+     4. The REAL frontmost app (e.g., Chrome on space 6) keeps accumulating time
+     5. Chrome gets auto-hidden even though the user is actively using it
+     
+     By verifying against NSWorkspace every 10 seconds, we ensure the frontmost
+     tracking never drifts for more than one accumulation cycle.
      */
     private func accumulateInactivityTime() {
         // Only accumulate if user is active
         guard activeUsageTracker.isUserActive else {
             return  // User is idle - don't accumulate
+        }
+        
+        // FIX (Feb 7, 2026): Cross-check the actual frontmost app from NSWorkspace.
+        // This catches cases where `appDidActivate` didn't fire (e.g., space changes
+        // that don't trigger the notification). Without this, the frontmost tracking
+        // can go stale and the actually-active app accumulates inactivity time.
+        //
+        // WHY THIS MATTERS:
+        // When user switches from space 6 → 5 → 6, macOS sometimes doesn't fire
+        // `didActivateApplicationNotification` for the app on space 6 (because it
+        // was already the frontmost app before leaving). This caused Chrome to
+        // accumulate inactivity time even while the user was actively using it,
+        // leading to unexpected auto-hide.
+        if let actualFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
+            lock.lock()
+            if actualFrontmost != currentFrontmostBundleID {
+                let oldFrontmost = currentFrontmostBundleID ?? "(none)"
+                currentFrontmostBundleID = actualFrontmost
+                
+                // Also reset the actual frontmost app's accumulated time
+                // because it's clearly being used if it's frontmost
+                if var info = appActivity[actualFrontmost] {
+                    if info.accumulatedInactivityTime > 0 {
+                        print("🔧 AppInactivityTracker: Frontmost correction \(oldFrontmost) → \(actualFrontmost) - reset \(Int(info.accumulatedInactivityTime))s accumulated time")
+                        info.accumulatedInactivityTime = 0
+                        info.lastActiveTime = Date()
+                        info.lastActivationOrUnhideTime = Date()
+                        appActivity[actualFrontmost] = info
+                    }
+                }
+            }
+            lock.unlock()
         }
         
         // Get all visible windows to check which apps have windows on current space

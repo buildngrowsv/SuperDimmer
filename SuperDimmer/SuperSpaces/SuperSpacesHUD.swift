@@ -195,7 +195,9 @@ struct HUDConfiguration: Codable {
         self.id = id
         self.displayMode = "compact"
         self.position = CGPoint(x: 0, y: 0)  // Will be set to default position
-        self.size = CGSize(width: 480, height: 140)
+        // COMPACT REDESIGN (Feb 13, 2026): Default size is wider and shorter
+        // because compact mode is now a single horizontal row (no header).
+        self.size = CGSize(width: 700, height: 52)
         self.isVisible = true
         self.floatOnTop = true  // Default to floating on top (original behavior)
     }
@@ -543,8 +545,9 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         if let config = configuration {
             initialSize = config.size
         } else {
-            // Default size for compact mode
-            initialSize = CGSize(width: 480, height: 140)
+            // COMPACT REDESIGN (Feb 13, 2026): Default size is wider and shorter
+            // Single row layout: wider to fit all space buttons, shorter since no header
+            initialSize = CGSize(width: 700, height: 52)
         }
         
         // Create panel with HUD style
@@ -1635,8 +1638,9 @@ final class SuperSpacesHUD: NSPanel, NSWindowDelegate {
         
         switch mode {
         case "compact":
+            // COMPACT REDESIGN (Feb 13, 2026): Default is wider/shorter for single-row layout
             savedSize = SettingsManager.shared.hudSizeCompact
-            defaultSize = CGSize(width: 480, height: 140)
+            defaultSize = CGSize(width: 700, height: 52)
         case "note":
             savedSize = SettingsManager.shared.hudSizeNote
             defaultSize = CGSize(width: 480, height: 400)

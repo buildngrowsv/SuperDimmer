@@ -100,6 +100,31 @@ final class OverlayManager {
     private var decayOverlays: [CGWindowID: DimOverlayWindow] = [:]
     
     /**
+     FIX (Feb 7, 2026): Tracks when each decay overlay was created.
+     
+     THE BUG:
+     `applyDecayDimming()` creates overlays based on one window snapshot, but
+     `cleanupOrphanedOverlays()` runs on a different timer with a different
+     snapshot. When AutoHideManager hides an app between these two snapshots,
+     the newly created overlays are immediately orphaned and destroyed, causing
+     a visible create-destroy churn cycle:
+       Creating decay overlay: decay-830635
+       👻 safeHideOverlay: Hidden decay-830635 (immediately!)
+     
+     THE FIX:
+     Track the creation time of each overlay. `cleanupOrphanedOverlays` skips
+     overlays younger than 5 seconds, giving the decay system time to settle
+     and preventing the churn. If the window genuinely disappeared, the overlay
+     will be cleaned up on the next cycle (5+ seconds later).
+     */
+    private var decayOverlayCreationTimes: [CGWindowID: CFAbsoluteTime] = [:]
+    
+    /// Minimum age (seconds) before a decay overlay can be cleaned up as orphaned.
+    /// This prevents the create-then-immediately-destroy churn that happens when
+    /// window snapshots differ between the decay and tracking timers.
+    private let minOverlayAgeForCleanup: CFAbsoluteTime = 5.0
+    
+    /**
      Whether the overlay system is currently active.
      
      When false, all overlays are hidden but not destroyed.
@@ -969,6 +994,8 @@ final class OverlayManager {
                         
                         // Store in dictionary WHILE holding lock
                         self.decayOverlays[windowID] = overlay
+                        // FIX (Feb 7, 2026): Record creation time for orphan cleanup age check
+                        self.decayOverlayCreationTimes[windowID] = CFAbsoluteTimeGetCurrent()
                         overlay.setDimLevel(dimLevel, animated: true, duration: 0.5)
                     }
                     // Active windows with no overlay: do nothing, wait for inactivity
@@ -996,6 +1023,8 @@ final class OverlayManager {
                         if let staleOverlay = self.decayOverlays.removeValue(forKey: staleID) {
                             self.safeHideOverlay(staleOverlay)
                         }
+                        // FIX (Feb 7, 2026): Clean up creation time tracking
+                        self.decayOverlayCreationTimes.removeValue(forKey: staleID)
                     }
                 }
             } // End autoreleasepool
@@ -1548,9 +1577,27 @@ final class OverlayManager {
         }
         
         // Find decay overlays for windows that are no longer visible
+        // FIX (Feb 7, 2026): Skip recently created overlays to prevent the
+        // create-then-immediately-destroy churn. The churn happens because
+        // `applyDecayDimming` and `cleanupOrphanedOverlays` use different
+        // window snapshots taken at slightly different times. During the
+        // brief window between snapshots, a hide event (auto-hide, minimize)
+        // can make windows disappear, causing just-created overlays to be
+        // immediately orphaned. The 5-second grace period ensures overlays
+        // survive long enough for the system to settle.
+        let now = CFAbsoluteTimeGetCurrent()
         var orphanedDecayWindowIDs: [CGWindowID] = []
         for (windowID, _) in decayOverlays {
             if !visibleWindowIDs.contains(windowID) {
+                // FIX (Feb 7, 2026): Only clean up if overlay is old enough.
+                // Newly created overlays get a 5-second grace period to prevent
+                // the create/destroy churn cycle.
+                if let creationTime = decayOverlayCreationTimes[windowID] {
+                    let age = now - creationTime
+                    if age < minOverlayAgeForCleanup {
+                        continue  // Too young to clean up — wait for next cycle
+                    }
+                }
                 orphanedDecayWindowIDs.append(windowID)
             }
         }
@@ -1563,6 +1610,8 @@ final class OverlayManager {
             // OPTIMIZATION (Jan 21, 2026): Clean up tracking data
             lastTrackedWindowBounds.removeValue(forKey: windowID)
             windowMovementStreak.removeValue(forKey: windowID)
+            // FIX (Feb 7, 2026): Clean up creation time tracking
+            decayOverlayCreationTimes.removeValue(forKey: windowID)
         }
         
         if !orphanedIDs.isEmpty || !orphanedDecayWindowIDs.isEmpty {
@@ -1624,6 +1673,8 @@ final class OverlayManager {
                 safeHideOverlay(overlay)
                 removedCount += 1
             }
+            // FIX (Feb 7, 2026): Clean up creation time tracking
+            decayOverlayCreationTimes.removeValue(forKey: windowID)
         }
         
         if removedCount > 0 {
@@ -1667,6 +1718,8 @@ final class OverlayManager {
             safeHideOverlay(overlay)
             removedCount += 1
         }
+        // FIX (Feb 7, 2026): Clean up creation time tracking
+        decayOverlayCreationTimes.removeValue(forKey: windowID)
         
         // Also remove from windowOverlays (per-window mode)
         if let overlay = windowOverlays.removeValue(forKey: windowID) {

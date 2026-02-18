@@ -122,24 +122,40 @@ struct SuperSpacesHUDView: View {
                     blendingMode: .behindWindow
                 )
                 
-                // Color overlay tint (subtle, 5% opacity)
+                // Color overlay tint — INCREASED from 5% to 15% (Feb 18, 2026)
+                // User requested more intense hue so the desktop color is immediately obvious
+                // at a glance. 15% gives a clear tint without overwhelming the blur material.
                 getCurrentSpaceAccentColor()
-                    .opacity(0.05)
+                    .opacity(0.15)
             }
             .cornerRadius(12)
             
             // Content
-            VStack(spacing: 0) {
-                // Header: Current Space info and controls
-                headerView
-                
-                Divider()
-                    .padding(.vertical, 8)
-                
-                // Space grid/list (varies by display mode)
-                spacesView
+            // COMPACT MODE REDESIGN (Feb 13, 2026):
+            // In compact mode, we collapse everything into a single row.
+            // No header, no divider, no "Space X" text at top left.
+            // Just the space buttons + control buttons in one horizontal strip.
+            // The ACTIVE space is expanded to show its full name (not truncated).
+            // Inactive spaces stay compact (number + emoji only, or just number).
+            // This was requested by the user to reduce visual clutter and make
+            // the HUD feel like a minimal, polished space switcher bar.
+            if displayMode == .compact {
+                compactSingleRowView
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+            } else {
+                VStack(spacing: 0) {
+                    // Header: Current Space info and controls (only for note/overview modes)
+                    headerView
+                    
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    // Space grid/list (varies by display mode)
+                    spacesView
+                }
+                .padding(16)
             }
-            .padding(16)
         }
         .frame(
             minWidth: calculateMinWidth(),
@@ -184,6 +200,32 @@ struct SuperSpacesHUDView: View {
             // Recalculate button width when Spaces change (PHASE 2.1)
             updateButtonWidth()
         }
+        // BUG FIX (Feb 17, 2026): Sync note mode noteText from external changes
+        //
+        // PROBLEM: When user edits notes in the grid/overview mode HUD, the note mode
+        // HUD has a stale local @State noteText that never gets updated. On the next
+        // space change, the note mode's .onChange handler (below) would save the stale
+        // noteText to settings, OVERWRITING the fresh grid edits. This caused total
+        // note loss: 5+ minutes of typing wiped out on a single desktop switch.
+        //
+        // SOLUTION: Watch settings.spaceNotes and sync noteText whenever the selected
+        // space's note changes externally. This keeps the note mode in sync with edits
+        // made in any other HUD mode (grid/overview), so when space change triggers
+        // a save, it saves the CORRECT text instead of stale text.
+        //
+        // WHY THIS IS NEEDED:
+        // - Multiple HUD instances can exist (note mode + overview mode simultaneously)
+        // - Each HUD has its own @State noteText that's only updated by local typing
+        // - Without this sync, note mode's noteText diverges from settings when grid edits
+        // - The space change handler then blindly saves the diverged (stale) text
+        .onChange(of: settings.spaceNotes) { newNotes in
+            if displayMode == .note, let spaceUUID = selectedNoteSpace {
+                let settingsNote = newNotes[spaceUUID] ?? ""
+                if noteText != settingsNote {
+                    noteText = settingsNote
+                }
+            }
+        }
         // NOTE FOLLOWS CURRENT SPACE (Feb 11, 2026)
         // When the user switches macOS Spaces and the "follow" toggle is on,
         // automatically update the note mode to show the new Space's note.
@@ -191,11 +233,29 @@ struct SuperSpacesHUDView: View {
         //   1. We're in note mode (.note display mode)
         //   2. The user has the "follows current space" setting enabled
         // Without this, the note stays pinned to whichever Space was manually selected.
+        //
+        // BUG FIX (Feb 17, 2026): Changed save logic to prevent cross-HUD data loss.
+        // Previously: Always saved noteText on space change, even if it was stale.
+        // Now: Flushes the debounce timer and only saves if noteText actually differs
+        // from what's already in settings (meaning we have unsaved LOCAL edits).
+        // Combined with the .onChange(of: settings.spaceNotes) sync above, this ensures
+        // we never overwrite fresh grid edits with stale note mode text.
         .onChange(of: viewModel.currentSpaceNumber) { newSpaceNumber in
             if displayMode == .note && settings.noteFollowsCurrentSpace {
-                // Save current note before switching (prevents data loss)
+                // Flush any pending debounced save timer to prevent losing the last 0.5s of typing
+                noteSaveTimer?.invalidate()
+                
+                // Only save if we have UNSAVED local edits (noteText differs from settings)
+                // This prevents overwriting external edits (e.g., from grid/overview mode)
+                // with stale text that was loaded earlier but never edited locally.
+                // Thanks to the .onChange(of: settings.spaceNotes) sync above, noteText
+                // stays in sync with grid edits, so this check correctly skips saving
+                // when the user was editing in grid mode instead of note mode.
                 if let currentSpace = selectedNoteSpace {
-                    saveNoteForSpace(currentSpace, text: noteText)
+                    let settingsNote = settings.spaceNotes[currentSpace] ?? ""
+                    if noteText != settingsNote {
+                        saveNoteForSpace(currentSpace, text: noteText)
+                    }
                 }
                 // MIGRATION (Feb 11, 2026): Look up UUID for the new space number
                 // selectedNoteSpace is now UUID-based for reorder resilience
@@ -436,11 +496,252 @@ struct SuperSpacesHUDView: View {
         }
     }
     
+    // MARK: - Compact Single Row View (Feb 13, 2026)
+    // REDESIGN: Entire compact HUD is now ONE horizontal row.
+    // No header, no "Space X" label, no divider. Just:
+    //   [space1] [space2] [ACTIVE SPACE expanded] [space4] ... [controls]
+    // The active space expands to show its full name (never truncated).
+    // Inactive spaces show number + emoji (or just number if no emoji).
+    // Control buttons (mode switcher, duplicate, settings, close) sit at the end.
+    // This makes the HUD feel like a sleek macOS-native space switcher bar.
+    
+    private var compactSingleRowView: some View {
+        HStack(spacing: 6) {
+            // GeometryReader to measure available width for adaptive button sizing.
+            // This is the same pattern used by noteDisplayView - we measure the space
+            // available for buttons and decide how much info to show per button.
+            // When the HUD is wide: all buttons show number + emoji + name.
+            // When narrow: inactive buttons contract to number + emoji, or just number.
+            // The ACTIVE space always shows its full name regardless of width.
+            GeometryReader { geometry in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(viewModel.allSpaces, id: \.uuid) { space in
+                            compactSingleRowSpaceButton(
+                                for: space,
+                                availableWidth: geometry.size.width
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            }
+            
+            // Thin vertical separator between spaces and controls
+            Divider()
+                .frame(height: 24)
+                .padding(.horizontal, 2)
+            
+            // Inline control buttons (mode switcher + utility buttons)
+            compactInlineControls
+        }
+    }
+    
+    /// Determines the display mode for INACTIVE buttons in the compact single-row layout.
+    /// Uses the same adaptive logic as the NoteButtonMode system:
+    /// - Measures available width, subtracts the space taken by the active button + controls,
+    ///   then divides remaining width among inactive buttons to decide their expansion level.
+    /// - .compact: Number only (very narrow)
+    /// - .medium: Number + emoji
+    /// - .expanded: Number + emoji + name (wide window)
+    ///
+    /// The ACTIVE space is always fully expanded (not counted in this calculation)
+    /// because it always shows its full name to identify the current space.
+    private func getCompactInactiveButtonMode(availableWidth: CGFloat) -> NoteButtonMode {
+        let spaceCount = CGFloat(viewModel.allSpaces.count)
+        guard spaceCount > 1 else { return .expanded }
+        
+        let inactiveCount = spaceCount - 1  // Active space is handled separately
+        let spacing: CGFloat = 6
+        let padding: CGFloat = 4
+        // Estimate active button width (~140pt for number + emoji + full name)
+        let activeButtonEstimate: CGFloat = 140
+        let totalSpacing = (spaceCount - 1) * spacing + padding * 2
+        let availableForInactive = availableWidth - totalSpacing - activeButtonEstimate
+        let spacePerButton = availableForInactive / inactiveCount
+        
+        // Thresholds: same philosophy as getNoteButtonMode, prefer showing more info.
+        // When the window is wide enough, show everything. User can always resize.
+        if spacePerButton >= 70 {
+            return .expanded  // Number + emoji + name
+        } else if spacePerButton >= 45 {
+            return .medium    // Number + emoji
+        } else {
+            return .compact   // Number only
+        }
+    }
+    
+    /// A single space button for the compact single-row layout.
+    ///
+    /// ADAPTIVE BEHAVIOR (restored Feb 13, 2026):
+    /// - ACTIVE space: ALWAYS shows number + emoji + full name (never truncated).
+    ///   This is the key visual indicator of which space you're on.
+    /// - INACTIVE spaces: Adapt based on available width.
+    ///   Wide window → number + emoji + name (all buttons look like the original).
+    ///   Medium window → number + emoji only.
+    ///   Narrow window → number only.
+    ///   This matches the original adaptive sizing behavior the user liked,
+    ///   while ensuring the active space is always expanded for clarity.
+    private func compactSingleRowSpaceButton(for space: SpaceDetector.SpaceInfo, availableWidth: CGFloat) -> some View {
+        let isActive = space.index == viewModel.currentSpaceNumber
+        let inactiveMode = getCompactInactiveButtonMode(availableWidth: availableWidth)
+        
+        return Button(action: {
+            handleSpaceClick(space.index)
+        }) {
+            HStack(spacing: 5) {
+                // Space number (always shown)
+                Text("\(space.index)")
+                    .font(.system(size: scaledFontSize(12), weight: isActive ? .bold : .semibold))
+                    .frame(minWidth: 14)
+                
+                // Emoji: shown for active always, for inactive when mode >= .medium
+                if isActive || inactiveMode != .compact {
+                    if let emoji = getSpaceEmoji(space.uuid, spaceIndex: space.index) {
+                        Text(emoji)
+                            .font(.system(size: scaledFontSize(13)))
+                    }
+                }
+                
+                // Name: Active space ALWAYS shows full name (fixedSize, no truncation).
+                // Inactive spaces show name only when mode is .expanded (wide window).
+                // This gives the "expand when wide, contract when narrow" behavior
+                // the user wanted, while the active space is always prominent.
+                if isActive {
+                    if let name = getSpaceName(space.uuid, spaceIndex: space.index), !name.isEmpty {
+                        Text(name)
+                            .font(.system(size: scaledFontSize(12), weight: .medium))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                } else if inactiveMode == .expanded {
+                    if let name = getSpaceName(space.uuid, spaceIndex: space.index), !name.isEmpty {
+                        Text(name)
+                            .font(.system(size: scaledFontSize(12)))
+                            .lineLimit(1)
+                    }
+                }
+                
+                // Note indicator dot
+                if hasNote(space.uuid) {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 4, height: 4)
+                }
+            }
+            .padding(.horizontal, isActive ? 12 : 8)
+            .padding(.vertical, 7)
+            .background(
+                // FEATURE 5.5.9: Color-coded backgrounds per space.
+                // Active: full color. Inactive: faded (20% opacity).
+                getSpaceBackgroundColor(space.uuid, spaceIndex: space.index, isActive: isActive)
+            )
+            .foregroundColor(
+                isActive ? .white : .primary
+            )
+            .cornerRadius(8)
+            // FEATURE 5.5.8: Visit recency dimming overlay
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.uuid)))
+                    .allowsHitTesting(false)
+            )
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .help(getSpaceTooltip(space.index))
+    }
+    
+    /// Inline control buttons for the compact single-row layout.
+    /// These sit at the right end of the row: [mode switcher] [duplicate] [settings] [close]
+    /// Kept small and unobtrusive so the space buttons are the visual focus.
+    private var compactInlineControls: some View {
+        HStack(spacing: 3) {
+            // Display mode buttons (compact / note / overview)
+            HStack(spacing: 2) {
+                Button(action: { switchToMode(.compact) }) {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: scaledFontSize(10)))
+                        .foregroundColor(displayMode == .compact ? .white : .secondary)
+                        .frame(width: 20, height: 18)
+                        .background(displayMode == .compact ? getCurrentSpaceAccentColor() : Color.clear)
+                        .cornerRadius(3)
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .help("Compact Mode")
+                
+                Button(action: { switchToMode(.note) }) {
+                    Image(systemName: "note.text")
+                        .font(.system(size: scaledFontSize(10)))
+                        .foregroundColor(displayMode == .note ? .white : .secondary)
+                        .frame(width: 20, height: 18)
+                        .background(displayMode == .note ? getCurrentSpaceAccentColor() : Color.clear)
+                        .cornerRadius(3)
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .help("Note Mode")
+                
+                Button(action: { switchToMode(.overview) }) {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: scaledFontSize(10)))
+                        .foregroundColor(displayMode == .overview ? .white : .secondary)
+                        .frame(width: 20, height: 18)
+                        .background(displayMode == .overview ? getCurrentSpaceAccentColor() : Color.clear)
+                        .cornerRadius(3)
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .help("Overview Mode")
+            }
+            .padding(2)
+            .background(Color.secondary.opacity(0.1))
+            .cornerRadius(5)
+            
+            // Duplicate HUD button
+            Button(action: { viewModel.duplicateHUD() }) {
+                Image(systemName: "plus.square.on.square")
+                    .font(.system(size: scaledFontSize(12)))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .help("Duplicate HUD")
+            
+            // Settings button
+            Button(action: { showQuickSettings.toggle() }) {
+                Image(systemName: "gear")
+                    .font(.system(size: scaledFontSize(12)))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .help("Settings")
+            .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
+                SuperSpacesQuickSettings(viewModel: viewModel)
+                    .environmentObject(settings)
+            }
+            
+            // Close button
+            Button(action: { viewModel.closeHUD() }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: scaledFontSize(12)))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
+            .help("Close (Esc)")
+        }
+    }
+    
     /// Compact display mode: Numbered buttons with emoji and name in a scrollable row
+    /// NOTE: This is the OLD compact view, kept for reference but replaced by compactSingleRowView.
+    /// The spacesView switch still references this for backward compat but compact mode
+    /// now uses compactSingleRowView directly from the body.
     private var compactSpacesView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                // MIGRATION (Feb 11, 2026): Use UUID for identity (stable across reorders)
                 ForEach(viewModel.allSpaces, id: \.uuid) { space in
                     compactSpaceButton(for: space)
                 }
@@ -450,54 +751,43 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Creates a compact Space button with number, emoji, and name
-    /// MIGRATION (Feb 11, 2026): Uses space.uuid for all data lookups, space.index only for display
-    /// PHASE 2.1: Uses fixed width for all buttons (equal-width sizing)
+    /// NOTE: This is the OLD compact button, kept for backward compat.
+    /// The new single-row layout uses compactSingleRowSpaceButton instead.
     private func compactSpaceButton(for space: SpaceDetector.SpaceInfo) -> some View {
         Button(action: {
-            handleSpaceClick(space.index)  // switchToSpace uses index for keyboard shortcuts
+            handleSpaceClick(space.index)
         }) {
             HStack(spacing: 6) {
-                // Number (display position - may change on reorder)
                 Text("\(space.index)")
                     .font(.system(size: scaledFontSize(12), weight: .semibold))
                     .frame(width: 20)
                 
-                // Emoji if set (looked up by UUID - survives reorder)
                 if let emoji = getSpaceEmoji(space.uuid, spaceIndex: space.index) {
                     Text(emoji)
                         .font(.system(size: scaledFontSize(14)))
                 }
                 
-                // Name if set (looked up by UUID - survives reorder)
                 if let name = getSpaceName(space.uuid, spaceIndex: space.index), !name.isEmpty {
                     Text(name)
                         .font(.system(size: scaledFontSize(12)))
                         .lineLimit(1)
                 }
                 
-                // Note indicator (looked up by UUID - survives reorder)
                 if hasNote(space.uuid) {
                     Circle()
                         .fill(Color.orange)
                         .frame(width: 4, height: 4)
                 }
             }
-            .frame(width: maxButtonWidth)  // PHASE 2.1: Fixed width for all buttons
+            .frame(width: maxButtonWidth)
             .padding(.vertical, 8)
             .background(
-                // FEATURE 5.5.9: Show each Space's color (custom or default)
-                // Active space: Full color intensity
-                // Inactive spaces: Faded color (20% opacity) to show their identity
                 getSpaceBackgroundColor(space.uuid, spaceIndex: space.index, isActive: space.index == viewModel.currentSpaceNumber)
             )
             .foregroundColor(
                 space.index == viewModel.currentSpaceNumber ? .white : .primary
             )
             .cornerRadius(8)
-            // FEATURE: 5.5.8 - Dim to Indicate Order (Visit Recency Visualization)
-            // DESIGN CHANGE (Jan 22, 2026): Using dark overlay instead of transparency
-            // This keeps buttons fully visible but darker, matching SuperDimmer's core functionality
-            // CRITICAL: allowsHitTesting(false) ensures overlay doesn't block button clicks
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.black.opacity(getSpaceDimmingOverlayOpacity(space.uuid)))
@@ -505,7 +795,7 @@ struct SuperSpacesHUDView: View {
             )
         }
         .buttonStyle(.plain)
-        .focusEffectDisabled()  // Disable focus ring/outline on click
+        .focusEffectDisabled()
         .help(getSpaceTooltip(space.index))
     }
     
@@ -880,31 +1170,65 @@ struct SuperSpacesHUDView: View {
     /// - Medium (moderate): Number + emoji (60pt)
     /// - Expanded (wide): Number + emoji + name (80pt+, names can clip)
     /// MIGRATION (Feb 11, 2026): Uses space.uuid for all data lookups, space.index for display
+    ///
+    /// ACTIVE DESKTOP EXPANSION (Feb 17, 2026):
+    /// The ACTIVE desktop (currentSpaceNumber) now ALWAYS shows its full name, matching
+    /// the compact single-row view behavior. This gives the user a clear visual indicator
+    /// of which space they're currently on, even when the window is narrow.
+    /// Inactive spaces still adapt based on available width (compact/medium/expanded).
+    /// The user liked this treatment in compact mode and requested it for note mode too.
     private func noteSpaceButton(for space: SpaceDetector.SpaceInfo, availableWidth: CGFloat) -> some View {
         // Determine what to show based on available width (calculate once outside button)
         let buttonMode = getNoteButtonMode(availableWidth: availableWidth)
+        
+        // ACTIVE DESKTOP EXPANSION (Feb 17, 2026):
+        // Check if this is the ACTIVE desktop (the one the user is currently on).
+        // The active desktop always gets full expansion regardless of width constraints,
+        // matching the compact view's behavior where the active space always shows
+        // number + emoji + full name. This was requested by the user because they liked
+        // how compact mode clearly shows which space you're on.
+        let isActiveDesktop = space.index == viewModel.currentSpaceNumber
+        let isSelectedNote = selectedNoteSpace == space.uuid
         
         return Button(action: {
             // Single click: Load note for this Space (by UUID for reorder resilience)
             selectNoteSpace(space.uuid)
         }) {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 // NUMBER: Always shown (display position - may change on reorder)
+                // FIX (Feb 17, 2026): Changed from fixed width: 16 to minWidth: 18
+                // to prevent clipping on two-digit space numbers like "10".
+                // The old width: 16 was too narrow for double-digit numbers.
                 Text("\(space.index)")
-                    .font(.system(size: scaledFontSize(11), weight: .semibold))
-                    .frame(width: 16)
+                    .font(.system(size: scaledFontSize(12), weight: isActiveDesktop ? .bold : .semibold))
+                    .frame(minWidth: 14)
                 
-                // EMOJI: Show when we have medium or more space (UUID lookup)
-                if buttonMode != .compact, let emoji = getSpaceEmoji(space.uuid, spaceIndex: space.index) {
-                    Text(emoji)
-                        .font(.system(size: scaledFontSize(14)))
+                // EMOJI: Active desktop ALWAYS shows emoji. Inactive shows when mode >= .medium
+                // This mirrors compact view behavior where active space always shows emoji.
+                if isActiveDesktop || buttonMode != .compact {
+                    if let emoji = getSpaceEmoji(space.uuid, spaceIndex: space.index) {
+                        Text(emoji)
+                            .font(.system(size: scaledFontSize(13)))
+                    }
                 }
                 
-                // NAME: Show when we have expanded space (UUID lookup)
-                if buttonMode == .expanded, let name = getSpaceName(space.uuid, spaceIndex: space.index) {
-                    Text(name)
-                        .font(.system(size: scaledFontSize(11)))
-                        .lineLimit(1)
+                // NAME: Active desktop ALWAYS shows full name (fixedSize, no truncation).
+                // Inactive spaces show name only when mode is .expanded (wide window).
+                // This gives the "expand when wide, contract when narrow" behavior
+                // matching compact view. The active space is always prominent.
+                if isActiveDesktop {
+                    if let name = getSpaceName(space.uuid, spaceIndex: space.index), !name.isEmpty {
+                        Text(name)
+                            .font(.system(size: scaledFontSize(12), weight: .medium))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                } else if buttonMode == .expanded {
+                    if let name = getSpaceName(space.uuid, spaceIndex: space.index), !name.isEmpty {
+                        Text(name)
+                            .font(.system(size: scaledFontSize(11)))
+                            .lineLimit(1)
+                    }
                 }
                 
                 // Note indicator (UUID lookup)
@@ -914,17 +1238,17 @@ struct SuperSpacesHUDView: View {
                         .frame(width: 4, height: 4)
                 }
             }
-            .padding(.horizontal, buttonMode == .expanded ? 8 : 6)
-            .frame(minWidth: getNoteButtonWidth(mode: buttonMode))
+            .padding(.horizontal, isActiveDesktop ? 12 : (buttonMode == .expanded ? 8 : 6))
+            .padding(.vertical, 7)
             .frame(height: 32)
             .background(
                 // FEATURE 5.5.9: Show each Space's color (UUID lookup)
-                // Selected space: Full color intensity
+                // Active desktop or selected note: Full color intensity
                 // Unselected spaces: Faded color (20% opacity) to show their identity
-                getSpaceBackgroundColor(space.uuid, spaceIndex: space.index, isActive: selectedNoteSpace == space.uuid)
+                getSpaceBackgroundColor(space.uuid, spaceIndex: space.index, isActive: isActiveDesktop || isSelectedNote)
             )
             .foregroundColor(
-                selectedNoteSpace == space.uuid ? .white : .primary
+                (isActiveDesktop || isSelectedNote) ? .white : .primary
             )
             .cornerRadius(8)
             // FEATURE: 5.5.8 - Dim to Indicate Order (UUID lookup)
@@ -958,16 +1282,27 @@ struct SuperSpacesHUDView: View {
     /// Calculates per-button space to decide expansion level
     /// UPDATED: More generous thresholds - prefer expansion over compactness
     /// User wants to scroll rather than see less info
+    ///
+    /// NOTE (Feb 17, 2026): This is now only used for INACTIVE buttons in note mode.
+    /// The active/selected space always gets full expansion (see noteSpaceButton).
+    /// This mirrors the compact view behavior where the active desktop is always
+    /// expanded to show its full name while inactive spaces adapt to width.
     private func getNoteButtonMode(availableWidth: CGFloat) -> NoteButtonMode {
         let spaceCount = CGFloat(viewModel.allSpaces.count)
         guard spaceCount > 0 else { return .compact }
         
-        // Calculate approximate space per button (accounting for spacing and padding)
+        // REDESIGN (Feb 17, 2026): Account for the active space button being expanded.
+        // The active/selected space always shows full name, so we subtract its estimated
+        // width from available space and calculate mode for the remaining inactive buttons.
+        // This matches the compact view's getCompactInactiveButtonMode approach.
+        let inactiveCount = max(spaceCount - 1, 1)
         let spacing: CGFloat = 8
         let padding: CGFloat = 8
+        // Estimate active button width (~140pt for number + emoji + full name)
+        let activeButtonEstimate: CGFloat = 140
         let totalSpacing = (spaceCount - 1) * spacing + padding * 2
-        let availableForButtons = availableWidth - totalSpacing
-        let spacePerButton = availableForButtons / spaceCount
+        let availableForInactive = availableWidth - totalSpacing - activeButtonEstimate
+        let spacePerButton = availableForInactive / inactiveCount
         
         // UPDATED: More aggressive thresholds - prefer showing more info
         // Lowered from 100→70 and 60→50 to expand sooner
@@ -1088,16 +1423,28 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Calculates minimum width based on display mode
+    /// COMPACT REDESIGN (Feb 13, 2026): Compact mode is now a single horizontal row,
+    /// so it needs to be wider to fit all space buttons + inline controls.
     private func calculateMinWidth() -> CGFloat {
-        return 400
+        switch displayMode {
+        case .compact:
+            // Single row needs enough width for space buttons + controls.
+            return 500
+        default:
+            return 400
+        }
     }
     
     /// Calculates ideal width based on display mode and number of Spaces
+    /// COMPACT REDESIGN (Feb 13, 2026): Compact mode dynamically sizes based on
+    /// number of spaces so the row fits comfortably without excessive scrolling.
     private func calculateWidth() -> CGFloat {
         switch displayMode {
         case .compact:
-            // Wider to accommodate number + emoji + name
-            return 480
+            // Dynamic width: each inactive button ~55pt, active ~140pt, controls ~150pt
+            let spaceCount = CGFloat(viewModel.allSpaces.count)
+            let estimatedWidth = (spaceCount - 1) * 55 + 140 + 160 + 40
+            return max(estimatedWidth, 600)
         case .note:
             // Wider for note editing and inline name/emoji editing
             return 480
@@ -1108,11 +1455,13 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Calculates minimum height based on display mode
-    /// This ensures content is never clipped
+    /// COMPACT REDESIGN (Feb 13, 2026): Compact is now a single row,
+    /// so it only needs ~50pt height for one row of buttons.
     private func calculateMinHeight() -> CGFloat {
         switch displayMode {
         case .compact:
-            return 120
+            // Single row: just buttons + padding
+            return 50
         case .note:
             // Minimum height for note mode to prevent clipping
             return 360
@@ -1123,11 +1472,13 @@ struct SuperSpacesHUDView: View {
     }
     
     /// Calculates ideal height based on display mode
-    /// This is the preferred height that gives comfortable spacing
+    /// COMPACT REDESIGN (Feb 13, 2026): Compact is a single row, ideal height
+    /// is just enough for one line of buttons with comfortable padding.
     private func calculateHeight() -> CGFloat {
         switch displayMode {
         case .compact:
-            return 140  // Slightly taller for better spacing
+            // Single row: buttons (~32pt) + vertical padding (10+10) + breathing room
+            return 52
         case .note:
             // Taller to accommodate Space selector + name/emoji editor + note
             // Added extra padding to prevent any clipping
@@ -1207,8 +1558,10 @@ struct SuperSpacesHUDView: View {
         let colorHex = settings.getSpaceColorOrDefault(forUUID: spaceUUID, spaceIndex: spaceIndex)
         let color = settings.hexToColor(colorHex)
         
-        // Apply full opacity for active, faded for inactive
-        return isActive ? color : color.opacity(0.2)
+        // Apply full opacity for active, boosted for inactive (Feb 18, 2026)
+        // INCREASED inactive from 20% to 35% so each space's identity color is more
+        // recognizable even when not active — user wanted colors to pop more.
+        return isActive ? color : color.opacity(0.35)
     }
     
     /// Gets the accent color for the current Space
@@ -1738,16 +2091,18 @@ struct OverviewSpaceCardView: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(
                     // FEATURE 5.5.9: Use Space's custom color or default
+                    // INCREASED from 0.1/0.05 to 0.2/0.08 (Feb 18, 2026) for stronger color identity
                     space.index == viewModel.currentSpaceNumber ?
-                        getSpaceAccentColor().opacity(0.1) : Color.secondary.opacity(0.05)
+                        getSpaceAccentColor().opacity(0.2) : Color.secondary.opacity(0.08)
                 )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(
                     // FEATURE 5.5.9: Use Space's custom color for border
+                    // INCREASED from 0.3 to 0.5 (Feb 18, 2026) for a more visible colored border
                     space.index == viewModel.currentSpaceNumber ?
-                        getSpaceAccentColor().opacity(0.3) : Color.clear,
+                        getSpaceAccentColor().opacity(0.5) : Color.clear,
                     lineWidth: 2
                 )
         )
@@ -1772,6 +2127,33 @@ struct OverviewSpaceCardView: View {
             // Sync from settings if changed externally (but not during our own saves)
             if hasInitialized && noteText != (newValue ?? "") {
                 noteText = newValue ?? ""
+            }
+        }
+        // BUG FIX (Feb 17, 2026): Flush debounced save immediately on space change
+        //
+        // PROBLEM: The debounced save has a 0.5s delay. If the user switches desktops
+        // within 0.5s of their last keystroke, the save hasn't fired yet. If the
+        // LazyVGrid then resets @State during the allSpaces refresh, the unsaved text
+        // in the debounce window is lost permanently.
+        //
+        // SOLUTION: When a space change occurs, immediately cancel the debounce timer
+        // and save the current noteText to settings. This ensures no text is lost in
+        // the debounce window, even if @State gets reset afterwards.
+        //
+        // WHY THIS IS SAFE: We only save if noteText is non-empty (preventing accidental
+        // deletion from @State reset, since @State resets to "" which is the initial value).
+        // If noteText IS empty and the user genuinely cleared the note, the regular
+        // .onChange(of: noteText) debounced save handles that case.
+        .onChange(of: viewModel.currentSpaceNumber) { _ in
+            // Flush any pending debounced save immediately
+            saveTimer?.invalidate()
+            saveTimer = nil
+            
+            // Save current text to settings immediately (skip debounce)
+            // Only save non-empty text to prevent @State reset from deleting notes
+            let settingsNote = settings.spaceNotes[space.uuid] ?? ""
+            if noteText != settingsNote && !noteText.isEmpty {
+                settings.spaceNotes[space.uuid] = noteText
             }
         }
         // Emoji picker popover
@@ -1860,8 +2242,9 @@ struct OverviewSpaceCardView: View {
                 .padding(.vertical, 6)
                 .background(
                     // MIGRATION (Feb 11, 2026): Use UUID-based color lookup
+                    // INCREASED from 0.15/0.05 to 0.25/0.08 (Feb 18, 2026) for bolder color identity
                     space.index == viewModel.currentSpaceNumber ?
-                        settings.hexToColor(settings.getSpaceColorOrDefault(forUUID: space.uuid, spaceIndex: space.index)).opacity(0.15) : Color.secondary.opacity(0.05)
+                        settings.hexToColor(settings.getSpaceColorOrDefault(forUUID: space.uuid, spaceIndex: space.index)).opacity(0.25) : Color.secondary.opacity(0.08)
                 )
                 .cornerRadius(6)
             }
