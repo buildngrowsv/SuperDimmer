@@ -543,14 +543,30 @@ final class DimmingCoordinator: ObservableObject {
             print("🖱️ Global mouse click monitor removed")
         }
         
+        // FIX (Feb 26, 2026): Cancel any pending debounced analysis work items.
+        // Without this, a DispatchWorkItem dispatched via asyncAfter from a mouse click
+        // or AX focus change could fire AFTER stop(), dispatching a new analysis cycle
+        // to the analysisQueue and re-creating decay overlays on a "paused" system.
+        pendingClickAnalysis?.cancel()
+        pendingClickAnalysis = nil
+        
         // FIX: HIDE overlays instead of destroying them
         // This allows quick re-enable without recreation overhead
         overlayManager.hideAllOverlays()
         
+        // FIX (Feb 26, 2026): Also remove all decay overlays entirely.
+        // hideAllOverlays() hides them via orderOut(nil), but if any in-flight
+        // applyDecayDimming call runs on the analysisQueue after this point,
+        // it could re-show existing overlays from the decayOverlays dictionary.
+        // Clearing them here means there's nothing to re-show.
+        // The OverlayManager.applyDecayDimming now also checks isActive, but this
+        // belt-and-suspenders approach ensures robustness.
+        overlayManager.removeAllDecayOverlays()
+        
         // Clear analysis cache (will rebuild on next start)
         analysisCache.removeAll()
         
-        print("⏹️ DimmingCoordinator stopped (overlays hidden, cache cleared)")
+        print("⏹️ DimmingCoordinator stopped (overlays hidden, decay cleared, cache cleared)")
     }
     
     /**
@@ -1005,7 +1021,13 @@ final class DimmingCoordinator: ObservableObject {
         let windowsAnalyzed = windows.count
         
         // 7. Apply decay dimming to all inactive windows (full-window overlays)
-        applyDecayDimmingToWindows(windows)
+        // FIX (Feb 26, 2026): Check isRunning before applying decay dimming.
+        // Without this check, if stop() was called while this analysis was in-flight
+        // on the background analysisQueue, we'd apply decay overlays AFTER dimming
+        // was paused, making the pause appear broken to the user.
+        if isRunning {
+            applyDecayDimmingToWindows(windows)
+        }
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.isRunning else {

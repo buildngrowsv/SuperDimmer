@@ -624,6 +624,11 @@ final class OverlayManager {
      THREAD-SAFE (Jan 9, 2026): Uses overlayLock to prevent race conditions.
      */
     func applyRegionDimmingDecisions(_ decisions: [RegionDimmingDecision]) {
+        // FIX (Feb 26, 2026): Don't apply region decisions when dimming is paused/stopped.
+        // Same reasoning as the isActive guard in applyDecayDimming - prevents in-flight
+        // analysis cycles from re-creating overlays after stop().
+        guard isActive else { return }
+        
         // THREAD SAFETY: Lock before any dictionary access
         overlayLock.lock()
         defer { overlayLock.unlock() }
@@ -897,6 +902,23 @@ final class OverlayManager {
      - Parameter decisions: Array of decay dimming decisions for all windows
      */
     func applyDecayDimming(_ decisions: [DecayDimmingDecision]) {
+        // FIX (Feb 26, 2026): Guard against applying decay dimming when dimming is paused/stopped.
+        // BUG: When user pauses dimming (e.g. "Disable for 1 hour"), DimmingCoordinator.stop()
+        // calls hideAllOverlays() and sets isActive = false. However, if there are in-flight
+        // analysis cycles already dispatched on the background analysisQueue, those cycles
+        // finish executing and call applyDecayDimming() AFTER stop(). Because applyDecayDimming
+        // didn't check isActive, it would re-create/re-show decay overlays that were just hidden,
+        // making the "pause" appear to not work. The user would see overlays still on screen
+        // despite the UI showing "Dimming Paused".
+        // Now we bail out early if isActive is false, ensuring no overlays are created/shown
+        // after the system is stopped.
+        guard isActive else {
+            #if DEBUG
+            overlayLogger.debug("applyDecayDimming SKIPPED - dimming is not active (paused/stopped)")
+            #endif
+            return
+        }
+        
         // THROTTLE FIX (Jan 26, 2026): Prevent too-frequent calls
         // Check throttle BEFORE any other work to minimize overhead
         let now = CFAbsoluteTimeGetCurrent()
@@ -1089,20 +1111,35 @@ final class OverlayManager {
     }
     
     /**
-     Removes all decay overlays.
+     Removes all decay overlays and clears the dictionary.
      
-     Only called when app is quitting or dimming is completely disabled.
-     In normal operation, decay overlays are NEVER destroyed (only hidden).
+     FIX (Feb 26, 2026): Made internal (was private) so DimmingCoordinator.stop()
+     can call it. Also now actually clears the decayOverlays dictionary.
+     
+     PREVIOUSLY: This method only hid overlays but kept them in the dictionary,
+     which was intended for quick re-enable. However, this caused a critical bug:
+     when dimming was paused, in-flight analysis cycles on the background queue
+     would call applyDecayDimming(), find existing overlays in the dictionary,
+     and re-show them -- making the "pause" visually ineffective.
+     
+     NOW: We fully remove all decay overlays from the dictionary using safeHideOverlay
+     for proper cleanup (orderOut + ARC deallocation). When dimming is re-enabled,
+     the analysis loop will naturally recreate decay overlays from scratch.
+     The cost of recreating overlays is negligible compared to the bug severity.
      */
-    private func removeAllDecayOverlays() {
-        // Just hide all overlays instead of destroying them
-        // They'll get cleaned up when app quits
-        for (_, overlay) in decayOverlays {
-            overlay.setDimLevel(0.0, animated: false)
-            overlay.orderOut(nil)
+    func removeAllDecayOverlays() {
+        // Take lock to extract overlays from dictionary, then release lock
+        // before calling safeHideOverlay. safeHideOverlay calls CATransaction.flush()
+        // which could theoretically pump the run loop and cause re-entrant locking
+        // if another method tries to acquire overlayLock during the flush.
+        overlayLock.lock()
+        let overlaysToRemove = Array(decayOverlays.values)
+        decayOverlays.removeAll()
+        overlayLock.unlock()
+        
+        for overlay in overlaysToRemove {
+            safeHideOverlay(overlay)
         }
-        // Don't clear the dictionary - keep references alive
-        // decayOverlays.removeAll()  // DISABLED - keep overlays alive
     }
     
     // ================================================================
