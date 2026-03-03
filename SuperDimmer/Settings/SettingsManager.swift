@@ -671,7 +671,13 @@ final class SettingsManager: ObservableObject {
     @Published var isDimmingEnabled: Bool {
         didSet {
             defaults.set(isDimmingEnabled, forKey: Keys.isDimmingEnabled.rawValue)
-            // Notify dimming coordinator to start/stop
+            // FIX (Feb 18, 2026): Skip heavy notification during profile loading.
+            // loadProfileForCurrentAppearance() sets isLoadingProfile = true and
+            // updates 20+ @Published properties. Each didSet that posts a notification
+            // causes cascading side effects (DimmingCoordinator restart, timer recreation,
+            // etc.) which overwhelm the main thread during appearance changes.
+            // The coordinator will be updated after the full profile is applied.
+            guard !isLoadingProfile else { return }
             NotificationCenter.default.post(
                 name: .dimmingEnabledChanged,
                 object: nil,
@@ -699,11 +705,12 @@ final class SettingsManager: ObservableObject {
         didSet {
             defaults.set(dimmingType.rawValue, forKey: Keys.dimmingType.rawValue)
             
-            // Synchronize underlying settings based on the selected type
-            // This ensures the dimming coordinator works correctly
+            // FIX (Feb 18, 2026): Skip heavy side effects during profile loading.
+            // Same reason as isDimmingEnabled — cascading notifications overwhelm main thread.
+            guard !isLoadingProfile else { return }
+            
             synchronizeSettingsForDimmingType(dimmingType)
             
-            // Notify that dimming configuration changed
             NotificationCenter.default.post(
                 name: .dimmingTypeChanged,
                 object: nil,
@@ -1425,6 +1432,11 @@ final class SettingsManager: ObservableObject {
     @Published var superFocusEnabled: Bool {
         didSet {
             defaults.set(superFocusEnabled, forKey: Keys.superFocusEnabled.rawValue)
+            
+            // FIX (Feb 18, 2026): Skip cascading enable during profile loading.
+            // This sets 3 other @Published properties which each trigger their own
+            // observers. During profile loading, those properties are set individually.
+            guard !isLoadingProfile else { return }
             
             // When SuperFocus is turned ON, enable all grouped features
             // When turned OFF, leave individual settings as-is
@@ -2870,6 +2882,21 @@ final class SettingsManager: ObservableObject {
         }
         
         print("✅ \(activeAppearance.displayName) mode profile applied")
+        
+        // FIX (Feb 18, 2026): Now that isLoadingProfile is about to become false
+        // (via defer), fire ONE consolidated notification so the DimmingCoordinator
+        // can apply the new state. This replaces the per-property notifications
+        // that were skipped above (isDimmingEnabled.didSet, dimmingType.didSet etc.
+        // now return early when isLoadingProfile is true).
+        // We dispatch async so it fires AFTER the defer sets isLoadingProfile = false.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            NotificationCenter.default.post(
+                name: .dimmingEnabledChanged,
+                object: nil,
+                userInfo: ["enabled": self.isDimmingEnabled]
+            )
+        }
     }
     
     /**

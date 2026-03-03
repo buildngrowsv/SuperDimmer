@@ -418,6 +418,31 @@ final class OverlayManager {
         print("📺 Full-screen dimming disabled")
     }
     
+    /**
+     Activates the overlay system for intelligent (per-window or per-region) mode.
+     
+     BUG FIX (Mar 2, 2026):
+     When DimmingCoordinator.start() enters intelligent mode, it calls
+     disableFullScreenDimming() to remove any full-screen overlays. This sets
+     isActive = false. However, applyRegionDimmingDecisions() and applyDecayDimming()
+     now guard on isActive (added Feb 26, 2026 to fix pause bug). Because nothing
+     ever set isActive back to true for intelligent mode, ALL zone dimming overlay
+     applications were silently discarded -- zone dimming appeared completely broken.
+     
+     This method is called by DimmingCoordinator.start() immediately after
+     disableFullScreenDimming() when entering intelligent mode, so that the
+     analysis loop can successfully create and apply overlays.
+     
+     WHY NOT JUST SET isActive IN disableFullScreenDimming:
+     disableFullScreenDimming() is also called from stop() paths where we genuinely
+     want isActive = false. The caller (DimmingCoordinator) knows whether we're
+     transitioning to intelligent mode (activate) vs shutting down (deactivate).
+     */
+    func activateForIntelligentMode() {
+        isActive = true
+        print("🧠 Overlay system activated for intelligent (per-window/per-region) mode")
+    }
+    
     // ================================================================
     // MARK: - Per-Window Mode
     // ================================================================
@@ -913,9 +938,10 @@ final class OverlayManager {
         // Now we bail out early if isActive is false, ensuring no overlays are created/shown
         // after the system is stopped.
         guard isActive else {
-            #if DEBUG
-            overlayLogger.debug("applyDecayDimming SKIPPED - dimming is not active (paused/stopped)")
-            #endif
+            // FIX (Mar 2, 2026): Removed high-frequency DEBUG log. When dimming is paused,
+            // this was firing every analysis cycle (1–2s) producing hundreds of "SKIPPED"
+            // lines. DimmingCoordinator now bails before calling us when isActive is false,
+            // but we keep this guard for in-flight analysis races. No log needed.
             return
         }
         

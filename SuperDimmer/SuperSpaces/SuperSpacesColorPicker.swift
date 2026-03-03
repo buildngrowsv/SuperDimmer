@@ -51,6 +51,55 @@ struct SuperSpacesColorPicker: View {
     
     // MARK: - Body
     
+    // MARK: - Color Family Groupings
+    //
+    // BUG FIX (Feb 18, 2026): The spaceColorPalette in SettingsManager is ordered by
+    // CONTRAST TIERS (blue, red, green, purple, orange, magenta, ...) so that adjacent
+    // Spaces get maximally different default colors. But the picker was slicing that flat
+    // array by position (prefix(3), dropFirst(3).prefix(3), ...) and labeling them by
+    // family — so "Blues" showed Ocean Blue + Rose + Emerald, "Greens" showed Purple +
+    // Orange + Magenta, etc. Completely jumbled.
+    //
+    // FIX: We now look up colors by their hex values from the palette, grouping by actual
+    // color family. The palette ordering stays unchanged (it's critical for default color
+    // assignment), and the picker now displays colors in the correct family groups.
+    
+    /// Blues family — Ocean Blue, Deep Blue, Indigo
+    private var bluesColors: [(name: String, hex: String)] {
+        let blueHexes = Set(["#0EA5E9", "#3B82F6", "#6366F1"])
+        return settings.spaceColorPalette.filter { blueHexes.contains($0.hex) }
+    }
+    
+    /// Greens family — Emerald, Forest, Mint
+    private var greensColors: [(name: String, hex: String)] {
+        let greenHexes = Set(["#10B981", "#059669", "#34D399"])
+        return settings.spaceColorPalette.filter { greenHexes.contains($0.hex) }
+    }
+    
+    /// Purples family — Purple, Violet, Magenta
+    private var purplesColors: [(name: String, hex: String)] {
+        let purpleHexes = Set(["#A855F7", "#8B5CF6", "#D946EF"])
+        return settings.spaceColorPalette.filter { purpleHexes.contains($0.hex) }
+    }
+    
+    /// Reds & Pinks family — Rose, Coral, Pink
+    private var redsPinksColors: [(name: String, hex: String)] {
+        let redPinkHexes = Set(["#F43F5E", "#FB7185", "#EC4899"])
+        return settings.spaceColorPalette.filter { redPinkHexes.contains($0.hex) }
+    }
+    
+    /// Oranges & Yellows family — Orange, Amber, Yellow
+    private var orangesYellowsColors: [(name: String, hex: String)] {
+        let orangeYellowHexes = Set(["#F97316", "#F59E0B", "#EAB308"])
+        return settings.spaceColorPalette.filter { orangeYellowHexes.contains($0.hex) }
+    }
+    
+    /// Neutrals family — Slate, Stone, Gray
+    private var neutralsColors: [(name: String, hex: String)] {
+        let neutralHexes = Set(["#64748B", "#78716C", "#6B7280"])
+        return settings.spaceColorPalette.filter { neutralHexes.contains($0.hex) }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
@@ -59,26 +108,28 @@ struct SuperSpacesColorPicker: View {
             
             Divider()
             
-            // Color grid
+            // Color grid — grouped by actual color family, NOT by palette position.
+            // The palette is ordered by contrast tiers for default color assignment,
+            // so we must look up colors by hex to group them correctly here.
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     // Blues
-                    colorSection(title: "Blues", colors: Array(settings.spaceColorPalette.prefix(3)))
+                    colorSection(title: "Blues", colors: bluesColors)
                     
                     // Greens
-                    colorSection(title: "Greens", colors: Array(settings.spaceColorPalette.dropFirst(3).prefix(3)))
+                    colorSection(title: "Greens", colors: greensColors)
                     
                     // Purples
-                    colorSection(title: "Purples", colors: Array(settings.spaceColorPalette.dropFirst(6).prefix(3)))
+                    colorSection(title: "Purples", colors: purplesColors)
                     
                     // Reds/Pinks
-                    colorSection(title: "Reds & Pinks", colors: Array(settings.spaceColorPalette.dropFirst(9).prefix(3)))
+                    colorSection(title: "Reds & Pinks", colors: redsPinksColors)
                     
                     // Oranges/Yellows
-                    colorSection(title: "Oranges & Yellows", colors: Array(settings.spaceColorPalette.dropFirst(12).prefix(3)))
+                    colorSection(title: "Oranges & Yellows", colors: orangesYellowsColors)
                     
                     // Neutrals
-                    colorSection(title: "Neutrals", colors: Array(settings.spaceColorPalette.dropFirst(15).prefix(3)))
+                    colorSection(title: "Neutrals", colors: neutralsColors)
                 }
                 .padding(.vertical, 4)
             }

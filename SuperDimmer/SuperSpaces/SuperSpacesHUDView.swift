@@ -923,9 +923,25 @@ struct SuperSpacesHUDView: View {
                                             // FEATURE: Auto-save when clicking off the name field
                                             // When the field loses focus (isFocused becomes false), save the changes
                                             // This provides a more intuitive UX where users don't need to explicitly
-                                            // click the save button - just clicking elsewhere saves automatically
+                                            // click the save button - just clicking elsewhere saves automatically.
+                                            //
+                                            // BUG FIX (Feb 18, 2026): Must NOT auto-save immediately because
+                                            // clicking the color picker or emoji picker button causes the name
+                                            // field to lose focus BEFORE the button action fires. If we call
+                                            // saveSpaceNameAndEmoji() immediately, it sets isEditingSpaceName=false
+                                            // which exits edit mode before the picker even opens. The user then
+                                            // sees the color picker over a non-editing view, and any color they
+                                            // pick never gets saved.
+                                            // FIX: Delay briefly so the button action has time to set
+                                            // showColorPicker/showInlineEmojiPicker=true, then check if a
+                                            // picker opened. If so, stay in edit mode (don't auto-save).
                                             if !isFocused && isEditingSpaceName {
-                                                saveSpaceNameAndEmoji()
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                    // Only auto-save if no picker is open and we're still editing
+                                                    if isEditingSpaceName && !showColorPicker && !showInlineEmojiPicker {
+                                                        saveSpaceNameAndEmoji()
+                                                    }
+                                                }
                                             }
                                         }
                                     
@@ -2373,9 +2389,25 @@ struct OverviewSpaceCardView: View {
                         // FEATURE: Auto-save when clicking off the name field
                         // When the field loses focus (isFocused becomes false), save the changes
                         // This provides a more intuitive UX where users don't need to explicitly
-                        // click the save button - just clicking elsewhere saves automatically
+                        // click the save button - just clicking elsewhere saves automatically.
+                        //
+                        // BUG FIX (Feb 18, 2026): Must NOT auto-save immediately because
+                        // clicking the color picker or emoji picker button causes the name
+                        // field to lose focus BEFORE the button action fires. If we call
+                        // saveSpaceNameAndEmoji() immediately, it sets isEditingSpaceName=false
+                        // which exits edit mode before the picker even opens. The user then
+                        // sees the color picker over a non-editing view, and any color they
+                        // pick never gets saved.
+                        // FIX: Delay briefly so the button action has time to set
+                        // showColorPicker/showEmojiPicker=true, then check if a picker
+                        // opened. If so, stay in edit mode (don't auto-save).
                         if !isFocused && isEditingSpaceName {
-                            saveSpaceNameAndEmoji()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                // Only auto-save if no picker is open and we're still editing
+                                if isEditingSpaceName && !showColorPicker && !showEmojiPicker {
+                                    saveSpaceNameAndEmoji()
+                                }
+                            }
                         }
                     }
                 

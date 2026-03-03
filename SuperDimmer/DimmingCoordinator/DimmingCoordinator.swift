@@ -382,6 +382,13 @@ final class DimmingCoordinator: ObservableObject {
             // Remove any existing full-screen overlays
             overlayManager.disableFullScreenDimming()
             
+            // FIX (Mar 2, 2026): Activate overlay system for intelligent mode.
+            // disableFullScreenDimming() sets isActive = false, but
+            // applyRegionDimmingDecisions() and applyDecayDimming() guard on isActive.
+            // Without this call, all zone dimming overlays were silently discarded
+            // because isActive stayed false throughout the entire intelligent mode session.
+            overlayManager.activateForIntelligentMode()
+            
             // Run analysis immediately (don't wait for timer)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.performAnalysisCycle()
@@ -1025,7 +1032,12 @@ final class DimmingCoordinator: ObservableObject {
         // Without this check, if stop() was called while this analysis was in-flight
         // on the background analysisQueue, we'd apply decay overlays AFTER dimming
         // was paused, making the pause appear broken to the user.
-        if isRunning {
+        //
+        // FIX (Mar 2, 2026): Also check overlayManager.isActive. When dimming is paused,
+        // hideAllOverlays() sets isActive=false. Without this check, we'd call
+        // applyDecayDimming() which would log "SKIPPED" hundreds of times (every analysis
+        // cycle) producing log spam. Early bail here avoids the no-op call and log noise.
+        if isRunning, overlayManager.isActive {
             applyDecayDimmingToWindows(windows)
         }
         

@@ -17,24 +17,65 @@
  
  HOW IT WORKS:
  - Tracks "active usage time" per window (only when user is active)
- - Every 30 seconds, checks each app's window count
+ - Every 10 seconds, checks each app's window count
  - If count > threshold, minimizes oldest inactive windows
  - Resets ALL timers when user returns from extended idle
  
  IMPORTANT:
- - This is WINDOW-LEVEL minimizing (uses NSWindow.miniaturize)
+ - This is WINDOW-LEVEL minimizing (uses Accessibility API)
  - More aggressive than auto-hide, so OFF by default
  - Walking away doesn't trigger minimize (active-time only)
  
+ CRITICAL FIX (Feb 18, 2026): REPLACED APPLESCRIPT WITH ACCESSIBILITY API
+ The previous implementation used NSAppleScript + System Events, which had
+ these severe problems:
+ 
+ 1. UMBRA HANG: Each AppleScript iterated EVERY window of EVERY process
+    via System Events IPC. Multiple concurrent scripts saturated System
+    Events, blocking Umbra (which also uses System Events) when switching
+    dark/light mode. Quitting SuperDimmer unblocked Umbra.
+ 
+ 2. SILENT FAILURE: The AppleScript was likely never actually minimizing
+    windows. The "Minimized N windows" log fired BEFORE the script ran
+    (dispatch-time, not success-time). Same windows appeared every cycle
+    because failed windows stayed in tracking and were retried forever
+    with no error logging and no retry limit.
+ 
+ 3. THREAD SAFETY: OverlayManager.shared.removeOverlay() was called from
+    a background thread but it accesses non-thread-safe dictionaries and
+    manipulates NSWindow objects that must be on the main thread.
+ 
+ NEW APPROACH: Uses the macOS Accessibility API directly:
+ - AXUIElementCreateApplication(pid) to target ONLY the specific app
+ - kAXWindowsAttribute to get ONLY that app's windows (not ALL processes)
+ - _AXUIElementGetWindow() (private but widely used) to match CGWindowID
+ - kAXMinimizedAttribute to minimize the specific window
+ 
+ This is orders of magnitude lighter than the AppleScript approach because
+ it only queries ONE process, not every process on the system.
+ 
  ====================================================================
  Created: January 8, 2026
- Version: 1.0.0
+ Version: 2.0.0 (Feb 18, 2026 - AX API rewrite)
  ====================================================================
  */
 
 import Foundation
 import AppKit
 import Combine
+import ApplicationServices
+
+// ====================================================================
+// MARK: - Private AX API Declaration
+// ====================================================================
+
+/// Private API to get CGWindowID from an AXUIElement.
+/// This is the standard way macOS window management tools (yabai, Hammerspoon,
+/// Amethyst, etc.) bridge between CGWindowList and Accessibility APIs.
+/// There is no public API equivalent — Apple never provided one.
+/// The function has been stable across macOS 10.x through 15.x+.
+@_silgen_name("_AXUIElementGetWindow")
+func _AXUIElementGetWindow(_ element: AXUIElement, _ outWindow: UnsafeMutablePointer<CGWindowID>) -> AXError
 
 // ====================================================================
 // MARK: - Auto Minimize Manager
@@ -60,13 +101,20 @@ final class AutoMinimizeManager: ObservableObject {
     // MARK: - Types
     // ================================================================
     
-    /// Tracking info for a window's active usage time
+    /// Tracking info for a window's active usage time.
+    /// ownerPID is stored so we can use the Accessibility API to target
+    /// just the owning process rather than iterating every process.
     struct WindowActiveTime {
         var windowID: CGWindowID
+        var ownerPID: pid_t
         var ownerBundleID: String
         var ownerName: String
-        var activeUsageSeconds: TimeInterval  // Only counts when user is active
+        var activeUsageSeconds: TimeInterval
         var lastUpdated: Date
+        /// How many times we tried and failed to minimize this window.
+        /// After maxFailedAttempts we stop retrying to avoid endless
+        /// System Events / AX traffic (the root cause of the Umbra hang).
+        var failedMinimizeAttempts: Int = 0
     }
     
     // ================================================================
@@ -89,16 +137,15 @@ final class AutoMinimizeManager: ObservableObject {
     /// Timer for periodic checks and accumulation
     private var updateTimer: Timer?
     
-    /// CRITICAL FIX (Jan 24, 2026): Track windows currently being minimized
-    /// to prevent infinite loop where same window gets minimized repeatedly
-    /// before the AppleScript completes and removes it from tracking.
-    /// This was causing the rainbow spinning cursor crash.
+    /// Track windows currently being minimized to prevent duplicate operations.
+    /// (Jan 24, 2026): Prevents infinite loop where same window gets minimized
+    /// repeatedly before the operation completes.
     private var currentlyMinimizing = Set<CGWindowID>()
     
-    /// ADDITIONAL SAFETY (Jan 24, 2026): Track last time checkAndMinimizeWindows ran
-    /// to prevent it from running too frequently if called from multiple places
+    /// Throttle: Track last time checkAndMinimizeWindows ran.
+    /// (Jan 24, 2026): Prevents it from running too frequently.
     private var lastCheckTime: Date = .distantPast
-    private let minCheckInterval: TimeInterval = 5.0  // Don't check more than once per 5 seconds
+    private let minCheckInterval: TimeInterval = 5.0
     
     /// Active usage time per window
     private var windowActiveTimes: [CGWindowID: WindowActiveTime] = [:]
@@ -124,6 +171,13 @@ final class AutoMinimizeManager: ObservableObject {
     /// Maximum recently minimized to track
     private let maxRecentlyMinimized = 20
     
+    /// Maximum failed minimize attempts before giving up on a window.
+    /// After this many failures, the window is removed from tracking so we
+    /// stop hammering the Accessibility API (or System Events) with futile
+    /// requests. This was the root cause of the Umbra hang: hundreds of
+    /// failed AppleScript operations saturated System Events.
+    private let maxFailedAttempts = 3
+    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
@@ -131,12 +185,11 @@ final class AutoMinimizeManager: ObservableObject {
     private init() {
         setupObservers()
         
-        // Start automatically if enabled in settings
         if settings.autoMinimizeEnabled {
             start()
         }
         
-        print("✓ AutoMinimizeManager initialized")
+        print("✓ AutoMinimizeManager initialized (AX API mode)")
     }
     
     // ================================================================
@@ -144,7 +197,6 @@ final class AutoMinimizeManager: ObservableObject {
     // ================================================================
     
     private func setupObservers() {
-        // Observe settings changes
         settings.$autoMinimizeEnabled
             .dropFirst()
             .sink { [weak self] enabled in
@@ -161,18 +213,12 @@ final class AutoMinimizeManager: ObservableObject {
     // MARK: - Control Methods
     // ================================================================
     
-    /**
-     Starts the auto-minimize monitoring.
-     */
     func start() {
         guard !isRunning else { return }
         
         isRunning = true
-        
-        // Initialize tracking for current windows
         initializeWindowTracking()
         
-        // Create timer for periodic updates
         updateTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
             self?.updateAndCheck()
         }
@@ -180,9 +226,6 @@ final class AutoMinimizeManager: ObservableObject {
         print("▶️ AutoMinimizeManager started (checking every \(Int(updateInterval))s)")
     }
     
-    /**
-     Stops the auto-minimize monitoring.
-     */
     func stop() {
         guard isRunning else { return }
         
@@ -197,9 +240,6 @@ final class AutoMinimizeManager: ObservableObject {
     // MARK: - Core Logic
     // ================================================================
     
-    /**
-     Initialize tracking for all currently visible windows.
-     */
     private func initializeWindowTracking() {
         let windows = windowTracker.getVisibleWindows()
         let now = Date()
@@ -212,10 +252,12 @@ final class AutoMinimizeManager: ObservableObject {
         for window in windows {
             windowActiveTimes[window.id] = WindowActiveTime(
                 windowID: window.id,
+                ownerPID: window.ownerPID,
                 ownerBundleID: window.bundleID ?? "",
                 ownerName: window.ownerName,
                 activeUsageSeconds: 0,
-                lastUpdated: now
+                lastUpdated: now,
+                failedMinimizeAttempts: 0
             )
         }
         
@@ -223,28 +265,18 @@ final class AutoMinimizeManager: ObservableObject {
         print("📊 AutoMinimizeManager: Initialized tracking for \(trackedWindowCount) windows")
     }
     
-    /**
-     Main update loop: accumulate active time and check for windows to minimize.
-     Called periodically by the timer.
-     */
     private func updateAndCheck() {
         guard settings.autoMinimizeEnabled else { return }
         
-        // Update tracked windows
         updateWindowTracking()
         
-        // Accumulate active time if user is active
         if activeUsageTracker.getIsUserActive() {
             accumulateActiveTime()
         }
         
-        // Check and minimize if needed
         checkAndMinimizeWindows()
     }
     
-    /**
-     Updates window tracking - adds new windows, removes closed ones.
-     */
     private func updateWindowTracking() {
         let currentWindows = windowTracker.getVisibleWindows()
         let currentIDs = Set(currentWindows.map { $0.id })
@@ -259,20 +291,22 @@ final class AutoMinimizeManager: ObservableObject {
             windowActiveTimes.removeValue(forKey: staleID)
         }
         
-        // Add new windows
+        // Add new windows (includes ownerPID for AX API targeting)
         for window in currentWindows {
             if windowActiveTimes[window.id] == nil {
                 windowActiveTimes[window.id] = WindowActiveTime(
                     windowID: window.id,
+                    ownerPID: window.ownerPID,
                     ownerBundleID: window.bundleID ?? "",
                     ownerName: window.ownerName,
                     activeUsageSeconds: 0,
-                    lastUpdated: now
+                    lastUpdated: now,
+                    failedMinimizeAttempts: 0
                 )
             }
         }
         
-        // Reset timer for active window (the frontmost one)
+        // Reset timer for frontmost window
         if let activeWindow = currentWindows.first(where: { $0.isActive }) {
             if var info = windowActiveTimes[activeWindow.id] {
                 info.activeUsageSeconds = 0
@@ -284,14 +318,8 @@ final class AutoMinimizeManager: ObservableObject {
         trackedWindowCount = windowActiveTimes.count
     }
     
-    /**
-     Accumulates active time for all non-active windows.
-     Only called when user is actively using the computer.
-     */
     private func accumulateActiveTime() {
         let now = Date()
-        
-        // Get frontmost window ID
         let frontmostWindow = windowTracker.getFrontmostWindow()
         let frontmostID = frontmostWindow?.id ?? 0
         
@@ -299,7 +327,6 @@ final class AutoMinimizeManager: ObservableObject {
         defer { lock.unlock() }
         
         for (windowID, var info) in windowActiveTimes {
-            // Skip the active window
             if windowID == frontmostID {
                 info.activeUsageSeconds = 0
                 info.lastUpdated = now
@@ -307,7 +334,6 @@ final class AutoMinimizeManager: ObservableObject {
                 continue
             }
             
-            // Accumulate time since last update
             let elapsed = now.timeIntervalSince(info.lastUpdated)
             info.activeUsageSeconds += elapsed
             info.lastUpdated = now
@@ -318,12 +344,11 @@ final class AutoMinimizeManager: ObservableObject {
     /**
      Checks each app's window count and minimizes excess inactive windows.
      
-     CRITICAL FIX (Jan 24, 2026): Added throttle to prevent this from running too frequently.
-     Without this, if called from multiple places or in rapid succession, it can cause
-     an infinite loop where windows are minimized repeatedly.
+     FIX (Feb 18, 2026): The log message now says "Attempting to minimize"
+     instead of "Minimized" because the actual operation happens asynchronously.
+     Previously the misleading "Minimized" message fired before the operation ran.
      */
     private func checkAndMinimizeWindows() {
-        // THROTTLE: Don't run more frequently than minCheckInterval
         lock.lock()
         let now = Date()
         let timeSinceLastCheck = now.timeIntervalSince(lastCheckTime)
@@ -335,17 +360,14 @@ final class AutoMinimizeManager: ObservableObject {
         lock.unlock()
         
         let threshold = settings.autoMinimizeWindowThreshold
-        let delaySeconds = settings.autoMinimizeDelay * 60.0  // Convert minutes to seconds
+        let delaySeconds = settings.autoMinimizeDelay * 60.0
         
-        // Get excluded apps from unified exclusion system (2.2.1.12)
         var excludedApps = Set<String>()
         for exclusion in settings.appExclusions where exclusion.excludeFromAutoMinimize {
             excludedApps.insert(exclusion.bundleID)
         }
-        // Also include legacy exclusions for backwards compatibility
         excludedApps.formUnion(settings.autoMinimizeExcludedApps)
         
-        // Group windows by app
         lock.lock()
         var windowsByApp: [String: [(id: CGWindowID, info: WindowActiveTime)]] = [:]
         
@@ -360,158 +382,180 @@ final class AutoMinimizeManager: ObservableObject {
         }
         lock.unlock()
         
-        // Check each app
         for (bundleID, windows) in windowsByApp {
-            // Skip excluded apps
             if excludedApps.contains(bundleID) { continue }
-            
-            // Skip system apps
             if AppInactivityTracker.isSystemApp(bundleID) { continue }
-            
-            // Skip our own app
             if bundleID == Bundle.main.bundleIdentifier { continue }
-            
-            // Only process if window count exceeds threshold
             if windows.count <= threshold { continue }
             
-            // Sort by active usage time (highest = oldest inactive)
             let sortedWindows = windows.sorted { $0.info.activeUsageSeconds > $1.info.activeUsageSeconds }
-            
-            // Calculate how many to minimize
             let toMinimize = windows.count - threshold
             
-            // Minimize the oldest inactive windows that exceed the delay
-            var minimizedCount = 0
+            var dispatchedCount = 0
             for window in sortedWindows {
-                if minimizedCount >= toMinimize { break }
+                if dispatchedCount >= toMinimize { break }
                 
-                // Only minimize if exceeded the delay
                 if window.info.activeUsageSeconds >= delaySeconds {
-                    // ADDITIONAL SAFETY CHECK (Jan 26, 2026): Check before calling minimizeWindow
-                    // Even though minimizeWindow has its own check, we check here too to avoid
-                    // even attempting to minimize a window that's already in progress.
-                    // This prevents the AppleScript from being queued multiple times.
-                    //
-                    // MAIN THREAD BLOCKING FIX (Jan 26, 2026):
-                    // Execute AppleScript on background thread to avoid blocking main thread.
-                    // AppleScript can take 1-5 seconds to complete, which would freeze UI.
-                    //
-                    // Root cause: Timer runs on main thread, calls minimizeWindow() which executes
-                    // AppleScript synchronously, blocking main thread while waiting for IPC response.
-                    //
-                    // Found via sample analysis showing main thread blocked in mach_msg2_trap
-                    // while executing NSAppleScript.executeAndReturnError.
+                    // Skip windows that have exceeded the retry limit
+                    if window.info.failedMinimizeAttempts >= maxFailedAttempts {
+                        continue
+                    }
+                    
                     lock.lock()
                     let alreadyMinimizing = currentlyMinimizing.contains(window.id)
                     lock.unlock()
                     
                     if !alreadyMinimizing {
-                        // Execute on background thread to keep UI responsive
-                        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                            self?.minimizeWindow(windowID: window.id, appName: window.info.ownerName)
+                        let pid = window.info.ownerPID
+                        DispatchQueue.global(qos: .utility).async { [weak self] in
+                            self?.minimizeWindowViaAccessibility(
+                                windowID: window.id,
+                                ownerPID: pid,
+                                appName: window.info.ownerName
+                            )
                         }
-                        minimizedCount += 1
+                        dispatchedCount += 1
                     }
                 }
             }
             
-            if minimizedCount > 0 {
-                print("📥 AutoMinimizeManager: Minimized \(minimizedCount) windows from '\(windows.first?.info.ownerName ?? bundleID)'")
+            if dispatchedCount > 0 {
+                print("📥 AutoMinimizeManager: Attempting to minimize \(dispatchedCount) window(s) from '\(windows.first?.info.ownerName ?? bundleID)'")
+            }
+        }
+    }
+    
+    // ================================================================
+    // MARK: - Accessibility API Minimize
+    // ================================================================
+    
+    /**
+     Minimizes a window using the macOS Accessibility API.
+     
+     APPROACH (Feb 18, 2026):
+     Instead of the old AppleScript that iterated EVERY window of EVERY process
+     via System Events (causing System Events saturation and blocking Umbra),
+     this method targets ONLY the specific owning process:
+     
+     1. AXUIElementCreateApplication(pid) → target just this app
+     2. kAXWindowsAttribute → enumerate only this app's windows
+     3. _AXUIElementGetWindow() → match the specific CGWindowID
+     4. kAXMinimizedAttribute = true → minimize it
+     
+     This is O(windows_in_app) instead of O(all_windows_in_system) and does NOT
+     use System Events at all, eliminating the IPC contention that blocked Umbra.
+     
+     THREAD SAFETY FIX (Feb 18, 2026): Overlay removal is now dispatched to
+     the main thread. Previously it was called directly from the background
+     thread, which is unsafe because OverlayManager accesses non-thread-safe
+     dictionaries and manipulates NSWindow objects.
+     
+     RETRY LIMIT (Feb 18, 2026): If minimize fails, we increment the window's
+     failedMinimizeAttempts counter. After maxFailedAttempts (3), we stop retrying
+     that window entirely. This prevents the infinite-retry bombardment that was
+     the root cause of the System Events saturation / Umbra hang.
+     */
+    private func minimizeWindowViaAccessibility(windowID: CGWindowID, ownerPID: pid_t, appName: String) {
+        // Prevent duplicate operations on the same window
+        lock.lock()
+        if currentlyMinimizing.contains(windowID) {
+            lock.unlock()
+            return
+        }
+        currentlyMinimizing.insert(windowID)
+        lock.unlock()
+        
+        // THREAD SAFETY FIX: Dispatch overlay removal to main thread.
+        // OverlayManager's dictionaries and NSWindow operations are not thread-safe.
+        DispatchQueue.main.async {
+            OverlayManager.shared.removeOverlay(for: windowID)
+        }
+        
+        // Use Accessibility API to minimize the window
+        let success = accessibilityMinimize(windowID: windowID, pid: ownerPID)
+        
+        lock.lock()
+        currentlyMinimizing.remove(windowID)
+        
+        if success {
+            addToRecentlyMinimized(windowID: windowID, appName: appName)
+            windowActiveTimes.removeValue(forKey: windowID)
+            lock.unlock()
+            
+            print("✅ AutoMinimizeManager: Successfully minimized window \(windowID) from '\(appName)' via AX API")
+        } else {
+            // Increment failure counter so we stop retrying after maxFailedAttempts
+            if var info = windowActiveTimes[windowID] {
+                info.failedMinimizeAttempts += 1
+                windowActiveTimes[windowID] = info
+                let attempts = info.failedMinimizeAttempts
+                lock.unlock()
+                
+                if attempts >= maxFailedAttempts {
+                    print("⚠️ AutoMinimizeManager: Giving up on window \(windowID) from '\(appName)' after \(attempts) failed attempts")
+                } else {
+                    print("⚠️ AutoMinimizeManager: Failed to minimize window \(windowID) from '\(appName)' (attempt \(attempts)/\(maxFailedAttempts))")
+                }
+            } else {
+                lock.unlock()
+                print("⚠️ AutoMinimizeManager: Failed to minimize window \(windowID) from '\(appName)' (window no longer tracked)")
             }
         }
     }
     
     /**
-     Minimizes a specific window.
+     Low-level Accessibility API call to minimize a window by CGWindowID.
      
-     IMPORTANT (2.2.1.10): We remove all overlays for this window BEFORE minimizing it
-     to prevent orphaned overlays that remain visible after the window is minimized.
-     
-     CRITICAL FIX (Jan 24, 2026): Added guard to prevent minimizing same window multiple times.
-     The AppleScript execution is slow (100-500ms), and during that time the analysis cycle
-     continues running. Without this guard, the same window gets queued for minimization
-     repeatedly, causing an infinite loop and rainbow spinning cursor crash.
+     Enumerates ONLY the target app's windows (via AXUIElementCreateApplication),
+     matches by CGWindowID using the private _AXUIElementGetWindow(), and sets
+     kAXMinimizedAttribute to true.
      
      - Parameters:
-       - windowID: The CGWindowID of the window to minimize
-       - appName: The app name (for logging and tracking)
+       - windowID: The CGWindowID to minimize
+       - pid: Process ID of the owning application
+     - Returns: true if successfully minimized, false otherwise
      */
-    private func minimizeWindow(windowID: CGWindowID, appName: String) {
-        // CRITICAL: Check if this window is already being minimized
-        lock.lock()
-        if currentlyMinimizing.contains(windowID) {
-            lock.unlock()
-            // Already minimizing this window, skip to prevent infinite loop
-            return
+    private func accessibilityMinimize(windowID: CGWindowID, pid: pid_t) -> Bool {
+        let appElement = AXUIElementCreateApplication(pid)
+        
+        // Get the app's windows via Accessibility API
+        var windowsRef: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef)
+        
+        guard result == .success, let axWindows = windowsRef as? [AXUIElement] else {
+            // App might not support accessibility or has no windows
+            return false
         }
-        // Mark as currently minimizing
-        currentlyMinimizing.insert(windowID)
-        lock.unlock()
         
-        // CRITICAL FIX (2.2.1.10): Remove all overlays for this window BEFORE minimizing it
-        // This prevents orphaned overlays that remain visible after the window is minimized.
-        // The overlays will be recreated when the window is unminimized and becomes visible again.
-        OverlayManager.shared.removeOverlay(for: windowID)
-        
-        // Unfortunately, there's no direct way to minimize a window by CGWindowID
-        // We need to use Accessibility API or AppleScript
-        // For now, we'll use AppleScript as it's more reliable
-        
-        let script = """
-        tell application "System Events"
-            set theWindows to every window of every process
-            repeat with theProcess in every process
-                repeat with theWindow in every window of theProcess
-                    try
-                        if (get id of theWindow) is \(windowID) then
-                            set miniaturized of theWindow to true
-                            return true
-                        end if
-                    end try
-                end repeat
-            end repeat
-        end tell
-        return false
-        """
-        
-        var error: NSDictionary?
-        if let scriptObject = NSAppleScript(source: script) {
-            let result = scriptObject.executeAndReturnError(&error)
+        // Find the window matching our CGWindowID
+        for axWindow in axWindows {
+            var axWindowID: CGWindowID = 0
+            let getResult = _AXUIElementGetWindow(axWindow, &axWindowID)
             
-            lock.lock()
-            // Always remove from currentlyMinimizing, whether success or failure
-            currentlyMinimizing.remove(windowID)
-            
-            if error == nil && result.booleanValue {
-                // Track in recently minimized
-                addToRecentlyMinimized(windowID: windowID, appName: appName)
-                
-                // Remove from tracking
-                windowActiveTimes.removeValue(forKey: windowID)
-                lock.unlock()
-                
-                print("📥 AutoMinimizeManager: Minimized window \(windowID) from '\(appName)'")
-            } else {
-                lock.unlock()
-                // AppleScript may fail for some windows - not critical
-                // The window might have been closed or the app doesn't support it
+            if getResult == .success && axWindowID == windowID {
+                // Found the matching window — minimize it
+                let setResult = AXUIElementSetAttributeValue(
+                    axWindow,
+                    kAXMinimizedAttribute as CFString,
+                    kCFBooleanTrue
+                )
+                return setResult == .success
             }
-        } else {
-            // Failed to create script object
-            lock.lock()
-            currentlyMinimizing.remove(windowID)
-            lock.unlock()
         }
+        
+        // Window not found in this app's AX window list
+        return false
     }
     
     // ================================================================
     // MARK: - Recently Minimized Management
     // ================================================================
     
+    /// NOTE: This method assumes the lock is already held by the caller
+    /// when called from minimizeWindowViaAccessibility (lock is held).
+    /// When called independently, caller must hold the lock.
     private func addToRecentlyMinimized(windowID: CGWindowID, appName: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        
+        // lock is already held by caller
         recentlyMinimized.insert((windowID: windowID, appName: appName, time: Date()), at: 0)
         
         if recentlyMinimized.count > maxRecentlyMinimized {
@@ -519,9 +563,6 @@ final class AutoMinimizeManager: ObservableObject {
         }
     }
     
-    /**
-     Clears the recently minimized list.
-     */
     func clearRecentlyMinimized() {
         lock.lock()
         recentlyMinimized.removeAll()
@@ -532,9 +573,6 @@ final class AutoMinimizeManager: ObservableObject {
     // MARK: - Debug / Status
     // ================================================================
     
-    /**
-     Gets a status summary for debugging.
-     */
     func getStatusSummary() -> String {
         let running = isRunning ? "Running" : "Stopped"
         let delay = Int(settings.autoMinimizeDelay)
@@ -545,9 +583,6 @@ final class AutoMinimizeManager: ObservableObject {
         return "AutoMinimize: \(running), delay=\(delay)min, threshold=\(threshold), tracking=\(tracked), recentlyMinimized=\(recent)"
     }
     
-    /**
-     Gets detailed window tracking info for debugging.
-     */
     func getWindowTrackingDetails() -> [(app: String, windowID: CGWindowID, activeTime: TimeInterval)] {
         lock.lock()
         defer { lock.unlock() }
