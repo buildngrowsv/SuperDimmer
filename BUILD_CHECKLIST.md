@@ -374,6 +374,11 @@ xcodebuild -scheme SuperDimmer -configuration Debug build
   - User changes appearance mode manually
   - App launches (loads appropriate profile based on current appearance)
 
+**BUG FIX (Mar 19, 2026) — profile vs live toggle desync:**
+- `saveCurrentSettingsToActiveProfile()` previously ran only in `init`, so toggling Super Dimming from the menu bar updated UserDefaults but left `lightModeProfile` / `darkModeProfile` stale until the next launch.
+- Symptom: switching Light ↔ Dark reapplied old profile `isDimmingEnabled` (Dark often ON by design; Light could still show overlays after user had turned dimming OFF).
+- Fix: call `saveCurrentSettingsToActiveProfile()` from `isDimmingEnabled` and `dimmingType` `didSet` when `!isLoadingProfile` so the active appearance profile always matches user actions.
+
 #### 🧪 TEST CHECK 2.2.1.1
 - [ ] Switching to Dark mode loads dark profile - NEEDS USER TESTING
 - [ ] Switching to Light mode loads light profile - NEEDS USER TESTING
