@@ -205,6 +205,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("   App version: \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown")")
         
         // ============================================================
+        // Step 0.5: Initialize License Manager (2026-03-23)
+        // ============================================================
+        // LicenseManager MUST be initialized before SettingsManager is used,
+        // because SettingsManager's Pro feature setters check FeatureGateService
+        // which depends on LicenseManager. If LicenseManager isn't initialized
+        // first, the feature gates may incorrectly block settings loaded from
+        // UserDefaults (e.g., a Pro user's intelligentDimmingEnabled=true would
+        // get reverted to false during settings load).
+        //
+        // The access to .shared triggers the singleton's init(), which:
+        // 1. Loads stored license key from UserDefaults
+        // 2. Checks trial state
+        // 3. Sets licenseState (which FeatureGateService observes)
+        //
+        // Added as part of Paddle payment integration (BridgeMind task 39cc4a31).
+        _ = LicenseManager.shared
+        _ = FeatureGateService.shared
+        print("✓ LicenseManager initialized — state: \(LicenseManager.shared.licenseState.displayDescription)")
+
+        // ============================================================
         // Step 1: Initialize Settings Manager (singleton already exists)
         // ============================================================
         // SettingsManager.shared is already created when accessed

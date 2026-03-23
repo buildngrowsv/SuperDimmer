@@ -181,7 +181,21 @@ struct AppLogger {
      - Accumulation tracking
      */
     static let autoHide = Logger(subsystem: subsystem, category: "autoHide")
-    
+
+    /**
+     Licensing and feature gating.
+
+     Added 2026-03-23 as part of the Paddle SDK payment integration.
+
+     Use for:
+     - License state changes (free → trial → pro → expired)
+     - License activation/deactivation events
+     - Feature gate blocks (user tried Pro feature without license)
+     - Paddle SDK communication events
+     - Trial start/expiry events
+     */
+    static let licensing = Logger(subsystem: subsystem, category: "licensing")
+
     // ================================================================
     // MARK: - Signposting (Performance Intervals)
     // ================================================================

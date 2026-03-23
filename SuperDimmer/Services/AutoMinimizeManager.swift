@@ -11,22 +11,15 @@
  
  KEY FEATURES:
  1. ACTIVE-TIME ONLY: Only counts time when user is actively working
- 2. IDLE / WAKE INTEGRITY (Mar 19, 2026): Returning from idle refreshes each
-    window’s `lastUpdated` without inflating `activeUsageSeconds`, so sleep and
-    “away from keyboard” time are not applied in one giant tick. Wake also resets
-    AX failure counters and briefly suppresses minimize while WindowServer
-    republishes the accessibility tree (fixes Edge/Notes false failures).
- 3. MAIN-THREAD AX (Mar 19, 2026): AXUIElement calls run on the main thread with
-    short retries for `cannotComplete`. Running AX from `DispatchQueue.global`
-    was a major source of intermittent minimize failure after sleep.
- 4. THRESHOLD: Only minimizes if app has > N windows (keeps N)
- 5. PER-APP: Can exclude specific apps from auto-minimize
+ 2. IDLE RESET: All timers reset after extended idle (no overnight surprise)
+ 3. THRESHOLD: Only minimizes if app has > N windows (keeps N)
+ 4. PER-APP: Can exclude specific apps from auto-minimize
  
  HOW IT WORKS:
  - Tracks "active usage time" per window (only when user is active)
  - Every 10 seconds, checks each app's window count
  - If count > threshold, minimizes oldest inactive windows
- - Idle return + system wake refresh tracking clocks (see feature 2 above)
+ - Resets ALL timers when user returns from extended idle
  
  IMPORTANT:
  - This is WINDOW-LEVEL minimizing (uses Accessibility API)
@@ -63,7 +56,7 @@
  
  ====================================================================
  Created: January 8, 2026
- Version: 2.1.0 (Mar 19, 2026 - main-thread AX, wake/idle clock fix, AX retries)
+ Version: 2.0.0 (Feb 18, 2026 - AX API rewrite)
  ====================================================================
  */
 
@@ -185,30 +178,6 @@ final class AutoMinimizeManager: ObservableObject {
     /// failed AppleScript operations saturated System Events.
     private let maxFailedAttempts = 3
     
-    /**
-     Mirrors the last value we saw from `ActiveUsageTracker.isUserActive`.
-     
-     WHY:
-     We only want to run `refreshLastUpdatedAfterUserReturnedFromIdle()` on the
-     transition **idle → active**. Comparing against this avoids mis-firing on
-     cold start when Combine emits the first value.
-     */
-    private var lastObservedUserWasActive: Bool = true
-    
-    /**
-     Until this instant, we skip scheduling AX minimize work.
-     
-     WHY:
-     Right after `NSWorkspace.didWakeNotification`, CGWindow IDs still exist but
-     the accessibility tree often lags; minimizing in that window produces
-     `kAXErrorCannotComplete` and spurious “failed” attempts that exhausted the
-     retry budget before the system settled.
-     */
-    private var axMinimizeSuppressedUntil: Date = .distantPast
-    
-    /// Hold AX minimize briefly after wake so WindowServer can catch up.
-    private let postWakeAXMinimizeHoldSeconds: TimeInterval = 3.0
-    
     // ================================================================
     // MARK: - Initialization
     // ================================================================
@@ -238,91 +207,6 @@ final class AutoMinimizeManager: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-        
-        setupSystemWakeCompensation()
-        setupActiveUsageIdleCompensation()
-    }
-    
-    /**
-     Listens for system wake and repairs tracking state before AX calls resume.
-     
-     PRODUCT STORY:
-     The user reported minimize spam and failures after closing the laptop.
-     Failures were real: AX APIs answered `cannotComplete` or omitted windows
-     until tens or hundreds of ms later. Retries on a background queue burned
-     through `maxFailedAttempts` before a single successful minimize was possible.
-     
-     WHAT WE DO:
-     - Push `lastUpdated` forward to “now” for every tracked window without
-       increasing `activeUsageSeconds` (sleep is not “active use”).
-     - Reset `failedMinimizeAttempts` so a bad wake does not permanently blacklist
-       windows until the next relaunch.
-     - Suppress new minimize dispatches for a few seconds while Cocoa finishes
-       reconnecting to the window server.
-     */
-    private func setupSystemWakeCompensation() {
-        NotificationCenter.default.publisher(for: NSWorkspace.didWakeNotification)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyPostWakeAutoMinimizeRecovery()
-            }
-            .store(in: &cancellables)
-    }
-    
-    /**
-     When `ActiveUsageTracker` flips from idle to active, prevent the next
-     `accumulateActiveTime()` from adding the **entire** idle interval in one shot.
-     
-     TECHNICAL DETAIL:
-     While idle we intentionally skip `accumulateActiveTime()`, so `lastUpdated`
-     freezes. The first call after idle used `Date().timeIntervalSince(lastUpdated)`
-     which incorrectly treated the whole idle period as “user was active with this
-     window in the background” — pushing Edge/Notes over the minimize delay
-     instantly after wake.
-     
-     ALIGNMENT:
-     `WindowInactivityTracker` already advances decay timestamps on idle return;
-     this brings auto-minimize’s accounting in line with that model.
-     */
-    private func setupActiveUsageIdleCompensation() {
-        lastObservedUserWasActive = activeUsageTracker.isUserActive
-        
-        activeUsageTracker.$isUserActive
-            .dropFirst()
-            .sink { [weak self] isActive in
-                guard let self else { return }
-                let wasActive = self.lastObservedUserWasActive
-                self.lastObservedUserWasActive = isActive
-                guard isActive, !wasActive else { return }
-                self.refreshLastUpdatedAfterUserReturnedFromIdle()
-            }
-            .store(in: &cancellables)
-    }
-    
-    /// Called on idle → active. Keeps `activeUsageSeconds`; only moves the clock.
-    private func refreshLastUpdatedAfterUserReturnedFromIdle() {
-        let now = Date()
-        lock.lock()
-        for (id, var info) in windowActiveTimes {
-            info.lastUpdated = now
-            windowActiveTimes[id] = info
-        }
-        lock.unlock()
-    }
-    
-    /// Called on system wake (main queue). Same clock refresh as idle return plus retry budget + hold.
-    private func applyPostWakeAutoMinimizeRecovery() {
-        let now = Date()
-        let holdUntil = now.addingTimeInterval(postWakeAXMinimizeHoldSeconds)
-        lock.lock()
-        for (id, var info) in windowActiveTimes {
-            info.lastUpdated = now
-            info.failedMinimizeAttempts = 0
-            windowActiveTimes[id] = info
-        }
-        axMinimizeSuppressedUntil = holdUntil
-        lock.unlock()
-        print("☀️ AutoMinimizeManager: Wake recovery — refreshed clocks, reset AX fail counts, holding AX minimize for \(Int(postWakeAXMinimizeHoldSeconds))s")
     }
     
     // ================================================================
@@ -467,10 +351,6 @@ final class AutoMinimizeManager: ObservableObject {
     private func checkAndMinimizeWindows() {
         lock.lock()
         let now = Date()
-        if now < axMinimizeSuppressedUntil {
-            lock.unlock()
-            return
-        }
         let timeSinceLastCheck = now.timeIntervalSince(lastCheckTime)
         if timeSinceLastCheck < minCheckInterval {
             lock.unlock()
@@ -527,28 +407,12 @@ final class AutoMinimizeManager: ObservableObject {
                     
                     if !alreadyMinimizing {
                         let pid = window.info.ownerPID
-                        let wid = window.id
-                        let name = window.info.ownerName
-                        /*
-                         MAIN THREAD (Mar 19, 2026):
-                         `AXUIElementCopyAttributeValue` / `SetAttributeValue` are AppKit
-                         messaging primitives. Apple documents them as main-thread friendly;
-                         in practice calling them from `DispatchQueue.global` produced
-                         steady `kAXErrorCannotComplete` after sleep and under parallel
-                         load (Edge + Notes), which exhausted our retry budget instantly.
-                         */
-                        let runMinimize: () -> Void = { [weak self] in
-                            guard let self else { return }
-                            self.minimizeWindowViaAccessibility(
-                                windowID: wid,
+                        DispatchQueue.global(qos: .utility).async { [weak self] in
+                            self?.minimizeWindowViaAccessibility(
+                                windowID: window.id,
                                 ownerPID: pid,
-                                appName: name
+                                appName: window.info.ownerName
                             )
-                        }
-                        if Thread.isMainThread {
-                            runMinimize()
-                        } else {
-                            DispatchQueue.main.async(execute: runMinimize)
                         }
                         dispatchedCount += 1
                     }
@@ -581,10 +445,10 @@ final class AutoMinimizeManager: ObservableObject {
      This is O(windows_in_app) instead of O(all_windows_in_system) and does NOT
      use System Events at all, eliminating the IPC contention that blocked Umbra.
      
-     MAIN THREAD (Mar 19, 2026): This method is always invoked on the main queue.
-     Overlay removal runs synchronously here because `OverlayManager` is main-thread
-     only, and Accessibility minimize must execute on the same queue for reliable
-     delivery to WindowServer.
+     THREAD SAFETY FIX (Feb 18, 2026): Overlay removal is now dispatched to
+     the main thread. Previously it was called directly from the background
+     thread, which is unsafe because OverlayManager accesses non-thread-safe
+     dictionaries and manipulates NSWindow objects.
      
      RETRY LIMIT (Feb 18, 2026): If minimize fails, we increment the window's
      failedMinimizeAttempts counter. After maxFailedAttempts (3), we stop retrying
@@ -592,8 +456,6 @@ final class AutoMinimizeManager: ObservableObject {
      the root cause of the System Events saturation / Umbra hang.
      */
     private func minimizeWindowViaAccessibility(windowID: CGWindowID, ownerPID: pid_t, appName: String) {
-        assert(Thread.isMainThread, "AutoMinimize AX path must run on main thread")
-        
         // Prevent duplicate operations on the same window
         lock.lock()
         if currentlyMinimizing.contains(windowID) {
@@ -603,8 +465,13 @@ final class AutoMinimizeManager: ObservableObject {
         currentlyMinimizing.insert(windowID)
         lock.unlock()
         
-        OverlayManager.shared.removeOverlay(for: windowID)
+        // THREAD SAFETY FIX: Dispatch overlay removal to main thread.
+        // OverlayManager's dictionaries and NSWindow operations are not thread-safe.
+        DispatchQueue.main.async {
+            OverlayManager.shared.removeOverlay(for: windowID)
+        }
         
+        // Use Accessibility API to minimize the window
         let success = accessibilityMinimize(windowID: windowID, pid: ownerPID)
         
         lock.lock()
@@ -649,50 +516,34 @@ final class AutoMinimizeManager: ObservableObject {
      - Returns: true if successfully minimized, false otherwise
      */
     private func accessibilityMinimize(windowID: CGWindowID, pid: pid_t) -> Bool {
-        let maxAttempts = 4
+        let appElement = AXUIElementCreateApplication(pid)
         
-        attemptLoop: for attemptIndex in 0..<maxAttempts {
-            if attemptIndex > 0 {
-                /*
-                 Yield the main run loop so WindowServer can finish publishing
-                 `kAXWindowsAttribute` after wake or Space changes. This is intentionally
-                 short (sub-100ms per spin) so we do not freeze the UI perceptibly, yet
-                 it dramatically reduces `kAXErrorCannotComplete` storms.
-                 */
-                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.07))
-            }
+        // Get the app's windows via Accessibility API
+        var windowsRef: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef)
+        
+        guard result == .success, let axWindows = windowsRef as? [AXUIElement] else {
+            // App might not support accessibility or has no windows
+            return false
+        }
+        
+        // Find the window matching our CGWindowID
+        for axWindow in axWindows {
+            var axWindowID: CGWindowID = 0
+            let getResult = _AXUIElementGetWindow(axWindow, &axWindowID)
             
-            let appElement = AXUIElementCreateApplication(pid)
-            var windowsRef: CFTypeRef?
-            let listResult = AXUIElementCopyAttributeValue(
-                appElement,
-                kAXWindowsAttribute as CFString,
-                &windowsRef
-            )
-            guard listResult == .success, let axWindows = windowsRef as? [AXUIElement] else {
-                continue attemptLoop
-            }
-            
-            for axWindow in axWindows {
-                var axWindowID: CGWindowID = 0
-                let getResult = _AXUIElementGetWindow(axWindow, &axWindowID)
-                guard getResult == .success, axWindowID == windowID else { continue }
-                
+            if getResult == .success && axWindowID == windowID {
+                // Found the matching window — minimize it
                 let setResult = AXUIElementSetAttributeValue(
                     axWindow,
                     kAXMinimizedAttribute as CFString,
                     kCFBooleanTrue
                 )
-                if setResult == .success {
-                    return true
-                }
-                if setResult == .cannotComplete {
-                    continue attemptLoop
-                }
-                return false
+                return setResult == .success
             }
         }
         
+        // Window not found in this app's AX window list
         return false
     }
     

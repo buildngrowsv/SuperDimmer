@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		LM1000000001LICENSEMANAG /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = LM2000000001LICENSEMANAG /* LicenseManager.swift */; };
+		FG1000000001FEATUREGATE0 /* FeatureGateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FG2000000001FEATUREGATE0 /* FeatureGateService.swift */; };
+		LV1000000001LICENSEVIEW0 /* LicenseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LV2000000001LICENSEVIEW0 /* LicenseView.swift */; };
 		086E7F050857EA5DD5456DE4 /* AppExclusionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1650EB9DF5649F71564D6C4D /* AppExclusionsView.swift */; };
 		18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1786CD87303B63162133E819 /* DimOverlayWindow.swift */; };
 		1C7E34A8E319DB52D8A6D642 /* AutoMinimizeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */; };
@@ -107,6 +110,9 @@
 		EC43ECCDBC1C09B92EB293B5 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		F17205C30B76A224ED5805C1 /* SuperDimmerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SuperDimmerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F66E8844DCCCD25531199A7D /* AutoHideManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoHideManager.swift; sourceTree = "<group>"; };
+		LM2000000001LICENSEMANAG /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
+		FG2000000001FEATUREGATE0 /* FeatureGateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureGateService.swift; sourceTree = "<group>"; };
+		LV2000000001LICENSEVIEW0 /* LicenseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseView.swift; sourceTree = "<group>"; };
 		FDF3FB207F024F10C781FBE2 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		UC9876543210FEDCBA987654 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		SS2000000001SPACEDETECTOR /* SpaceDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceDetector.swift; sourceTree = "<group>"; };
@@ -261,6 +267,7 @@
 			isa = PBXGroup;
 			children = (
 				1650EB9DF5649F71564D6C4D /* AppExclusionsView.swift */,
+				LV2000000001LICENSEVIEW0 /* LicenseView.swift */,
 				007F0A55A64BEF81B7363D45 /* PreferencesView.swift */,
 			);
 			path = Preferences;
@@ -312,6 +319,8 @@
 				3964F65CA1E65C3362C4BA3A /* AppInactivityTracker.swift */,
 				F66E8844DCCCD25531199A7D /* AutoHideManager.swift */,
 				BF0DBBC14612C0FE1C3455CF /* AutoMinimizeManager.swift */,
+				FG2000000001FEATUREGATE0 /* FeatureGateService.swift */,
+				LM2000000001LICENSEMANAG /* LicenseManager.swift */,
 				4C527F542BD6DF33EE96AAA4 /* BrightnessAnalysisEngine.swift */,
 				AE0979D2AE7B7F3A975C1D3D /* BrightRegionDetector.swift */,
 				2EC84F10878CC84E7E615F1F /* CrashReportingManager.swift */,
@@ -465,7 +474,10 @@
 				AL1000000001APPLOGGER000 /* AppLogger.swift in Sources */,
 				18CAFF23F2F54AC3ACF1AE38 /* DimOverlayWindow.swift in Sources */,
 				A8116E433AA8D37103819457 /* DimmingCoordinator.swift in Sources */,
+				FG1000000001FEATUREGATE0 /* FeatureGateService.swift in Sources */,
 				29BD586ACDE68974C13A7BF1 /* LaunchAtLoginManager.swift in Sources */,
+				LM1000000001LICENSEMANAG /* LicenseManager.swift in Sources */,
+				LV1000000001LICENSEVIEW0 /* LicenseView.swift in Sources */,
 				E748258583468783DCA7726A /* LocationService.swift in Sources */,
 				9D18C007DBA3A819CE0E66AD /* MenuBarController.swift in Sources */,
 				E2749825BB4A46ACA89FD676 /* MenuBarView.swift in Sources */,

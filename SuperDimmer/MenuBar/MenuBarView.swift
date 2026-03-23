@@ -150,6 +150,21 @@ struct MenuBarView: View {
     /**
      App name and license status display.
      */
+    /**
+     App name and live license status display.
+
+     UPDATED (2026-03-23): Replaced hardcoded "Free" badge with real-time
+     license state from FeatureGateService. The badge now shows:
+     - "Free" (gray) — no license, no trial
+     - "Trial: Xd" (orange) — trial active with days remaining
+     - "Pro" (green) — valid license
+     - "Expired" (red) — trial expired, no license
+
+     The badge is tappable when not Pro — it opens the purchase page
+     for quick upgrade access directly from the menu bar popover.
+     This is the most visible upgrade prompt since users see the menu bar
+     popover on every interaction.
+     */
     private var headerSection: some View {
         HStack {
             // App icon and name - Updated for 2.2.1.13 with moon icon
@@ -157,26 +172,80 @@ struct MenuBarView: View {
                 Image(systemName: "moon.fill")
                     .font(.title2)
                     .foregroundColor(.indigo)
-                
+
                 Text("SuperDimmer")
                     .font(.headline)
                     .fontWeight(.semibold)
             }
-            
+
             Spacer()
-            
-            // License status badge
-            // TODO: Replace with actual license status
-            Text("Free")
-                .font(.caption)
-                .fontWeight(.medium)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.secondary.opacity(0.2))
-                .cornerRadius(4)
+
+            // Live license status badge — reads from FeatureGateService
+            // which observes LicenseManager.licenseState via Combine.
+            // WHY BUTTON WHEN NOT PRO: Tapping the badge is the quickest
+            // path to upgrading. Users don't need to find the License tab
+            // in Preferences — they can upgrade right from the menu bar.
+            if FeatureGateService.shared.hasProAccess {
+                licenseBadge
+            } else {
+                Button(action: {
+                    LicenseManager.shared.openPurchasePage()
+                }) {
+                    licenseBadge
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    /// The license status badge view, reused for both static (Pro) and
+    /// tappable (non-Pro) states in the header section above.
+    private var licenseBadge: some View {
+        HStack(spacing: 4) {
+            // Show upgrade arrow icon when not Pro to indicate it's tappable
+            if !FeatureGateService.shared.hasProAccess {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.caption2)
+            }
+            Text(licenseBadgeText)
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(licenseBadgeColor.opacity(0.2))
+        .foregroundColor(licenseBadgeColor)
+        .cornerRadius(4)
+    }
+
+    /// Text for the license badge based on current state.
+    private var licenseBadgeText: String {
+        switch FeatureGateService.shared.licenseState {
+        case .free:
+            return "Free"
+        case .trial(let daysRemaining):
+            return "Trial: \(daysRemaining)d"
+        case .pro:
+            return "Pro"
+        case .expired:
+            return "Expired"
+        }
+    }
+
+    /// Color for the license badge based on current state.
+    private var licenseBadgeColor: Color {
+        switch FeatureGateService.shared.licenseState {
+        case .free:
+            return .secondary
+        case .trial:
+            return .orange
+        case .pro:
+            return .green
+        case .expired:
+            return .red
+        }
     }
     
     // ================================================================
@@ -303,24 +372,45 @@ struct MenuBarView: View {
                     }
                     
                     // Intelligent mode toggle - compact
+                    // GATE (2026-03-23): This is a Pro feature. When the user
+                    // is on free tier, the toggle is disabled and shows a lock
+                    // icon. The SettingsManager also has a safety gate that
+                    // reverts the value if somehow set without Pro access.
                     HStack {
                         Image(systemName: "wand.and.stars")
-                            .foregroundColor(.purple)
+                            .foregroundColor(FeatureGateService.shared.isIntelligentDimmingAvailable ? .purple : .secondary)
                             .font(.caption)
-                        
+
                         Text("Intelligent")
                             .font(.caption)
-                        
-                        Text("(Beta)")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        
+
+                        if FeatureGateService.shared.isIntelligentDimmingAvailable {
+                            Text("(Beta)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        } else {
+                            // Show "Pro" badge instead of "(Beta)" when feature is locked
+                            // This tells the user WHY the toggle is disabled and hints
+                            // they can unlock it by upgrading.
+                            Text("Pro")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.orange)
+                        }
+
                         Spacer()
-                        
+
                         Toggle("", isOn: Binding(
                             get: { settings.intelligentDimmingEnabled },
                             set: { newValue in
                                 DispatchQueue.main.async {
+                                    // Check feature gate before enabling
+                                    if newValue && !FeatureGateService.shared.checkAccess(
+                                        feature: "intelligentDimming",
+                                        showUpgradeIfNeeded: true
+                                    ) {
+                                        return
+                                    }
                                     if newValue {
                                         requestScreenRecordingAndEnable()
                                     } else {
@@ -332,6 +422,7 @@ struct MenuBarView: View {
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .controlSize(.small)
+                            .disabled(!FeatureGateService.shared.isIntelligentDimmingAvailable)
                     }
                     
                     // Status indicator when intelligent mode is on

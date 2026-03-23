@@ -678,30 +678,6 @@ final class SettingsManager: ObservableObject {
             // etc.) which overwhelm the main thread during appearance changes.
             // The coordinator will be updated after the full profile is applied.
             guard !isLoadingProfile else { return }
-            /*
-             SYNC ACTIVE APPEARANCE PROFILE (Mar 19, 2026)
-
-             WHY THIS EXISTS:
-             Light/Dark use separate `lightModeProfile` and `darkModeProfile` structs.
-             `loadProfileForCurrentAppearance()` reapplies the *profile* to live settings
-             when macOS (or the user’s Appearance Mode picker) changes. Until now, the
-             master toggle only wrote `Keys.isDimmingEnabled` to UserDefaults — it did *not*
-             update the in-memory profile. `saveCurrentSettingsToActiveProfile()` ran only
-             once during `init`, so the profile could still say ON while the user had turned
-             dimming OFF from the menu bar.
-
-             USER-VISIBLE BUG:
-             - Turn Super Dimming OFF in Light mode → switch to Dark → dark profile (often ON
-               by design) loads and dimming comes back (confusing if they expected “off”).
-             - Switch back to Light → stale light profile still had ON → overlays appeared
-               in Light mode even though they had toggled off.
-
-             FIX:
-             Whenever the user changes the master toggle while we are not bulk-loading a
-             profile, push the full current dimming state into the active light/dark profile
-             so the next appearance switch reflects what they actually set.
-             */
-            saveCurrentSettingsToActiveProfile()
             NotificationCenter.default.post(
                 name: .dimmingEnabledChanged,
                 object: nil,
@@ -734,13 +710,7 @@ final class SettingsManager: ObservableObject {
             guard !isLoadingProfile else { return }
             
             synchronizeSettingsForDimmingType(dimmingType)
-            /*
-             Keep the active Light/Dark profile aligned when the user picks a dimming type.
-             Same rationale as `isDimmingEnabled` (Mar 19, 2026): appearance switches
-             rehydrate from `DimmingProfile`; without this, mode changes could resurrect an
-             old type/intelligent combination stored only in the profile blob.
-             */
-            saveCurrentSettingsToActiveProfile()
+            
             NotificationCenter.default.post(
                 name: .dimmingTypeChanged,
                 object: nil,
@@ -851,9 +821,20 @@ final class SettingsManager: ObservableObject {
      When false: all windows use globalDimLevel uniformly
      
      This is a Pro feature - gated by license.
+
+     GATE LOGIC (added 2026-03-23):
+     When a non-Pro user tries to enable this, FeatureGateService blocks
+     the change and reverts the toggle. The UI layer should also disable
+     the control, but this is a safety net in case the UI check is bypassed.
      */
     @Published var differentiateActiveInactive: Bool {
         didSet {
+            // Pro feature gate: revert if user doesn't have Pro access
+            if differentiateActiveInactive && !FeatureGateService.shared.isDifferentiateActiveInactiveAvailable {
+                differentiateActiveInactive = false
+                AppLogger.licensing.info("differentiateActiveInactive blocked — Pro license required")
+                return
+            }
             defaults.set(differentiateActiveInactive, forKey: Keys.differentiateActiveInactive.rawValue)
         }
     }
@@ -868,9 +849,20 @@ final class SettingsManager: ObservableObject {
      If permission not granted, falls back to simple mode automatically.
      
      This is a Pro feature - requires license for per-window targeting.
+
+     GATE LOGIC (added 2026-03-23):
+     Same pattern as differentiateActiveInactive — revert toggle if not Pro.
+     This is the most impactful gate because intelligent dimming is the core
+     differentiator. Users on free tier get global dimming only.
      */
     @Published var intelligentDimmingEnabled: Bool {
         didSet {
+            // Pro feature gate: revert if user doesn't have Pro access
+            if intelligentDimmingEnabled && !FeatureGateService.shared.isIntelligentDimmingAvailable {
+                intelligentDimmingEnabled = false
+                AppLogger.licensing.info("intelligentDimmingEnabled blocked — Pro license required")
+                return
+            }
             defaults.set(intelligentDimmingEnabled, forKey: Keys.intelligentDimmingEnabled.rawValue)
         }
     }
@@ -2172,14 +2164,8 @@ final class SettingsManager: ObservableObject {
     @Published var appearanceMode: AppearanceMode {
         didSet {
             defaults.set(appearanceMode.rawValue, forKey: Keys.appearanceMode.rawValue)
-            // FIX (Mar 3, 2026): Defer profile load to next run loop.
-            // When user changes the Appearance Picker, the binding setter runs DURING a view update.
-            // loadProfileForCurrentAppearance() updates 20+ @Published properties, which triggers
-            // "Publishing changes from within view updates is not allowed" in SwiftUI.
-            // Dispatching async lets the current view update complete before we publish.
-            DispatchQueue.main.async { [weak self] in
-                self?.loadProfileForCurrentAppearance()
-            }
+            // When user changes appearance mode, load the appropriate profile
+            loadProfileForCurrentAppearance()
         }
     }
     
@@ -2200,13 +2186,9 @@ final class SettingsManager: ObservableObject {
             if let encoded = try? JSONEncoder().encode(darkModeProfile) {
                 defaults.set(encoded, forKey: Keys.darkModeProfile.rawValue)
             }
-            // If currently in dark mode, apply the profile changes.
-            // FIX (Mar 3, 2026): Defer to next run loop to avoid "Publishing changes from
-            // within view updates" when profile is modified from a SwiftUI binding.
+            // If currently in dark mode, apply the profile changes immediately
             if getCurrentActiveAppearance() == .dark {
-                DispatchQueue.main.async { [weak self] in
-                    self?.loadProfileForCurrentAppearance()
-                }
+                loadProfileForCurrentAppearance()
             }
         }
     }
@@ -2228,13 +2210,9 @@ final class SettingsManager: ObservableObject {
             if let encoded = try? JSONEncoder().encode(lightModeProfile) {
                 defaults.set(encoded, forKey: Keys.lightModeProfile.rawValue)
             }
-            // If currently in light mode, apply the profile changes.
-            // FIX (Mar 3, 2026): Defer to next run loop to avoid "Publishing changes from
-            // within view updates" when profile is modified from a SwiftUI binding.
+            // If currently in light mode, apply the profile changes immediately
             if getCurrentActiveAppearance() == .light {
-                DispatchQueue.main.async { [weak self] in
-                    self?.loadProfileForCurrentAppearance()
-                }
+                loadProfileForCurrentAppearance()
             }
         }
     }

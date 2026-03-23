@@ -62,22 +62,29 @@ struct PreferencesView: View {
     /// NOTE (2.2.1.12): Removed "Excluded Apps" tab - now unified in Super Focus
     /// NOTE (2.2.1.6): Added Developer tab - only visible in dev mode
     /// REDESIGN (Jan 23, 2026): Renamed "Brightness" to "SuperDimmer", "Window Management" to "Super Focus"
+    /// Available preference sections for sidebar navigation.
+    /// NOTE (2026-03-23): Added .license tab as part of Paddle payment integration
+    /// (BridgeMind task 39cc4a31). This is the user-facing license management UI
+    /// where users can activate/deactivate Pro licenses, start trials, and see
+    /// what features are included in each tier.
     enum PreferenceSection: String, CaseIterable, Identifiable {
         case general = "General"
         case superDimmer = "SuperDimmer"
         case superFocus = "Super Focus"
         case color = "Color"
+        case license = "License"
         case developer = "Developer"
         case about = "About"
-        
+
         var id: String { rawValue }
-        
+
         var icon: String {
             switch self {
             case .general: return "gear"
             case .superDimmer: return "sun.max.trianglebadge.exclamationmark"
             case .superFocus: return "sparkles.rectangle.stack"
             case .color: return "thermometer.sun"
+            case .license: return "key.fill"
             case .developer: return "hammer.fill"
             case .about: return "info.circle"
             }
@@ -124,6 +131,8 @@ struct PreferencesView: View {
                     SuperFocusPreferencesTab()
                 case .color:
                     ColorPreferencesTab()
+                case .license:
+                    LicensePreferencesTab()
                 case .developer:
                     DeveloperPreferencesTab()
                 case .about:
