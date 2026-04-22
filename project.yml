@@ -22,7 +22,7 @@ name: SuperDimmer
 options:
   bundleIdPrefix: com.superdimmer
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "14.0"
   developmentLanguage: en
   xcodeVersion: "15.0"
   generateEmptyDirectories: true
@@ -36,8 +36,8 @@ settings:
   base:
     PRODUCT_NAME: SuperDimmer
     PRODUCT_BUNDLE_IDENTIFIER: com.superdimmer.com
-    MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.0.8"
+    CURRENT_PROJECT_VERSION: "16"
     DEVELOPMENT_TEAM: ""  # Fill in your team ID
     CODE_SIGN_STYLE: Automatic
     CODE_SIGN_IDENTITY: "-"  # Ad-hoc signing for development
@@ -46,7 +46,7 @@ settings:
     INFOPLIST_FILE: SuperDimmer/Supporting Files/Info.plist
     CODE_SIGN_ENTITLEMENTS: SuperDimmer/Supporting Files/SuperDimmer.entitlements
     SWIFT_VERSION: "5.9"
-    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
     ENABLE_HARDENED_RUNTIME: YES
     COMBINE_HIDPI_IMAGES: YES
 

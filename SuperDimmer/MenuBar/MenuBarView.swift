@@ -79,7 +79,15 @@ struct MenuBarView: View {
      Collapsed after a selection is made.
      */
     @State private var showDisableOptions = false
-    
+
+    /**
+     Whether the Equidistant Spread action is currently running.
+     Used to disable the button while AX moves are applied
+     (~1-5 seconds depending on window count).
+     ADDED v1.0.8 for the "Spread Windows Evenly" Pro feature.
+     */
+    @State private var isSpreadingWindows = false
+
     // ================================================================
     // MARK: - Body
     // ================================================================
@@ -1073,6 +1081,37 @@ struct MenuBarView: View {
      */
     private var footerSection: some View {
         VStack(spacing: 8) {
+            // ADDED v1.0.8 — "Spread Windows Evenly" Pro feature.
+            // Positioned at the TOP of the footer section (most-touched area)
+            // so users discover it without hunting through Preferences.
+            // Pro-gated: tapping shows the upgrade prompt for free users.
+            HStack(spacing: 12) {
+                Button(action: { spreadWindowsEvenly() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.grid.3x3.middle.filled")
+                        Text("Spread Windows Evenly")
+                        Text("PRO")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.accentColor.opacity(0.18))
+                            .foregroundColor(.accentColor)
+                            .cornerRadius(3)
+                    }
+                    .font(.subheadline)
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.primary)
+                .disabled(isSpreadingWindows)
+            }
+
+            Divider().padding(.vertical, 2)
+
             // Top row: Main actions
             HStack(spacing: 16) {
                 // Preferences button - full area clickable
@@ -1272,6 +1311,98 @@ struct MenuBarView: View {
      */
     private func openChangelog() {
         UpdateChecker.shared.openChangelog()
+    }
+
+    // ================================================================
+    // MARK: - Spread Windows Evenly (v1.0.8 Pro feature)
+    // ================================================================
+
+    /*
+     Triggers the Equidistant Spread action. See
+     EquidistantSpreadService for the full algorithm.
+
+     UX flow:
+       1. Close the popover immediately so the user sees their desktop
+          as the spread animates.
+       2. Check Pro gate — free users get the upgrade dialog.
+       3. Check AX permission — if missing, prompt and bail (don't
+          silently fail dozens of AX calls).
+       4. Run the spread on a background queue (it blocks ~1-5s).
+       5. Play the system "generic" sound on completion (audible cue
+          with no extra dialog — the visual change is obvious).
+
+     Error handling: surfaces user-facing errors via an NSAlert on the
+     main thread. We deliberately keep errors separate from the
+     dimming error path because a failed spread shouldn't surface a
+     dimming-related message.
+    */
+    private func spreadWindowsEvenly() {
+        // Close the popover so the user can see the spread happen.
+        AppDelegate.shared?.menuBarController?.closePopover()
+
+        // Pro gate — shows the upgrade dialog if user isn't entitled.
+        guard FeatureGateService.shared.checkAccess(
+            feature: "equidistantSpread",
+            showUpgradeIfNeeded: true
+        ) else {
+            AppLogger.tracking.info("Spread Windows Evenly: blocked by Pro gate")
+            return
+        }
+
+        // AX permission — same permission dimming overlays need, so most
+        // users have it. If not, prompt + open System Settings. We don't
+        // START the spread if permission is missing because AX writes
+        // would silently return success while doing nothing.
+        if !PermissionManager.shared.checkAccessibilityPermission() {
+            AppLogger.tracking.warning("Spread Windows Evenly: AX permission missing — prompting")
+            PermissionManager.shared.requestAccessibilityPermission()
+            // Show a clarifying alert — the system prompt alone is
+            // cryptic about WHY we need permission.
+            let alert = NSAlert()
+            alert.messageText = "Accessibility permission needed"
+            alert.informativeText = """
+                SuperDimmer needs Accessibility permission to move windows.
+
+                Open System Settings → Privacy & Security → Accessibility,
+                enable SuperDimmer, then try "Spread Windows Evenly" again.
+                """
+            alert.addButton(withTitle: "Open Settings")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn {
+                PermissionManager.shared.openAccessibilitySettings()
+            }
+            return
+        }
+
+        // Build config from SettingsManager so the user's
+        // "anchor edges" toggle takes effect.
+        var config = EquidistantSpreadConfig()
+        config.anchorEdges = SettingsManager.shared.spreadAnchorEdges
+
+        // Disable the button visually while the spread runs.
+        isSpreadingWindows = true
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let result = try EquidistantSpreadService.shared.spread(config: config)
+                AppLogger.tracking.info("Spread Windows Evenly: moved=\(result.moved) drifted=\(result.drifted)")
+                DispatchQueue.main.async {
+                    isSpreadingWindows = false
+                    // Audible completion cue (no dialog — visual is obvious).
+                    NSSound(named: "Tink")?.play()
+                }
+            } catch {
+                AppLogger.tracking.error("Spread Windows Evenly failed: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    isSpreadingWindows = false
+                    let alert = NSAlert()
+                    alert.messageText = "Couldn't spread windows"
+                    alert.informativeText = error.localizedDescription
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+            }
+        }
     }
 }
 

@@ -525,6 +525,12 @@ final class SettingsManager: ObservableObject {
         
         // SuperFocus (2.2.1.5) - Groups productivity features
         case superFocusEnabled = "superdimmer.superFocusEnabled"
+
+        // Spread Windows Evenly (v1.0.8 Pro feature — Equidistant Drift)
+        // When true, windows currently flush against screen edges/corners
+        // are treated as "anchors" and left in place; the spread works
+        // around them. When false, every non-excluded window participates.
+        case spreadAnchorEdges = "superdimmer.spreadAnchorEdges"
         
         // Color Temperature
         case colorTemperatureEnabled = "superdimmer.colorTemperatureEnabled"
@@ -1469,7 +1475,27 @@ final class SettingsManager: ObservableObject {
             }
         }
     }
-    
+
+    // ================================================================
+    // MARK: - Spread Windows Evenly (v1.0.8 Pro feature)
+    // ================================================================
+
+    /**
+     Whether the "Spread Windows Evenly" action should treat windows
+     currently flush against screen edges/corners as anchors (left in
+     place) or include them in the spread.
+
+     Default OFF: every non-excluded window participates in the spread.
+     Users who intentionally park windows at edges (e.g. Messages at
+     bottom, YouTube in a corner) can turn this ON to preserve those
+     placements.
+     */
+    @Published var spreadAnchorEdges: Bool {
+        didSet {
+            defaults.set(spreadAnchorEdges, forKey: Keys.spreadAnchorEdges.rawValue)
+        }
+    }
+
     // ================================================================
     // MARK: - Color Temperature Settings
     // ================================================================
@@ -2421,6 +2447,14 @@ final class SettingsManager: ObservableObject {
         // ============================================================
         // SuperFocus is OFF by default - user opts-in to productivity mode
         self.superFocusEnabled = defaults.bool(forKey: Keys.superFocusEnabled.rawValue)
+
+        // ============================================================
+        // Load Spread Windows Evenly Settings (v1.0.8)
+        // ============================================================
+        // Default: anchor-edges OFF so all windows participate. Users who
+        // intentionally park windows at edges (iMessage bottom, YouTube
+        // in a corner) can turn this ON to preserve those placements.
+        self.spreadAnchorEdges = defaults.bool(forKey: Keys.spreadAnchorEdges.rawValue)
         
         // ============================================================
         // Load Color Temperature Settings
